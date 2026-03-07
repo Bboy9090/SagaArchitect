@@ -26,6 +26,7 @@ export function Sidebar() {
     { href: `/universe/${universeId}/timeline`, label: 'Timeline', icon: '⏳' },
     { href: `/universe/${universeId}/arcs`, label: 'Arc Forge', icon: '⚔️' },
     { href: `/universe/${universeId}/lore`, label: 'Lore Memory', icon: '🔮' },
+    { href: `/universe/${universeId}/stories`, label: 'Story Forge', icon: '📖' },
   ] : [];
 
   const isActive = (href: string) => pathname === href;
@@ -75,6 +76,11 @@ export function Sidebar() {
               >
                 <span>{item.icon}</span>
                 <span>{item.label}</span>
+                {item.label === 'Story Forge' && (
+                  <span className="ml-auto text-[9px] text-[#c9a84c]/60 bg-[#c9a84c]/10 rounded px-1.5 py-0.5 uppercase tracking-wider">
+                    new
+                  </span>
+                )}
               </Link>
             ))}
           </div>
@@ -82,8 +88,14 @@ export function Sidebar() {
       </nav>
 
       <div className="p-3 border-t border-[#c9a84c]/10">
-        <p className="text-[10px] text-gray-700 text-center tracking-widest uppercase">SagaLoreBuilder v1.0</p>
+        {/* LoreEngine indicator */}
+        <div className="flex items-center gap-1.5 mb-2 px-1">
+          <span className="text-[10px] text-[#c9a84c]/40">⚡</span>
+          <span className="text-[10px] text-gray-700 tracking-wider uppercase">LoreEngine v1</span>
+        </div>
+        <p className="text-[9px] text-gray-800 text-center tracking-widest uppercase">SagaLoreBuilder</p>
       </div>
     </aside>
   );
 }
+

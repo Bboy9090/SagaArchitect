@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import type { Character } from '@/lib/types';
+import { buildCanonBlock, formatCanonBlockAsPrompt } from '@/lib/lore-engine';
+import type { CanonBlockInput } from '@/lib/lore-engine';
 
 function mockCharacters(universeId: string): Character[] {
   return [
@@ -48,16 +50,22 @@ export async function POST(req: NextRequest) {
 
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+    // Inject full canon context for canon-consistent character generation
+    const canonBlock = buildCanonBlock(body as CanonBlockInput);
+    const canonContext = formatCanonBlockAsPrompt(canonBlock);
+
     const factionContext = factions?.length > 0
       ? `\nExisting factions: ${factions.map((f: { name: string }) => f.name).join(', ')}`
       : '';
 
-    const prompt = `Generate 5 compelling characters for this world:
+    const prompt = `${canonContext}\n\nUsing the universe context above, generate 5 compelling characters for this world:
 
 Universe: ${universe.name}
 Concept: ${universe.concept}
 Genre: ${universe.genre}
 Tone: ${universe.tone}${factionContext}
+
+IMPORTANT: Characters must be consistent with the canon context above. Tie them to existing factions and timeline events where possible. Do not contradict established lore rules.
 
 Return a JSON object with a "characters" array. Each character must have:
 - name: string

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import type { Faction } from '@/lib/types';
+import { buildCanonBlock, formatCanonBlockAsPrompt } from '@/lib/lore-engine';
+import type { CanonBlockInput } from '@/lib/lore-engine';
 
 function mockFactions(universeId: string): Faction[] {
   return [
@@ -48,13 +50,19 @@ export async function POST(req: NextRequest) {
 
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    const prompt = `Generate 4-5 compelling factions for this world:
+    // Inject full canon context for richer, canon-consistent generation
+    const canonBlock = buildCanonBlock(body as CanonBlockInput);
+    const canonContext = formatCanonBlockAsPrompt(canonBlock);
+
+    const prompt = `${canonContext}\n\nUsing the universe context above, generate 4-5 compelling factions that fit this world:
 
 Universe: ${universe.name}
 Concept: ${universe.concept}
 Genre: ${universe.genre}
 Tone: ${universe.tone}
 Current Conflict: ${universe.current_conflict || 'Power struggle over ancient knowledge'}
+
+IMPORTANT: Factions must be consistent with the canon context above. Do not contradict existing lore rules, timeline events, or established factions.
 
 Return a JSON object with a "factions" array. Each faction must have:
 - name: string

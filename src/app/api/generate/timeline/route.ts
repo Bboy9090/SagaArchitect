@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import type { TimelineEvent } from '@/lib/types';
+import { buildCanonBlock, formatCanonBlockAsPrompt } from '@/lib/lore-engine';
+import type { CanonBlockInput } from '@/lib/lore-engine';
 
 function mockTimeline(universeId: string): TimelineEvent[] {
   return [
@@ -54,7 +56,11 @@ export async function POST(req: NextRequest) {
 
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    const prompt = `Generate 8 historical timeline events for this world:
+    // Inject full canon context so timeline events reference existing factions, characters, locations
+    const canonBlock = buildCanonBlock(body as CanonBlockInput);
+    const canonContext = formatCanonBlockAsPrompt(canonBlock);
+
+    const prompt = `${canonContext}\n\nUsing the universe context above, generate 8 historical timeline events for this world:
 
 Universe: ${universe.name}
 Concept: ${universe.concept}
@@ -62,7 +68,7 @@ Genre: ${universe.genre}
 Tone: ${universe.tone}
 Current Conflict: ${universe.current_conflict || 'Power struggle'}
 
-Create events spanning from the distant past to the present day, in chronological order.
+IMPORTANT: Events must reference the existing factions, characters, and locations in the canon context. Do not contradict established lore rules. Create events spanning from distant past to present day, in chronological order.
 
 Return a JSON object with an "events" array. Each event must have:
 - title: string

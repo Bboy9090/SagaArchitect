@@ -1,4 +1,4 @@
-import type { Universe, Faction, Character, Location, TimelineEvent, StoryArc, LoreRule } from './types';
+import type { Universe, Faction, Character, Location, TimelineEvent, StoryArc, LoreRule, GeneratedStory, MediaProject } from './types';
 
 const KEYS = {
   universes: 'saga_universes',
@@ -8,6 +8,8 @@ const KEYS = {
   timeline: (uid: string) => `saga_timeline_${uid}`,
   arcs: (uid: string) => `saga_arcs_${uid}`,
   lore: (uid: string) => `saga_lore_${uid}`,
+  stories: (uid: string) => `saga_stories_${uid}`,
+  projects: (uid: string) => `saga_projects_${uid}`,
 };
 
 function get<T>(key: string): T[] {
@@ -45,6 +47,8 @@ export const deleteUniverse = (id: string): void => {
   localStorage.removeItem(KEYS.timeline(id));
   localStorage.removeItem(KEYS.arcs(id));
   localStorage.removeItem(KEYS.lore(id));
+  localStorage.removeItem(KEYS.stories(id));
+  localStorage.removeItem(KEYS.projects(id));
 };
 export const getUniverseById = (id: string): Universe | undefined =>
   getUniverses().find(u => u.id === id);
@@ -126,3 +130,30 @@ export const deleteLoreRule = (universeId: string, id: string): void =>
   set(KEYS.lore(universeId), getLoreRules(universeId).filter(r => r.id !== id));
 export const saveLoreRules = (universeId: string, rules: LoreRule[]): void =>
   set(KEYS.lore(universeId), rules);
+
+// Generated Stories
+export const getStories = (universeId: string): GeneratedStory[] => get<GeneratedStory>(KEYS.stories(universeId));
+export const saveStory = (story: GeneratedStory): void => {
+  const all = getStories(story.universe_id);
+  const idx = all.findIndex(s => s.id === story.id);
+  if (idx >= 0) all[idx] = story; else all.push(story);
+  set(KEYS.stories(story.universe_id), all);
+};
+export const deleteStory = (universeId: string, id: string): void =>
+  set(KEYS.stories(universeId), getStories(universeId).filter(s => s.id !== id));
+
+// Media Projects
+export const getMediaProjects = (universeId: string): MediaProject[] => get<MediaProject>(KEYS.projects(universeId));
+export const saveMediaProject = (project: MediaProject): void => {
+  const all = getMediaProjects(project.universe_id);
+  const idx = all.findIndex(p => p.id === project.id);
+  const now = new Date().toISOString();
+  if (idx >= 0) {
+    all[idx] = { ...project, updated_at: now };
+  } else {
+    all.push({ ...project, updated_at: now });
+  }
+  set(KEYS.projects(project.universe_id), all);
+};
+export const deleteMediaProject = (universeId: string, id: string): void =>
+  set(KEYS.projects(universeId), getMediaProjects(universeId).filter(p => p.id !== id));

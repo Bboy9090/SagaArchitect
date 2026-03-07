@@ -11,6 +11,7 @@ import {
   getTimeline, getArcs, getLoreRules,
   saveLocations, saveCharacters, saveFactions
 } from '@/lib/storage';
+import { buildCanonBlock } from '@/lib/lore-engine';
 import type { Universe, Faction, Character, Location } from '@/lib/types';
 
 interface Section {
@@ -32,6 +33,7 @@ export default function CanonCorePage({ params }: CanonPageProps) {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ chars: 0, factions: 0, locations: 0, events: 0, arcs: 0, lore: 0 });
   const [genLoading, setGenLoading] = useState<string | null>(null);
+  const [exportCopied, setExportCopied] = useState(false);
 
   useEffect(() => {
     const u = getUniverseById(id);
@@ -52,6 +54,40 @@ export default function CanonCorePage({ params }: CanonPageProps) {
     setExpanded(prev => ({ ...prev, [sectionId]: !prev[sectionId] }));
   };
 
+  /** Build a full canon block payload — used for all AI generation calls */
+  const buildCanonPayload = () => {
+    if (!universe) return {};
+    return {
+      universe,
+      factions: getFactions(id),
+      characters: getCharacters(id),
+      locations: getLocations(id),
+      timeline: getTimeline(id),
+      lore_rules: getLoreRules(id),
+      story_arcs: getArcs(id),
+    };
+  };
+
+  /** Export the canon block as JSON — for Rainstorms or external tools */
+  const handleExportCanon = async () => {
+    if (!universe) return;
+    const block = buildCanonBlock(buildCanonPayload() as Parameters<typeof buildCanonBlock>[0]);
+    const json = JSON.stringify(block, null, 2);
+    try {
+      await navigator.clipboard.writeText(json);
+      setExportCopied(true);
+      setTimeout(() => setExportCopied(false), 2000);
+    } catch {
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${universe.name.replace(/\s+/g, '_')}_canon.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  };
+
   const generateLocations = async () => {
     if (!universe) return;
     setGenLoading('locations');
@@ -59,7 +95,8 @@ export default function CanonCorePage({ params }: CanonPageProps) {
       const res = await fetch('/api/generate/locations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ universe }),
+        // Send full canon context so locations tie into existing lore
+        body: JSON.stringify(buildCanonPayload()),
       });
       const data = await res.json();
       if (data.locations) {
@@ -155,7 +192,8 @@ export default function CanonCorePage({ params }: CanonPageProps) {
                 const res = await fetch('/api/generate/factions', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ universe }),
+                  // Send full canon context for consistent faction generation
+                  body: JSON.stringify(buildCanonPayload()),
                 });
                 const data = await res.json();
                 if (data.factions) {
@@ -190,7 +228,8 @@ export default function CanonCorePage({ params }: CanonPageProps) {
                 const res = await fetch('/api/generate/characters', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ universe, factions: getFactions(id) }),
+                  // Send full canon context for consistent character generation
+                  body: JSON.stringify(buildCanonPayload()),
                 });
                 const data = await res.json();
                 if (data.characters) {
@@ -247,7 +286,16 @@ export default function CanonCorePage({ params }: CanonPageProps) {
         title={universe.name}
         subtitle={`${universe.genre} · ${universe.tone} · ${universe.era}`}
         actions={
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <Button variant="gold" size="sm" onClick={() => router.push(`/universe/${id}/stories`)}>
+              📖 Story Forge
+            </Button>
+            <Button
+              variant="secondary" size="sm"
+              onClick={handleExportCanon}
+            >
+              {exportCopied ? '✓ Copied!' : '⚡ Export Canon'}
+            </Button>
             <Button variant="secondary" size="sm" onClick={() => router.push(`/universe/${id}/arcs`)}>
               ⚔️ Arc Forge
             </Button>

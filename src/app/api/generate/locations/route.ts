@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import type { Location } from '@/lib/types';
+import { buildCanonBlock, formatCanonBlockAsPrompt } from '@/lib/lore-engine';
+import type { CanonBlockInput } from '@/lib/lore-engine';
 
 function mockLocations(universeId: string): Location[] {
   return [
@@ -40,12 +42,18 @@ export async function POST(req: NextRequest) {
 
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    const prompt = `Generate 6 compelling locations for this world:
+    // Inject full canon context so locations tie into existing factions, characters, and timeline
+    const canonBlock = buildCanonBlock(body as CanonBlockInput);
+    const canonContext = formatCanonBlockAsPrompt(canonBlock);
+
+    const prompt = `${canonContext}\n\nUsing the universe context above, generate 6 compelling locations for this world:
 
 Universe: ${universe.name}
 Concept: ${universe.concept}
 Genre: ${universe.genre}
 Tone: ${universe.tone}
+
+IMPORTANT: Locations must connect to the existing factions, characters, and timeline events in the canon context. Give them strategic or mythic relevance to established lore.
 
 Return a JSON object with a "locations" array. Each location must have:
 - name: string

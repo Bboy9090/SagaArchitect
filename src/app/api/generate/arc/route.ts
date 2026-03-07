@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import type { ArcType } from '@/lib/types';
+import { buildCanonBlock, formatCanonBlockAsPrompt } from '@/lib/lore-engine';
+import type { CanonBlockInput } from '@/lib/lore-engine';
 
 const ARC_DESCRIPTIONS: Record<ArcType, string> = {
   trilogy: 'A three-part epic saga with clear acts and world transformation',
@@ -38,10 +40,14 @@ export async function POST(req: NextRequest) {
 
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+    // Inject full canon context for a deeply lore-consistent arc
+    const canonBlock = buildCanonBlock(body as CanonBlockInput);
+    const canonContext = formatCanonBlockAsPrompt(canonBlock);
+
     const charList = characters?.slice(0, 5).map((c: { name: string }) => c.name).join(', ') || 'None defined yet';
     const factionList = factions?.slice(0, 4).map((f: { name: string }) => f.name).join(', ') || 'None defined yet';
 
-    const prompt = `Generate a ${arcType} story arc for this universe:
+    const prompt = `${canonContext}\n\nUsing the universe context above, generate a ${arcType} story arc:
 
 Universe: ${universe.name}
 Concept: ${universe.concept}
@@ -52,14 +58,16 @@ Current Conflict: ${universe.current_conflict || 'Not specified'}
 Available Characters: ${charList}
 Available Factions: ${factionList}
 
+IMPORTANT: The arc must reference and be consistent with the canon context above — existing characters, factions, locations, timeline events, and lore rules. Do not introduce contradictions.
+
 Return a JSON object with an "arc" field containing:
 - title: string (compelling title for this arc)
 - type: "${arcType}"
 - summary: string (2-3 paragraph arc overview)
 - start_point: string (how the arc begins — the inciting incident)
 - end_point: string (how the arc resolves — the climax and aftermath)
-- involved_characters: string[] (character names from the list above)
-- involved_factions: string[] (faction names from the list above)
+- involved_characters: string[] (character names from the canon)
+- involved_factions: string[] (faction names from the canon)
 - themes: string[] (3-5 thematic strings)
 
 Return only valid JSON.`;

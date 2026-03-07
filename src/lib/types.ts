@@ -132,3 +132,32 @@ export interface GeneratedStory {
   featured_locations: string[];
   created_at: string;
 }
+
+/**
+ * A media project is a creative output spawned from a universe.
+ * One universe can produce many projects — a book, a game, a comic, a film.
+ * This is the record that ties a creative output to its source canon.
+ */
+export type MediaProjectType =
+  | 'book'
+  | 'children_book'
+  | 'game'
+  | 'comic'
+  | 'film'
+  | 'short_story'
+  | 'script';
+
+export type MediaProjectStatus = 'concept' | 'in_progress' | 'complete';
+
+export interface MediaProject {
+  id: string;
+  universe_id: string;
+  type: MediaProjectType;
+  title: string;
+  summary: string;
+  status: MediaProjectStatus;
+  featured_characters: string[];
+  featured_factions: string[];
+  created_at: string;
+  updated_at: string;
+}

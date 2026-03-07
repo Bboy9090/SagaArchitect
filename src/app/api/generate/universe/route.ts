@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { buildCanonBlock, formatCanonBlockAsPrompt } from '@/lib/lore-engine';
+import type { CanonBlockInput } from '@/lib/lore-engine';
 
 const MOCK_UNIVERSE = {
   world_overview: 'A world shaped by ancient conflicts and forgotten magic, where the remnants of a fallen civilization struggle to reclaim their destiny. The land bears the scars of cataclysm — shattered cities, toxic wastes, and skies that change color with the tides of unseen power.',
@@ -23,18 +25,24 @@ export async function POST(req: NextRequest) {
 
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    const prompt = `You are a creative writing assistant specializing in world-building for novels, screenplays, and games.
+    // Build canon context if existing lore data was provided alongside the universe
+    const canonContext = (body.factions || body.characters || body.lore_rules)
+      ? formatCanonBlockAsPrompt(buildCanonBlock(body as CanonBlockInput))
+      : '';
+
+    const u = body.universe ?? body;
+    const prompt = `${canonContext ? canonContext + '\n\n' : ''}You are a creative writing assistant specializing in world-building for novels, screenplays, and games.
     
 Generate a detailed universe bible entry for the following world:
 
-Name: ${body.name}
-Concept: ${body.concept}
-Genre: ${body.genre}
-Tone: ${body.tone}
-Era: ${body.era}
-Technology Level: ${body.tech_level}
-Magic System: ${body.magic_system || 'None'}
-Core Conflict: ${body.current_conflict || 'Not specified'}
+Name: ${u.name}
+Concept: ${u.concept}
+Genre: ${u.genre}
+Tone: ${u.tone}
+Era: ${u.era}
+Technology Level: ${u.tech_level}
+Magic System: ${u.magic_system || 'None'}
+Core Conflict: ${u.current_conflict || 'Not specified'}
 
 Return a JSON object with these exact fields:
 - world_overview: (3-4 paragraphs describing the world, its history, and current state)
