@@ -118,3 +118,17 @@ export interface LoreConflictEntry {
   related_entities: string[];
   severity: 'low' | 'medium' | 'high';
 }
+
+export type StoryFormat = 'opening_chapter' | 'short_story' | 'scene' | 'book_outline' | 'children_book';
+
+export interface GeneratedStory {
+  id: string;
+  universe_id: string;
+  title: string;
+  format: StoryFormat;
+  content: string;
+  featured_characters: string[];
+  featured_factions: string[];
+  featured_locations: string[];
+  created_at: string;
+}
