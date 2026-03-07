@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
-import { CanonBadge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
 import {
   getUniverseById, getFactions, getCharacters, getLocations,

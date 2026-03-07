@@ -9,7 +9,7 @@ import { ArcForm } from '@/components/arc/ArcForm';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Spinner } from '@/components/ui/Spinner';
-import { getArcs, saveArc, deleteArc, saveArcs, getUniverseById, getCharacters, getFactions } from '@/lib/storage';
+import { getArcs, saveArc, deleteArc, getUniverseById, getCharacters, getFactions } from '@/lib/storage';
 import type { StoryArc, ArcType } from '@/lib/types';
 
 const ARC_TYPE_CARDS: { type: ArcType; label: string; icon: string; desc: string }[] = [

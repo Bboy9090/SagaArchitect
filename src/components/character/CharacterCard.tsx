@@ -4,7 +4,6 @@ import { useState } from 'react';
 import type { Character } from '@/lib/types';
 import { Card } from '@/components/ui/Card';
 import { Badge, CanonBadge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
 
 interface CharacterCardProps {
   character: Character;

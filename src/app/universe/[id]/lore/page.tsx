@@ -99,9 +99,11 @@ function detectConflicts(rules: LoreRule[], characters: unknown[], factions: unk
 export default function LorePage({ params }: LorePageProps) {
   const { id } = use(params);
   const router = useRouter();
-  const [rules, setRules] = useState<LoreRule[]>([]);
-  const [conflicts, setConflicts] = useState<LoreConflictEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loreState, setLoreState] = useState<{
+    rules: LoreRule[];
+    conflicts: LoreConflictEntry[];
+    loading: boolean;
+  }>({ rules: [], conflicts: [], loading: true });
   const [showForm, setShowForm] = useState(false);
   const [activeTab, setActiveTab] = useState<'rules' | 'conflicts'>('rules');
 
@@ -109,21 +111,24 @@ export default function LorePage({ params }: LorePageProps) {
     title: '', category: 'World Rules', description: '', applies_to: '', canon_status: 'canon' as CanonStatus,
   });
 
+  const { rules, conflicts, loading } = loreState;
+
   useEffect(() => {
-    const u = getUniverseById(id);
-    if (!u) { router.push('/dashboard'); return; }
-    const loreRules = getLoreRules(id);
-    const chars = getCharacters(id);
-    const factions = getFactions(id);
-    const events = getTimeline(id);
-    setRules(loreRules);
-    setConflicts(detectConflicts(loreRules, chars, factions, events));
-    setLoading(false);
+    void (async () => {
+      const u = getUniverseById(id);
+      if (!u) { router.push('/dashboard'); return; }
+      const loreRules = getLoreRules(id);
+      const chars = getCharacters(id);
+      const factions = getFactions(id);
+      const events = getTimeline(id);
+      const detectedConflicts = detectConflicts(loreRules, chars, factions, events);
+      setLoreState({ rules: loreRules, conflicts: detectedConflicts, loading: false });
+    })();
   }, [id, router]);
 
   const handleDelete = (ruleId: string) => {
     deleteLoreRule(id, ruleId);
-    setRules(prev => prev.filter(r => r.id !== ruleId));
+    setLoreState(prev => ({ ...prev, rules: prev.rules.filter(r => r.id !== ruleId) }));
   };
 
   const handleSave = () => {
@@ -138,7 +143,7 @@ export default function LorePage({ params }: LorePageProps) {
       canon_status: form.canon_status,
     };
     saveLoreRule(rule);
-    setRules(prev => [...prev, rule]);
+    setLoreState(prev => ({ ...prev, rules: [...prev.rules, rule] }));
     setShowForm(false);
     setForm({ title: '', category: 'World Rules', description: '', applies_to: '', canon_status: 'canon' });
   };

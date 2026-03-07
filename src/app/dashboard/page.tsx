@@ -17,36 +17,41 @@ import {
   demoTimeline, demoArcs, demoLoreRules, DEMO_UNIVERSE_ID
 } from '@/lib/demo-universe';
 
+type DashboardState = {
+  universes: Universe[];
+  counts: Record<string, { chars: number; factions: number; events: number }>;
+  mounted: boolean;
+};
+
 export default function DashboardPage() {
   const router = useRouter();
-  const [universes, setUniverses] = useState<Universe[]>([]);
-  const [counts, setCounts] = useState<Record<string, { chars: number; factions: number; events: number }>>({});
+  const [state, setState] = useState<DashboardState>({ universes: [], counts: {}, mounted: false });
   const [loadingDemo, setLoadingDemo] = useState(false);
-  const [mounted, setMounted] = useState(false);
+
+  const { universes, counts, mounted } = state;
 
   useEffect(() => {
-    setMounted(true);
-    const all = getUniverses();
-    setUniverses(all);
-    const c: typeof counts = {};
-    all.forEach(u => {
-      c[u.id] = {
-        chars: getCharacters(u.id).length,
-        factions: getFactions(u.id).length,
-        events: getTimeline(u.id).length,
-      };
-    });
-    setCounts(c);
+    void (async () => {
+      const all = getUniverses();
+      const c: DashboardState['counts'] = {};
+      all.forEach(u => {
+        c[u.id] = {
+          chars: getCharacters(u.id).length,
+          factions: getFactions(u.id).length,
+          events: getTimeline(u.id).length,
+        };
+      });
+      setState({ universes: all, counts: c, mounted: true });
+    })();
   }, []);
 
   const handleDelete = (id: string) => {
     if (!confirm('Delete this universe and all its data?')) return;
     deleteUniverse(id);
-    setUniverses(prev => prev.filter(u => u.id !== id));
-    setCounts(prev => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
+    setState(prev => {
+      const nextCounts = { ...prev.counts };
+      delete nextCounts[id];
+      return { ...prev, universes: prev.universes.filter(u => u.id !== id), counts: nextCounts };
     });
   };
 
@@ -60,13 +65,16 @@ export default function DashboardPage() {
       saveTimelineEvents(DEMO_UNIVERSE_ID, demoTimeline);
       saveArcs(DEMO_UNIVERSE_ID, demoArcs);
       saveLoreRules(DEMO_UNIVERSE_ID, demoLoreRules);
-      setUniverses(getUniverses());
-      setCounts(prev => ({
+      setState(prev => ({
         ...prev,
-        [DEMO_UNIVERSE_ID]: {
-          chars: demoCharacters.length,
-          factions: demoFactions.length,
-          events: demoTimeline.length,
+        universes: getUniverses(),
+        counts: {
+          ...prev.counts,
+          [DEMO_UNIVERSE_ID]: {
+            chars: demoCharacters.length,
+            factions: demoFactions.length,
+            events: demoTimeline.length,
+          }
         }
       }));
       setLoadingDemo(false);
