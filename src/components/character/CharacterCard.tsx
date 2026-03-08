@@ -4,13 +4,15 @@ import { useState } from 'react';
 import type { Character } from '@/lib/types';
 import { Card } from '@/components/ui/Card';
 import { Badge, CanonBadge } from '@/components/ui/Badge';
+import { ShareAsArchetypeButton } from '@/components/shared-lore/ShareAsArchetypeButton';
 
 interface CharacterCardProps {
   character: Character;
   onDelete?: (id: string) => void;
+  universeMeta?: { genre?: string; tone?: string; era?: string };
 }
 
-export function CharacterCard({ character, onDelete }: CharacterCardProps) {
+export function CharacterCard({ character, onDelete, universeMeta = {} }: CharacterCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   const statusColors: Record<string, string> = {
@@ -105,6 +107,12 @@ export function CharacterCard({ character, onDelete }: CharacterCardProps) {
       >
         {expanded ? '▲ Collapse' : '▼ Expand Profile'}
       </button>
+
+      <div className="mt-2 flex justify-end">
+        <ShareAsArchetypeButton
+          target={{ kind: 'character', entity: character, universeMeta }}
+        />
+      </div>
     </Card>
   );
 }

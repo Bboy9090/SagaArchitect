@@ -4,13 +4,15 @@ import { useState } from 'react';
 import type { Faction } from '@/lib/types';
 import { Card } from '@/components/ui/Card';
 import { Badge, CanonBadge } from '@/components/ui/Badge';
+import { ShareAsArchetypeButton } from '@/components/shared-lore/ShareAsArchetypeButton';
 
 interface FactionCardProps {
   faction: Faction;
   onDelete?: (id: string) => void;
+  universeMeta?: { genre?: string; tone?: string; era?: string };
 }
 
-export function FactionCard({ faction, onDelete }: FactionCardProps) {
+export function FactionCard({ faction, onDelete, universeMeta = {} }: FactionCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -100,6 +102,12 @@ export function FactionCard({ faction, onDelete }: FactionCardProps) {
       >
         {expanded ? '▲ Collapse' : '▼ Expand Details'}
       </button>
+
+      <div className="mt-2 flex justify-end">
+        <ShareAsArchetypeButton
+          target={{ kind: 'faction', entity: faction, universeMeta }}
+        />
+      </div>
     </Card>
   );
 }

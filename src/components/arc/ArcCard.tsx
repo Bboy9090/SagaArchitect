@@ -3,10 +3,12 @@
 import type { StoryArc, ArcType } from '@/lib/types';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { ShareAsArchetypeButton } from '@/components/shared-lore/ShareAsArchetypeButton';
 
 interface ArcCardProps {
   arc: StoryArc;
   onDelete?: (id: string) => void;
+  universeMeta?: { genre?: string; tone?: string; era?: string };
 }
 
 const arcTypeLabels: Record<ArcType, string> = {
@@ -20,7 +22,7 @@ const arcTypeLabels: Record<ArcType, string> = {
   empire_fall: '🏚️ Empire Fall Arc',
 };
 
-export function ArcCard({ arc, onDelete }: ArcCardProps) {
+export function ArcCard({ arc, onDelete, universeMeta = {} }: ArcCardProps) {
   return (
     <Card className="group">
       <div className="flex items-start justify-between mb-2">
@@ -68,6 +70,12 @@ export function ArcCard({ arc, onDelete }: ArcCardProps) {
           ))}
         </div>
       )}
+
+      <div className="mt-3 flex justify-end">
+        <ShareAsArchetypeButton
+          target={{ kind: 'arc', entity: arc, universeMeta }}
+        />
+      </div>
     </Card>
   );
 }

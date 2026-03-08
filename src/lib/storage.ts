@@ -1,4 +1,4 @@
-import type { Universe, Faction, Character, Location, TimelineEvent, StoryArc, LoreRule, GeneratedStory, MediaProject } from './types';
+import type { Universe, Faction, Character, Location, TimelineEvent, StoryArc, LoreRule, GeneratedStory, MediaProject, SharedLoreEntry } from './types';
 
 const KEYS = {
   universes: 'saga_universes',
@@ -10,6 +10,7 @@ const KEYS = {
   lore: (uid: string) => `saga_lore_${uid}`,
   stories: (uid: string) => `saga_stories_${uid}`,
   projects: (uid: string) => `saga_projects_${uid}`,
+  sharedLorePool: 'saga_shared_lore_pool',
 };
 
 function get<T>(key: string): T[] {
@@ -157,3 +158,32 @@ export const saveMediaProject = (project: MediaProject): void => {
 };
 export const deleteMediaProject = (universeId: string, id: string): void =>
   set(KEYS.projects(universeId), getMediaProjects(universeId).filter(p => p.id !== id));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared Lore Pool
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Return all entries in the shared lore pool. */
+export const getSharedLorePool = (): SharedLoreEntry[] =>
+  get<SharedLoreEntry>(KEYS.sharedLorePool);
+
+/** Save (insert or update) a single shared lore entry. */
+export const saveSharedLoreEntry = (entry: SharedLoreEntry): void => {
+  const all = getSharedLorePool();
+  const idx = all.findIndex(e => e.id === entry.id);
+  const now = new Date().toISOString();
+  if (idx >= 0) {
+    all[idx] = { ...entry, updated_at: now };
+  } else {
+    all.push({ ...entry, updated_at: now });
+  }
+  set(KEYS.sharedLorePool, all);
+};
+
+/** Delete a shared lore entry by id. */
+export const deleteSharedLoreEntry = (id: string): void =>
+  set(KEYS.sharedLorePool, getSharedLorePool().filter(e => e.id !== id));
+
+/** Check whether a source entity already has a pool entry. */
+export const getSharedLoreEntryBySourceId = (sourceId: string): SharedLoreEntry | undefined =>
+  getSharedLorePool().find(e => e.source_id === sourceId);

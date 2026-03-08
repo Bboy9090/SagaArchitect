@@ -17,6 +17,7 @@ export function Sidebar() {
   const mainNav: NavItem[] = [
     { href: '/dashboard', label: 'Dashboard', icon: '🏛️' },
     { href: '/universe/new', label: 'New Universe', icon: '✨' },
+    { href: '/shared-lore-pool', label: 'Shared Lore Pool', icon: '🌐' },
   ];
 
   const universeNav: NavItem[] = universeId ? [
@@ -56,6 +57,11 @@ export function Sidebar() {
             >
               <span>{item.icon}</span>
               <span>{item.label}</span>
+              {item.label === 'Shared Lore Pool' && (
+                <span className="ml-auto text-[9px] text-[#c9a84c]/60 bg-[#c9a84c]/10 rounded px-1.5 py-0.5 uppercase tracking-wider">
+                  new
+                </span>
+              )}
             </Link>
           ))}
         </div>
