@@ -76,6 +76,19 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
   });
 }
 
+/** OPTIONS — handle CORS preflight for cross-origin POST requests from Rainstorms */
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+      'Access-Control-Max-Age': '86400',
+    },
+  });
+}
+
 /**
  * POST /api/universes/{id}/story-context
  *

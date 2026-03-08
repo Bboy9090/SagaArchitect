@@ -11,7 +11,6 @@ import {
   getTimeline, getArcs, getLoreRules,
   saveLocations, saveCharacters, saveFactions
 } from '@/lib/storage';
-import { buildCanonBlock } from '@/lib/lore-engine';
 import type { Universe, Faction, Character, Location } from '@/lib/types';
 
 interface Section {
@@ -68,11 +67,26 @@ export default function CanonCorePage({ params }: CanonPageProps) {
     };
   };
 
-  /** Export the canon block as JSON — for Rainstorms or external tools */
+  /**
+   * Export the universe as a raw LoreEngine payload — for Rainstorms or external tools.
+   *
+   * We export the raw CanonBlockInput (universe + entity arrays), NOT the processed
+   * CanonBlock. This is the format Rainstorms POSTs to /api/lore-engine/canon-block
+   * or /api/universes/{id}/story-context to receive a story context.
+   *
+   * Shape:
+   *   { universe, factions[], characters[], locations[], timeline[], lore_rules[], story_arcs[] }
+   *
+   * Rainstorms then does:
+   *   POST https://sagaarchitect.app/api/lore-engine/canon-block
+   *   Content-Type: application/json
+   *   Body: <exported JSON>
+   *   → receives { canonBlock, promptContext, stats }
+   */
   const handleExportCanon = async () => {
     if (!universe) return;
-    const block = buildCanonBlock(buildCanonPayload() as Parameters<typeof buildCanonBlock>[0]);
-    const json = JSON.stringify(block, null, 2);
+    const payload = buildCanonPayload();
+    const json = JSON.stringify(payload, null, 2);
     try {
       await navigator.clipboard.writeText(json);
       setExportCopied(true);
@@ -82,7 +96,7 @@ export default function CanonCorePage({ params }: CanonPageProps) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${universe.name.replace(/\s+/g, '_')}_canon.json`;
+      a.download = `${universe.name.replace(/\s+/g, '_')}_lore_export.json`;
       a.click();
       URL.revokeObjectURL(url);
     }
