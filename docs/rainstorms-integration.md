@@ -182,7 +182,7 @@ When Rainstorms generates a story it calls its own internal endpoint. The fields
 
 ## CORS
 
-Both LoreEngine endpoints on SagaArchitect respond with `Access-Control-Allow-Origin: *` and handle OPTIONS preflight. Rainstorms can call them from any origin.
+All LoreEngine endpoints on SagaArchitect respond with `Access-Control-Allow-Origin: *` and handle OPTIONS preflight. Rainstorms can call them from any origin.
 
 The Rainstorms FastAPI backend must also configure CORS to allow the SagaArchitect origin. Add to the Rainstorms `server.py`:
 
@@ -200,15 +200,52 @@ app.add_middleware(
 
 ---
 
+## Environment Variables
+
+### SagaArchitect (this app)
+
+Copy `.env.example` to `.env.local` and fill in:
+
+```
+OPENAI_API_KEY=sk-...           # required for real AI generation
+RAINSTORMS_BASE_URL=http://localhost:8001  # for the Sync to Rainstorms button
+```
+
+### Rainstorms backend
+
+Set `SAGA_ARCHITECT_BASE_URL` so Rainstorms knows where to call SagaArchitect:
+
+```
+SAGA_ARCHITECT_BASE_URL=https://your-sagaarchitect.vercel.app
+# or for local dev:
+SAGA_ARCHITECT_BASE_URL=http://localhost:3000
+```
+
+Then in Rainstorms backend code, read it:
+
+```python
+import os
+SAGA_ARCHITECT_BASE_URL = os.getenv("SAGA_ARCHITECT_BASE_URL", "http://localhost:3000")
+```
+
+---
+
 ## Demo Universe
 
-The **Ashen Veil** is pre-loaded in SagaArchitect. To test:
+The **Ashen Veil** (`demo-ashen-veil-001`) is pre-loaded in SagaArchitect and accessible
+via `GET /api/universes/demo-ashen-veil-001/story-context` with **no payload required**.
+Use this to test the integration without any sync step.
 
+Old Sync-to-Rainstorms flow:
 1. SagaArchitect → Dashboard → **🌑 Load Demo: The Ashen Veil**
 2. Universe Canon Core → **🌧 Sync to Rainstorms**
 3. Enter Rainstorms URL → **Test** → **Sync**
 4. Rainstorms now has The Ashen Veil in its MongoDB
-5. Generate stories in Rainstorms — they'll reference canon characters, factions, and lore
+
+New pull-from-SagaArchitect flow (recommended):
+1. Set `SAGA_ARCHITECT_BASE_URL` in Rainstorms
+2. Call `GET {SAGA_ARCHITECT_BASE_URL}/api/universes/demo-ashen-veil-001/story-context`
+3. Inject `prompt_context` into every generation prompt — no sync step needed
 
 ---
 
@@ -219,9 +256,20 @@ import {
   buildRainstormsSyncPayload,
   syncToRainstorms,
   pingRainstorms,
+  fetchStoryContextFromSagaArchitect,
 } from '@/lib/rainstorms';
 
-// Build the mapped payload
+// ── Rainstorms pulling FROM SagaArchitect (recommended for MVP) ──────────────
+// Configure SAGA_ARCHITECT_BASE_URL in the Rainstorms backend environment.
+const sagaBaseUrl = process.env.SAGA_ARCHITECT_BASE_URL;
+
+// Fetch canon memory for the selected universe
+const ctx = await fetchStoryContextFromSagaArchitect(sagaBaseUrl, universeId);
+// ctx.prompt_context → inject directly into AI system message
+// ctx.world_rules    → individual rule strings if needed
+// ctx.stats.richness → warn user if 'empty' or 'sparse'
+
+// ── SagaArchitect pushing TO Rainstorms (optional sync flow) ─────────────────
 const payload = buildRainstormsSyncPayload(
   universe,     // SagaArchitect Universe (tech_level, themes[])
   factions,     // Faction[]
@@ -234,11 +282,11 @@ const payload = buildRainstormsSyncPayload(
 // payload.universe.technology_level ← mapped automatically
 // payload.universe.core_theme       ← mapped automatically
 
-// Test connectivity
+// Test connectivity to Rainstorms
 const ping = await pingRainstorms('http://localhost:8001');
 // { reachable: true, detail: 'Rainstorms universes endpoint responded.' }
 
-// Sync
+// Sync universe from SagaArchitect into Rainstorms
 const result = await syncToRainstorms('http://localhost:8001', payload);
 // { success: true, universe_id: 'abc123', message: 'Universe synced...' }
 ```
@@ -441,55 +489,55 @@ Same functionality, scoped to a specific universe ID. Returns flattened fields o
 
 ## How Rainstorms Should Use This
 
-### Step 1 — Discover available universes
+> **Source-of-truth rule:** When `lore_universe_id` is provided, Rainstorms must NOT query
+> its own local MongoDB lore collections. Instead, call SagaArchitect and use the returned
+> `prompt_context` directly. SagaArchitect is the single source of truth for canon data.
+> If the remote fetch fails, return an explicit error — never silently generate without lore.
 
-```typescript
-const BASE_URL = 'https://your-sagaarchitect-deployment.vercel.app';
+### Step 1 — Configure the SagaArchitect base URL
 
-// List available universes (returns demo/seed universes accessible via API)
-const res = await fetch(`${BASE_URL}/api/universes`);
-const { universes } = await res.json();
-// universes[0] = { id: 'demo-ashen-veil-001', name: 'The Ashen Veil', story_context_url: '...', ... }
+In your Rainstorms backend environment:
+
+```
+SAGA_ARCHITECT_BASE_URL=https://your-sagaarchitect.vercel.app
+# local dev: SAGA_ARCHITECT_BASE_URL=http://localhost:3000
 ```
 
-### Step 2 — Fetch story context (3 options)
+### Step 2 — Fetch story context using the TypeScript helper
 
 ```typescript
-const universeId = 'demo-ashen-veil-001';
+import { fetchStoryContextFromSagaArchitect } from '@/lib/rainstorms';
+// or copy the function into your Rainstorms backend
 
-// Option A: GET — demo universe only, no body needed (fastest for testing)
+const SAGA_BASE_URL = process.env.SAGA_ARCHITECT_BASE_URL;
+const universeId = 'demo-ashen-veil-001'; // or user-selected ID
+
+// Fetch canon memory — throws with a clear message if the fetch fails.
+// Never silently fall back to generating without lore.
+const ctx = await fetchStoryContextFromSagaArchitect(SAGA_BASE_URL, universeId);
+// ✅ Logs: [LoreEngine] Fetching story context from SagaArchitect: GET ...
+// ✅ Logs: [LoreEngine] Story context loaded — universe: "The Ashen Veil", richness: complete
+```
+
+Or call the endpoint directly (equivalent):
+
+```typescript
+const BASE_URL = process.env.SAGA_ARCHITECT_BASE_URL;
+
+// GET — demo universe, no body needed (fastest for testing)
 const res = await fetch(`${BASE_URL}/api/universes/${universeId}/story-context`);
+if (!res.ok) {
+  // Never silently fall back — surface the error to the user
+  throw new Error(`SagaArchitect returned HTTP ${res.status} for universe "${universeId}"`);
+}
 const ctx = await res.json();
-
-// Option B: GET /api/universes/{id} then POST /api/universes/{id}/story-context
-// Use this for user-created universes: fetch their exported payload from the API,
-// then pass it to the story-context endpoint (or let the user paste from Export Canon)
-const dataRes = await fetch(`${BASE_URL}/api/universes/${universeId}`);
-const payload = await dataRes.json(); // { universe, factions, characters, ... }
-
-const ctxRes = await fetch(`${BASE_URL}/api/universes/${universeId}/story-context`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(payload),
-});
-const ctx = await ctxRes.json();
-
-// Option C: User pasted the exported JSON from the SagaArchitect Export Canon button
-const exportedPayload = JSON.parse(pastedText); // { universe, factions[], characters[], ... }
-
-const ctxRes = await fetch(`${BASE_URL}/api/lore-engine/canon-block`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(exportedPayload),
-});
-const { canonBlock, promptContext, stats } = await ctxRes.json();
 ```
 
 ### Step 3 — Inject context into story generation prompt
 
 ```typescript
-// The promptContext / prompt_context field is a pre-formatted string.
-// Inject it as a system message before the user's story request.
+// ctx.prompt_context is a pre-formatted string ready for AI injection.
+// Include it as the system message before every story-generation call.
 
 const systemMessage = `You are a children's book writer.
 The story must take place in the following universe and stay consistent with all canon rules.
@@ -500,7 +548,6 @@ Write age-appropriate content. Keep language simple. Every paragraph should sugg
 
 const userMessage = `Write a children's book story about ${characterName} in the ${ctx.universe_name} universe.`;
 
-// Send to your LLM
 const story = await openai.chat.completions.create({
   model: 'gpt-4o-mini',
   messages: [
@@ -509,6 +556,28 @@ const story = await openai.chat.completions.create({
   ],
 });
 ```
+
+### Alternative: lore_universe_id shorthand in `POST /api/generate/story`
+
+Rainstorms can also call SagaArchitect's own story generation endpoint with just the universe ID
+(no need to pass the full canon payload separately):
+
+```typescript
+const res = await fetch(`${BASE_URL}/api/generate/story`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    lore_universe_id: 'demo-ashen-veil-001',   // ← shorthand: auto-fetches story context
+    format: 'short_story',
+    focusPrompt: 'Focus on Kael and the Veil Wardens',
+  }),
+});
+const { story } = await res.json();
+// story.content contains a fully canon-grounded story
+```
+
+Currently supported `lore_universe_id` values: `"demo-ashen-veil-001"` (The Ashen Veil).
+For user-created universes, pass the full `CanonBlockInput` body instead.
 
 ---
 
