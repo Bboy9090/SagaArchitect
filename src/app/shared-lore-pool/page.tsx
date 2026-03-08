@@ -35,6 +35,17 @@ const SOURCE_TYPE_OPTIONS: { value: '' | SharedLoreSourceType; label: string }[]
   { value: 'rule_set', label: '📜 Rule Sets' },
 ];
 
+/** Canonical category labels — matches the category field set by the archetype engine */
+const CATEGORY_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: 'All Categories' },
+  { value: 'hero archetype', label: '🦸 Hero Archetypes' },
+  { value: 'villain archetype', label: '🦹 Villain Archetypes' },
+  { value: 'faction type', label: '🏛️ Faction Types' },
+  { value: 'location template', label: '📍 Location Templates' },
+  { value: 'world theme', label: '🌍 World Themes' },
+  { value: 'conflict pattern', label: '⚔️ Conflict Patterns' },
+];
+
 const GENRE_OPTIONS = ['', 'fantasy', 'sci-fi', 'horror', 'romance', 'thriller', 'historical', 'children'];
 const TONE_OPTIONS = ['', 'dark', 'epic', 'dark epic', 'hopeful', 'tragic', 'lighthearted', 'mysterious'];
 
@@ -50,6 +61,7 @@ export default function SharedLorePoolPage() {
 
   // Filters
   const [filterSourceType, setFilterSourceType] = useState<'' | SharedLoreSourceType>('');
+  const [filterCategory, setFilterCategory] = useState('');
   const [filterGenre, setFilterGenre] = useState('');
   const [filterTone, setFilterTone] = useState('');
   const [filterThemes, setFilterThemes] = useState('');
@@ -85,6 +97,7 @@ export default function SharedLorePoolPage() {
   const applyFilters = () => {
     const params: Record<string, string> = {};
     if (filterSourceType) params.source_type = filterSourceType;
+    if (filterCategory) params.category = filterCategory;
     if (filterGenre) params.genre = filterGenre;
     if (filterTone) params.tone = filterTone;
     if (filterThemes.trim()) params.theme_tags = filterThemes.trim();
@@ -312,7 +325,17 @@ export default function SharedLorePoolPage() {
         {/* ── Filters ─────────────────────────────────────────────────────── */}
         <div className="bg-[#0f0f1a] border border-[#c9a84c]/10 rounded-lg p-4">
           <h2 className="text-white font-semibold text-sm mb-3">🔍 Filter Pool</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
+            <div>
+              <label className="text-[10px] text-[#c9a84c]/50 uppercase tracking-widest block mb-1">Category</label>
+              <select
+                value={filterCategory}
+                onChange={e => setFilterCategory(e.target.value)}
+                className="w-full bg-[#1a1a2e] border border-[#c9a84c]/20 rounded px-2 py-1.5 text-gray-200 text-xs focus:border-[#c9a84c]/60 focus:outline-none"
+              >
+                {CATEGORY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
             <div>
               <label className="text-[10px] text-[#c9a84c]/50 uppercase tracking-widest block mb-1">Type</label>
               <select

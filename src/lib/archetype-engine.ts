@@ -93,12 +93,15 @@ export function extractCharacterArchetype(
   // archetype_name: derive from role, not from character name
   const archetypeName = deriveCharacterArchetypeName(character);
 
+  // Determine canonical category label used for pool filtering
+  const categoryLabel = deriveCharacterCategory(character);
+
   return {
     source_app: 'sagaarch',
     source_type: 'character' as SharedLoreSourceType,
     visibility: character.visibility ?? 'shared_archetype',
     archetype_name: archetypeName,
-    category: character.role.split(' ').slice(0, 3).join(' ') || 'warrior',
+    category: categoryLabel,
     role_type: character.role || undefined,
     role_pattern: rolePattern,
     theme_tags: themeTags,
@@ -114,6 +117,12 @@ export function extractCharacterArchetype(
     genre: universeMeta.genre,
     tone: universeMeta.tone,
   };
+}
+
+function deriveCharacterCategory(character: Character): string {
+  const role = character.role.toLowerCase();
+  if (/villain|tyrant|antagonist|corrupted|dark lord|usurper/.test(role)) return 'villain archetype';
+  return 'hero archetype';
 }
 
 function deriveCharacterArchetypeName(character: Character): string {
@@ -144,7 +153,7 @@ export function extractFactionArchetype(
     source_type: 'faction' as SharedLoreSourceType,
     visibility: faction.visibility ?? 'shared_archetype',
     archetype_name: `${faction.type} faction archetype`,
-    category: faction.type || 'organization',
+    category: 'faction type',
     ideology_pattern: faction.ideology.slice(0, 200),
     conflict_pattern: faction.internal_conflict
       ? faction.internal_conflict.slice(0, 200)
@@ -185,7 +194,7 @@ export function extractLocationArchetype(
     source_type: 'location' as SharedLoreSourceType,
     visibility: location.visibility ?? 'shared_archetype',
     archetype_name: `${location.type} location archetype`,
-    category: location.type || 'place',
+    category: 'location template',
     location_pattern:
       `${location.type} in ${location.region || 'unknown region'}. ` +
       `${location.description.slice(0, 150)}`,
@@ -220,7 +229,7 @@ export function extractArcArchetype(
     source_type: 'arc' as SharedLoreSourceType,
     visibility: arc.visibility ?? 'shared_archetype',
     archetype_name: `${arc.type} arc archetype`,
-    category: arc.type,
+    category: 'conflict pattern',
     conflict_pattern:
       `${arc.start_point.slice(0, 100)} → ${arc.end_point.slice(0, 100)}`,
     theme_tags: themeTags,
@@ -257,7 +266,7 @@ export function extractTimelineEventArchetype(
     source_type: 'arc' as SharedLoreSourceType, // timeline events map to the 'arc' bucket
     visibility: event.visibility ?? 'shared_archetype',
     archetype_name: `historical event archetype (${event.era_marker || 'unknown era'})`,
-    category: 'historical event',
+    category: 'conflict pattern',
     conflict_pattern: event.summary.slice(0, 200),
     theme_tags: themeTags,
     visual_tags: visualTags,
@@ -291,7 +300,7 @@ export function extractLoreRuleArchetype(
     source_type: 'rule_set' as SharedLoreSourceType,
     visibility: rule.visibility ?? 'shared_archetype',
     archetype_name: `${rule.category.toLowerCase()} rule archetype`,
-    category: rule.category,
+    category: 'conflict pattern',
     conflict_pattern: rule.description.slice(0, 200),
     theme_tags: themeTags,
     visual_tags: [],
@@ -325,7 +334,7 @@ export function extractWorldSeedArchetype(
     source_type: 'world_seed' as SharedLoreSourceType,
     visibility: universe.visibility ?? 'shared_archetype',
     archetype_name: `${universe.genre} world seed archetype`,
-    category: universe.genre,
+    category: 'world theme',
     ideology_pattern: universe.concept.slice(0, 200),
     conflict_pattern: universe.current_conflict.slice(0, 200),
     theme_tags: themeTags,

@@ -7,15 +7,8 @@ import {
   saveSharedLoreEntry,
   getSharedLoreEntryBySourceId,
 } from '@/lib/storage';
-import {
-  extractCharacterArchetype,
-  extractFactionArchetype,
-  extractLocationArchetype,
-  extractArcArchetype,
-  extractLoreRuleArchetype,
-  extractWorldSeedArchetype,
-  isSharableAsArchetype,
-} from '@/lib/archetype-engine';
+import { isSharableAsArchetype } from '@/lib/archetype-engine';
+import type { ArchetypePayload } from '@/lib/archetype-engine';
 import type {
   Character,
   Faction,
@@ -43,8 +36,10 @@ interface ShareAsArchetypeButtonProps {
 
 export function ShareAsArchetypeButton({ target, onShared }: ShareAsArchetypeButtonProps) {
   const [showModal, setShowModal] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [done, setDone] = useState(false);
   const [existingEntry, setExistingEntry] = useState<SharedLoreEntry | undefined>();
+  const [error, setError] = useState<string | null>(null);
 
   const entityId = target.entity.id;
 
@@ -52,19 +47,18 @@ export function ShareAsArchetypeButton({ target, onShared }: ShareAsArchetypeBut
     const existing = getSharedLoreEntryBySourceId(entityId);
     setExistingEntry(existing);
     setDone(false);
+    setError(null);
     setShowModal(true);
   };
 
-  const handleShare = () => {
-    // Safety check — reject locked/private entities
+  const handleShare = async () => {
+    // Safety check — reject locked/private entities before any network call
     const entity = target.entity as { visibility?: string; is_locked?: boolean; canon_status?: string };
     if (!isSharableAsArchetype(entity)) {
-      alert('This entity is locked or private and cannot be shared.');
-      setShowModal(false);
+      setError('This entity is locked or private and cannot be shared.');
       return;
     }
 
-    let payload: ReturnType<typeof extractCharacterArchetype>;
     const sourceType: SharedLoreSourceType =
       target.kind === 'character' ? 'character'
       : target.kind === 'faction' ? 'faction'
@@ -73,50 +67,72 @@ export function ShareAsArchetypeButton({ target, onShared }: ShareAsArchetypeBut
       : target.kind === 'lore_rule' ? 'rule_set'
       : 'world_seed';
 
-    if (target.kind === 'character') {
-      payload = extractCharacterArchetype(target.entity, target.universeMeta);
-    } else if (target.kind === 'faction') {
-      payload = extractFactionArchetype(target.entity, target.universeMeta);
-    } else if (target.kind === 'location') {
-      payload = extractLocationArchetype(target.entity, target.universeMeta);
-    } else if (target.kind === 'arc') {
-      payload = extractArcArchetype(target.entity, target.universeMeta);
-    } else if (target.kind === 'lore_rule') {
-      payload = extractLoreRuleArchetype(target.entity, target.universeMeta);
-    } else {
-      payload = extractWorldSeedArchetype(target.entity);
+    const universeMeta = target.kind === 'universe' ? {} : target.universeMeta;
+
+    setSharing(true);
+    setError(null);
+
+    try {
+      // ── Call POST /api/shared-lore-pool/extract ──────────────────────────
+      // The server-side extraction engine strips all private names, universe IDs,
+      // and locked canon links — returning only the abstracted pattern.
+      const res = await fetch('/api/shared-lore-pool/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source_app: 'sagaarch',
+          source_type: sourceType,
+          source_id: entityId,
+          universe_meta: universeMeta,
+          entity_data: target.entity,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json() as { error?: string; detail?: string };
+        throw new Error(err.detail ?? err.error ?? `HTTP ${res.status}`);
+      }
+
+      const { archetype } = await res.json() as { archetype: ArchetypePayload };
+
+      // ── Save the abstracted entry to the local pool ──────────────────────
+      const now = new Date().toISOString();
+      const entry: SharedLoreEntry = {
+        id: existingEntry?.id ?? crypto.randomUUID(),
+        source_app: 'sagaarch',
+        source_id: entityId,
+        universe_id:
+          target.kind === 'universe'
+            ? target.entity.id
+            : (target.entity as { universe_id: string }).universe_id,
+        source_type: sourceType,
+        visibility: 'shared_archetype',
+        archetype_name: archetype.archetype_name,
+        category: archetype.category,
+        role_type: archetype.role_type,
+        role_pattern: archetype.role_pattern,
+        ideology_pattern: archetype.ideology_pattern,
+        location_pattern: archetype.location_pattern,
+        conflict_pattern: archetype.conflict_pattern,
+        theme_tags: archetype.theme_tags,
+        visual_tags: archetype.visual_tags,
+        era_pattern: archetype.era_pattern,
+        abstraction_summary: archetype.abstraction_summary,
+        derivative_rules: archetype.derivative_rules,
+        genre: archetype.genre,
+        tone: archetype.tone,
+        created_at: existingEntry?.created_at ?? now,
+        updated_at: now,
+      };
+
+      saveSharedLoreEntry(entry);
+      setDone(true);
+      onShared?.(entry);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Share failed. Please try again.');
+    } finally {
+      setSharing(false);
     }
-
-    const now = new Date().toISOString();
-    const entry: SharedLoreEntry = {
-      id: existingEntry?.id ?? crypto.randomUUID(),
-      source_id: entityId,
-      universe_id:
-        target.kind === 'universe'
-          ? target.entity.id
-          : (target.entity as { universe_id: string }).universe_id,
-      source_type: sourceType,
-      visibility: 'shared_archetype',
-      archetype_name: payload.archetype_name,
-      category: payload.category,
-      role_pattern: payload.role_pattern,
-      ideology_pattern: payload.ideology_pattern,
-      location_pattern: payload.location_pattern,
-      conflict_pattern: payload.conflict_pattern,
-      theme_tags: payload.theme_tags,
-      visual_tags: payload.visual_tags,
-      era_pattern: payload.era_pattern,
-      abstraction_summary: payload.abstraction_summary,
-      derivative_rules: payload.derivative_rules,
-      genre: payload.genre,
-      tone: payload.tone,
-      created_at: existingEntry?.created_at ?? now,
-      updated_at: now,
-    };
-
-    saveSharedLoreEntry(entry);
-    setDone(true);
-    onShared?.(entry);
   };
 
   const kindLabel =
@@ -168,11 +184,17 @@ export function ShareAsArchetypeButton({ target, onShared }: ShareAsArchetypeBut
               <p>❌ What is NOT shared: names, universe ID, canon links, locked fields</p>
             </div>
 
+            {error && (
+              <div className="bg-red-900/20 border border-red-500/30 rounded p-2">
+                <p className="text-xs text-red-400">⚠️ {error}</p>
+              </div>
+            )}
+
             <div className="flex gap-2 pt-2">
-              <Button variant="gold" size="sm" onClick={handleShare}>
+              <Button variant="gold" size="sm" loading={sharing} onClick={handleShare}>
                 🌐 Share as Archetype
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => setShowModal(false)}>
+              <Button variant="ghost" size="sm" onClick={() => setShowModal(false)} disabled={sharing}>
                 Cancel
               </Button>
             </div>
