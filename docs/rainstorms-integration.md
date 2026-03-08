@@ -250,7 +250,65 @@ const result = await syncToRainstorms('http://localhost:8001', payload);
 
 Base URL: `https://your-sagaarchitect-deployment.vercel.app`
 
-Both endpoints support **CORS** — Rainstorms can call them directly from the browser.
+All endpoints support **CORS** — Rainstorms can call them directly from the browser.
+
+### 0. GET `/api/universes`
+
+Lists available universes. Returns the demo/seed universes that are accessible via the
+server-side API (see localStorage note below).
+
+**Response:**
+
+```json
+{
+  "universes": [
+    {
+      "id": "demo-ashen-veil-001",
+      "name": "The Ashen Veil",
+      "genre": "Fantasy",
+      "tone": "Dark",
+      "era": "Age of Ash — Post-Veilbreak",
+      "concept": "An ancient empire fell when the sky split open...",
+      "created_at": "2024-01-01T00:00:00.000Z",
+      "updated_at": "2024-01-01T00:00:00.000Z",
+      "universe_url": "/api/universes/demo-ashen-veil-001",
+      "story_context_url": "/api/universes/demo-ashen-veil-001/story-context"
+    }
+  ],
+  "total": 1,
+  "demo_universe_id": "demo-ashen-veil-001",
+  "note": "SagaArchitect stores user-created universes in browser localStorage..."
+}
+```
+
+---
+
+### 0b. GET `/api/universes/{id}`
+
+Returns the full `CanonBlockInput` for a universe — identical to the JSON exported by
+the "⚡ Export Canon" button. This is the raw, unprocessed payload that both
+`/api/lore-engine/canon-block` and `/api/universes/{id}/story-context` (POST) accept.
+
+For the demo universe (`demo-ashen-veil-001`) real data is returned. For user-created
+universes the server returns 404 with instructions (localStorage constraint).
+
+**Response (demo universe):**
+
+```json
+{
+  "universe": { "id": "demo-ashen-veil-001", "name": "The Ashen Veil", ... },
+  "factions": [ ... ],
+  "characters": [ ... ],
+  "locations": [ ... ],
+  "timeline": [ ... ],
+  "lore_rules": [ ... ],
+  "story_arcs": [ ... ],
+  "story_context_url": "/api/universes/demo-ashen-veil-001/story-context",
+  "canon_block_url": "/api/lore-engine/canon-block"
+}
+```
+
+---
 
 ### 1. POST `/api/lore-engine/canon-block`
 
@@ -383,32 +441,48 @@ Same functionality, scoped to a specific universe ID. Returns flattened fields o
 
 ## How Rainstorms Should Use This
 
-### Step 1 — User selects a universe in Rainstorms
-
-Show a list of available universes. Either:
-- Let user paste exported JSON from SagaArchitect, OR
-- Have them enter the SagaArchitect base URL and universe ID
-
-### Step 2 — Fetch story context
+### Step 1 — Discover available universes
 
 ```typescript
-// Option A: User pasted the exported JSON from the Export Canon button
+const BASE_URL = 'https://your-sagaarchitect-deployment.vercel.app';
+
+// List available universes (returns demo/seed universes accessible via API)
+const res = await fetch(`${BASE_URL}/api/universes`);
+const { universes } = await res.json();
+// universes[0] = { id: 'demo-ashen-veil-001', name: 'The Ashen Veil', story_context_url: '...', ... }
+```
+
+### Step 2 — Fetch story context (3 options)
+
+```typescript
+const universeId = 'demo-ashen-veil-001';
+
+// Option A: GET — demo universe only, no body needed (fastest for testing)
+const res = await fetch(`${BASE_URL}/api/universes/${universeId}/story-context`);
+const ctx = await res.json();
+
+// Option B: GET /api/universes/{id} then POST /api/universes/{id}/story-context
+// Use this for user-created universes: fetch their exported payload from the API,
+// then pass it to the story-context endpoint (or let the user paste from Export Canon)
+const dataRes = await fetch(`${BASE_URL}/api/universes/${universeId}`);
+const payload = await dataRes.json(); // { universe, factions, characters, ... }
+
+const ctxRes = await fetch(`${BASE_URL}/api/universes/${universeId}/story-context`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(payload),
+});
+const ctx = await ctxRes.json();
+
+// Option C: User pasted the exported JSON from the SagaArchitect Export Canon button
 const exportedPayload = JSON.parse(pastedText); // { universe, factions[], characters[], ... }
 
-const res = await fetch('https://sagaarchitect.app/api/lore-engine/canon-block', {
+const ctxRes = await fetch(`${BASE_URL}/api/lore-engine/canon-block`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(exportedPayload),
 });
-const { canonBlock, promptContext, stats } = await res.json();
-
-// Option B: POST to universe-specific endpoint (same data)
-const res = await fetch(`https://sagaarchitect.app/api/universes/${universeId}/story-context`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(exportedPayload),
-});
-const { prompt_context, relevant_characters, world_rules, tone } = await res.json();
+const { canonBlock, promptContext, stats } = await ctxRes.json();
 ```
 
 ### Step 3 — Inject context into story generation prompt
@@ -420,11 +494,11 @@ const { prompt_context, relevant_characters, world_rules, tone } = await res.jso
 const systemMessage = `You are a children's book writer.
 The story must take place in the following universe and stay consistent with all canon rules.
 
-${promptContext}
+${ctx.prompt_context}
 
 Write age-appropriate content. Keep language simple. Every paragraph should suggest an illustration.`;
 
-const userMessage = `Write a children's book story about ${characterName} in the ${universeName} universe.`;
+const userMessage = `Write a children's book story about ${characterName} in the ${ctx.universe_name} universe.`;
 
 // Send to your LLM
 const story = await openai.chat.completions.create({
@@ -460,7 +534,7 @@ This is called a `CanonBlockInput`. Paste it directly into Rainstorms or POST it
 
 ## CORS
 
-Both LoreEngine endpoints are configured with `Access-Control-Allow-Origin: *` and handle OPTIONS preflight. Rainstorms can call them from any origin without proxy workarounds.
+All LoreEngine endpoints are configured with `Access-Control-Allow-Origin: *` and handle OPTIONS preflight. Rainstorms can call them from any origin without proxy workarounds.
 
 For production, the SagaArchitect deployment admin can restrict CORS to the specific Rainstorms domain by updating `RAINSTORMS_ORIGIN` in the environment and updating `next.config.ts`.
 
