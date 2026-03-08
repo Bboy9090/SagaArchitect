@@ -198,11 +198,13 @@ export type SharedLoreSourceType =
   | 'character'
   | 'faction'
   | 'location'
-  | 'arc'
+  | 'arc'           // legacy — prefer 'story_arc'
+  | 'story_arc'     // canonical name per Lore Pool Engine spec
   | 'world_seed'
-  | 'rule_set'
-  | 'story_seed'      // Rainstorms story concepts
-  | 'book_concept';   // Rainstorms children's book concepts
+  | 'rule_set'      // legacy — prefer 'lore_rule'
+  | 'lore_rule'     // canonical name per Lore Pool Engine spec
+  | 'story_seed'    // Rainstorms story concepts
+  | 'book_concept'; // Rainstorms children's book concepts
 
 /**
  * A single entry in the Shared Lore Pool.

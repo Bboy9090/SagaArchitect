@@ -15,8 +15,19 @@ import type { SharedLoreEntry, SharedLoreSourceType } from '@/lib/types';
 
 type GenerateType = 'character' | 'faction' | 'world_concept';
 
+/** Fresh recombination seed — new unified output format */
+interface FreshSeed {
+  title: string;
+  hook: string;
+  inspiration_tags: string[];
+}
+
 interface GenerateResult {
-  generated: {
+  // New format (fresh_recombination)
+  results?: FreshSeed[];
+  generation_mode?: string;
+  // Legacy format (worldbuilding)
+  generated?: {
     characters?: Array<{ name: string; role: string; motivation: string; arc_potential: string; visual_description: string; tone_note: string }>;
     factions?: Array<{ name: string; type: string; ideology: string; objective: string; internal_tension: string; visual_description: string }>;
     world_concept?: { name: string; genre: string; tone: string; core_conflict: string; magic_or_tech_note: string; era: string; visual_description: string };
@@ -116,20 +127,23 @@ export default function SharedLorePoolPage() {
   };
 
   const handleGenerate = async () => {
-    if (genTypes.length === 0) return;
     setGenerating(true);
     setGenResult(null);
     try {
       const res = await fetch('/api/shared-lore-pool/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        // Use the new Lore Pool Engine body shape (fresh_recombination)
         body: JSON.stringify({
-          generate_types: genTypes,
-          genre: genGenre || undefined,
-          tone: genTone || undefined,
-          theme_tags: genThemes.trim()
-            ? genThemes.split(',').map(t => t.trim()).filter(Boolean)
-            : [],
+          filters: {
+            genre: genGenre || undefined,
+            tone: genTone || undefined,
+            theme_tags: genThemes.trim()
+              ? genThemes.split(',').map(t => t.trim()).filter(Boolean)
+              : undefined,
+          },
+          count: 5,
+          generation_mode: 'fresh_recombination',
         }),
       });
       const data = await res.json() as GenerateResult;
@@ -171,55 +185,32 @@ export default function SharedLorePoolPage() {
         {/* ── Generate From Shared Lore Panel ─────────────────────────────── */}
         {showGenerate && (
           <div className="bg-[#0f0f1a] border border-[#c9a84c]/30 rounded-lg p-5">
-            <h2 className="text-[#c9a84c] font-bold mb-1">✨ Generate From Shared Lore</h2>
+            <h2 className="text-[#c9a84c] font-bold mb-1">✨ Generate From Lore Pool</h2>
             <p className="text-gray-500 text-xs mb-4">
-              Combine archetype patterns to create original characters, factions, or world concepts.
-              Canon safety: no private lore is ever reproduced.
+              Recombine shared archetype patterns into fresh original story seeds.
+              Canon safety: no private lore is ever reproduced — only abstracted patterns.
             </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-2 gap-3 mb-4">
               <div>
-                <label className="text-[10px] text-[#c9a84c]/70 uppercase tracking-widest block mb-1">
-                  Generate Types
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {(['character', 'faction', 'world_concept'] as GenerateType[]).map(t => (
-                    <button
-                      key={t}
-                      onClick={() => toggleGenType(t)}
-                      className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
-                        genTypes.includes(t)
-                          ? 'bg-[#c9a84c]/15 text-[#c9a84c] border-[#c9a84c]/50'
-                          : 'text-gray-400 border-gray-700 hover:border-[#c9a84c]/30 hover:text-gray-200'
-                      }`}
-                    >
-                      {t === 'character' ? '👤 Character' : t === 'faction' ? '🏛️ Faction' : '🌍 World Concept'}
-                    </button>
-                  ))}
-                </div>
+                <label className="text-[10px] text-[#c9a84c]/70 uppercase tracking-widest block mb-1">Genre</label>
+                <select
+                  value={genGenre}
+                  onChange={e => setGenGenre(e.target.value)}
+                  className="w-full bg-[#1a1a2e] border border-[#c9a84c]/20 rounded px-2 py-1.5 text-gray-200 text-xs focus:border-[#c9a84c]/60 focus:outline-none"
+                >
+                  {GENRE_OPTIONS.map(g => <option key={g} value={g}>{g || 'Any'}</option>)}
+                </select>
               </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] text-[#c9a84c]/70 uppercase tracking-widest block mb-1">Genre</label>
-                  <select
-                    value={genGenre}
-                    onChange={e => setGenGenre(e.target.value)}
-                    className="w-full bg-[#1a1a2e] border border-[#c9a84c]/20 rounded px-2 py-1.5 text-gray-200 text-xs focus:border-[#c9a84c]/60 focus:outline-none"
-                  >
-                    {GENRE_OPTIONS.map(g => <option key={g} value={g}>{g || 'Any'}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] text-[#c9a84c]/70 uppercase tracking-widest block mb-1">Tone</label>
-                  <select
-                    value={genTone}
-                    onChange={e => setGenTone(e.target.value)}
-                    className="w-full bg-[#1a1a2e] border border-[#c9a84c]/20 rounded px-2 py-1.5 text-gray-200 text-xs focus:border-[#c9a84c]/60 focus:outline-none"
-                  >
-                    {TONE_OPTIONS.map(t => <option key={t} value={t}>{t || 'Any'}</option>)}
-                  </select>
-                </div>
+              <div>
+                <label className="text-[10px] text-[#c9a84c]/70 uppercase tracking-widest block mb-1">Tone</label>
+                <select
+                  value={genTone}
+                  onChange={e => setGenTone(e.target.value)}
+                  className="w-full bg-[#1a1a2e] border border-[#c9a84c]/20 rounded px-2 py-1.5 text-gray-200 text-xs focus:border-[#c9a84c]/60 focus:outline-none"
+                >
+                  {TONE_OPTIONS.map(t => <option key={t} value={t}>{t || 'Any'}</option>)}
+                </select>
               </div>
             </div>
 
@@ -241,9 +232,8 @@ export default function SharedLorePoolPage() {
               size="sm"
               loading={generating}
               onClick={handleGenerate}
-              disabled={genTypes.length === 0}
             >
-              ✨ Generate Inspiration
+              ✨ Generate From Lore Pool
             </Button>
 
             {/* ── Generation Result ──────────────────────────────────────── */}
@@ -264,58 +254,80 @@ export default function SharedLorePoolPage() {
                   </div>
                 )}
 
-                {/* Characters */}
-                {genResult.generated.characters && genResult.generated.characters.length > 0 && (
+                {/* ── New format: fresh_recombination results ──────────────── */}
+                {genResult.results && genResult.results.length > 0 && (
                   <div>
-                    <h3 className="text-white font-bold text-sm mb-2">👤 Generated Characters</h3>
+                    <h3 className="text-white font-bold text-sm mb-3">✨ Generated Seeds</h3>
                     <div className="space-y-3">
-                      {genResult.generated.characters.map((c, i) => (
-                        <div key={i} className="bg-[#1a1a2e] border border-[#c9a84c]/10 rounded p-3">
-                          <p className="text-white font-semibold text-sm">{c.name}</p>
-                          <p className="text-[#c9a84c]/70 text-xs italic">{c.role}</p>
-                          {c.motivation && <p className="text-gray-400 text-xs mt-1"><span className="text-[#c9a84c]/50">Motivation:</span> {c.motivation}</p>}
-                          {c.arc_potential && <p className="text-gray-400 text-xs"><span className="text-[#c9a84c]/50">Arc:</span> {c.arc_potential}</p>}
-                          {c.visual_description && <p className="text-gray-500 text-xs"><span className="text-[#c9a84c]/50">Visual:</span> {c.visual_description}</p>}
+                      {genResult.results.map((seed, i) => (
+                        <div key={i} className="bg-[#1a1a2e] border border-[#c9a84c]/10 rounded-lg p-4">
+                          <p className="text-white font-semibold text-sm mb-1">📖 {seed.title}</p>
+                          <p className="text-gray-300 text-xs leading-relaxed mb-2">{seed.hook}</p>
+                          <div className="flex flex-wrap gap-1">
+                            {seed.inspiration_tags.map((tag, j) => (
+                              <span key={j} className="text-[10px] bg-[#c9a84c]/10 border border-[#c9a84c]/20 text-[#c9a84c]/70 rounded px-2 py-0.5">{tag}</span>
+                            ))}
+                          </div>
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {/* Factions */}
-                {genResult.generated.factions && genResult.generated.factions.length > 0 && (
-                  <div>
-                    <h3 className="text-white font-bold text-sm mb-2">🏛️ Generated Factions</h3>
-                    <div className="space-y-3">
-                      {genResult.generated.factions.map((f, i) => (
-                        <div key={i} className="bg-[#1a1a2e] border border-[#c9a84c]/10 rounded p-3">
-                          <p className="text-white font-semibold text-sm">{f.name}</p>
-                          <p className="text-[#c9a84c]/70 text-xs italic">{f.type}</p>
-                          {f.ideology && <p className="text-gray-400 text-xs mt-1"><span className="text-[#c9a84c]/50">Ideology:</span> {f.ideology}</p>}
-                          {f.objective && <p className="text-gray-400 text-xs"><span className="text-[#c9a84c]/50">Objective:</span> {f.objective}</p>}
-                          {f.internal_tension && <p className="text-gray-500 text-xs"><span className="text-[#c41e3a]/50">Tension:</span> {f.internal_tension}</p>}
+                {/* ── Legacy format: characters / factions / world concept ── */}
+                {genResult.generated && (
+                  <>
+                    {genResult.generated.characters && genResult.generated.characters.length > 0 && (
+                      <div>
+                        <h3 className="text-white font-bold text-sm mb-2">👤 Generated Characters</h3>
+                        <div className="space-y-3">
+                          {genResult.generated.characters.map((c, i) => (
+                            <div key={i} className="bg-[#1a1a2e] border border-[#c9a84c]/10 rounded p-3">
+                              <p className="text-white font-semibold text-sm">{c.name}</p>
+                              <p className="text-[#c9a84c]/70 text-xs italic">{c.role}</p>
+                              {c.motivation && <p className="text-gray-400 text-xs mt-1"><span className="text-[#c9a84c]/50">Motivation:</span> {c.motivation}</p>}
+                              {c.arc_potential && <p className="text-gray-400 text-xs"><span className="text-[#c9a84c]/50">Arc:</span> {c.arc_potential}</p>}
+                              {c.visual_description && <p className="text-gray-500 text-xs"><span className="text-[#c9a84c]/50">Visual:</span> {c.visual_description}</p>}
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* World Concept */}
-                {genResult.generated.world_concept && (
-                  <div>
-                    <h3 className="text-white font-bold text-sm mb-2">🌍 Generated World Concept</h3>
-                    <div className="bg-[#1a1a2e] border border-[#c9a84c]/10 rounded p-3 space-y-1">
-                      <p className="text-white font-semibold text-sm">{genResult.generated.world_concept.name}</p>
-                      <div className="flex gap-2 flex-wrap">
-                        <span className="text-[10px] bg-[#c9a84c]/10 text-[#c9a84c]/70 rounded px-2 py-0.5">{genResult.generated.world_concept.genre}</span>
-                        <span className="text-[10px] bg-gray-800 text-gray-400 rounded px-2 py-0.5">{genResult.generated.world_concept.tone}</span>
-                        <span className="text-[10px] bg-gray-800 text-gray-400 rounded px-2 py-0.5">{genResult.generated.world_concept.era}</span>
                       </div>
-                      {genResult.generated.world_concept.core_conflict && <p className="text-gray-400 text-xs"><span className="text-[#c9a84c]/50">Core conflict:</span> {genResult.generated.world_concept.core_conflict}</p>}
-                      {genResult.generated.world_concept.magic_or_tech_note && <p className="text-gray-400 text-xs"><span className="text-[#c9a84c]/50">Magic/Tech:</span> {genResult.generated.world_concept.magic_or_tech_note}</p>}
-                      {genResult.generated.world_concept.visual_description && <p className="text-gray-500 text-xs"><span className="text-[#c9a84c]/50">Visual:</span> {genResult.generated.world_concept.visual_description}</p>}
-                    </div>
-                  </div>
+                    )}
+
+                    {genResult.generated.factions && genResult.generated.factions.length > 0 && (
+                      <div>
+                        <h3 className="text-white font-bold text-sm mb-2">🏛️ Generated Factions</h3>
+                        <div className="space-y-3">
+                          {genResult.generated.factions.map((f, i) => (
+                            <div key={i} className="bg-[#1a1a2e] border border-[#c9a84c]/10 rounded p-3">
+                              <p className="text-white font-semibold text-sm">{f.name}</p>
+                              <p className="text-[#c9a84c]/70 text-xs italic">{f.type}</p>
+                              {f.ideology && <p className="text-gray-400 text-xs mt-1"><span className="text-[#c9a84c]/50">Ideology:</span> {f.ideology}</p>}
+                              {f.objective && <p className="text-gray-400 text-xs"><span className="text-[#c9a84c]/50">Objective:</span> {f.objective}</p>}
+                              {f.internal_tension && <p className="text-gray-500 text-xs"><span className="text-[#c41e3a]/50">Tension:</span> {f.internal_tension}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {genResult.generated.world_concept && (
+                      <div>
+                        <h3 className="text-white font-bold text-sm mb-2">🌍 Generated World Concept</h3>
+                        <div className="bg-[#1a1a2e] border border-[#c9a84c]/10 rounded p-3 space-y-1">
+                          <p className="text-white font-semibold text-sm">{genResult.generated.world_concept.name}</p>
+                          <div className="flex gap-2 flex-wrap">
+                            <span className="text-[10px] bg-[#c9a84c]/10 text-[#c9a84c]/70 rounded px-2 py-0.5">{genResult.generated.world_concept.genre}</span>
+                            <span className="text-[10px] bg-gray-800 text-gray-400 rounded px-2 py-0.5">{genResult.generated.world_concept.tone}</span>
+                            <span className="text-[10px] bg-gray-800 text-gray-400 rounded px-2 py-0.5">{genResult.generated.world_concept.era}</span>
+                          </div>
+                          {genResult.generated.world_concept.core_conflict && <p className="text-gray-400 text-xs"><span className="text-[#c9a84c]/50">Core conflict:</span> {genResult.generated.world_concept.core_conflict}</p>}
+                          {genResult.generated.world_concept.magic_or_tech_note && <p className="text-gray-400 text-xs"><span className="text-[#c9a84c]/50">Magic/Tech:</span> {genResult.generated.world_concept.magic_or_tech_note}</p>}
+                          {genResult.generated.world_concept.visual_description && <p className="text-gray-500 text-xs"><span className="text-[#c9a84c]/50">Visual:</span> {genResult.generated.world_concept.visual_description}</p>}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}

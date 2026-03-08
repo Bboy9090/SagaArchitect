@@ -59,12 +59,15 @@ export function ShareAsArchetypeButton({ target, onShared }: ShareAsArchetypeBut
       return;
     }
 
+    // Map component kind to canonical SharedLoreSourceType.
+    // Use canonical names (story_arc, lore_rule) — the extract endpoint accepts both
+    // the canonical names and their legacy aliases (arc, rule_set).
     const sourceType: SharedLoreSourceType =
       target.kind === 'character' ? 'character'
       : target.kind === 'faction' ? 'faction'
       : target.kind === 'location' ? 'location'
-      : target.kind === 'arc' ? 'arc'
-      : target.kind === 'lore_rule' ? 'rule_set'
+      : target.kind === 'arc' ? 'story_arc'
+      : target.kind === 'lore_rule' ? 'lore_rule'
       : 'world_seed';
 
     const universeMeta = target.kind === 'universe' ? {} : target.universeMeta;

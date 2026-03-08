@@ -102,9 +102,11 @@ export async function POST(req: NextRequest) {
         archetype = extractLocationArchetype(entity_data as unknown as Location, universe_meta);
         break;
       case 'arc':
+      case 'story_arc':   // canonical alias
         archetype = extractArcArchetype(entity_data as unknown as StoryArc, universe_meta);
         break;
       case 'rule_set':
+      case 'lore_rule':   // canonical alias
         archetype = extractLoreRuleArchetype(entity_data as unknown as LoreRule, universe_meta);
         break;
       case 'world_seed':

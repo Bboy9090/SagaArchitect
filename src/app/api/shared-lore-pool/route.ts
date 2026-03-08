@@ -48,6 +48,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
 
   const sourceType = searchParams.get('source_type') as SharedLoreSourceType | null;
+  const sourceApp = searchParams.get('source_app')?.toLowerCase();
   const genre = searchParams.get('genre')?.toLowerCase();
   const tone = searchParams.get('tone')?.toLowerCase();
   const ageBand = searchParams.get('age_band')?.toLowerCase();
@@ -67,8 +68,13 @@ export async function GET(req: NextRequest) {
     e.visibility === 'shared_archetype' || e.visibility === 'public_template',
   );
 
+  if (sourceApp) {
+    entries = entries.filter(e => e.source_app?.toLowerCase() === sourceApp);
+  }
   if (sourceType) {
-    entries = entries.filter(e => e.source_type === sourceType);
+    // Normalise aliases: 'story_arc' == 'arc', 'lore_rule' == 'rule_set'
+    const normalised = normaliseSourceType(sourceType);
+    entries = entries.filter(e => normaliseSourceType(e.source_type) === normalised);
   }
   if (genre) {
     entries = entries.filter(e => e.genre?.toLowerCase() === genre);
@@ -95,6 +101,7 @@ export async function GET(req: NextRequest) {
       entries: entries.map(sanitizeEntry),
       total: entries.length,
       filters_applied: {
+        source_app: sourceApp ?? null,
         source_type: sourceType ?? null,
         genre: genre ?? null,
         tone: tone ?? null,
@@ -105,6 +112,16 @@ export async function GET(req: NextRequest) {
     },
     { headers: CORS },
   );
+}
+
+/**
+ * Normalise legacy type aliases so filtering works for both old and new names.
+ * 'story_arc' ↔ 'arc', 'lore_rule' ↔ 'rule_set'
+ */
+function normaliseSourceType(t: string): string {
+  if (t === 'story_arc') return 'arc';
+  if (t === 'lore_rule') return 'rule_set';
+  return t;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
