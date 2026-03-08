@@ -149,24 +149,38 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
       description: l.description,
     }));
 
-    // Build a concise timeline context string (chronological summary)
+    // Build timeline context in BOTH formats:
+    // - timeline_context: string[]  (Rainstorms FastAPI expects array)
+    // - timeline_context_text: string (kept for backward compatibility and AI prompt injection)
     const MAX_TIMELINE_EVENTS_FOR_CONTEXT = 6;
-    const timelineContext = canonBlock.timeline.length > 0
-      ? canonBlock.timeline
-          .slice(0, MAX_TIMELINE_EVENTS_FOR_CONTEXT)
-          .map(e => `[${e.era_marker}] ${e.title}: ${e.summary}`)
-          .join('\n')
+    const timelineContextArray = canonBlock.timeline
+      .slice(0, MAX_TIMELINE_EVENTS_FOR_CONTEXT)
+      .map(e => `[${e.era_marker}] ${e.title}: ${e.summary}`);
+
+    const timelineContextText = timelineContextArray.length > 0
+      ? timelineContextArray.join('\n')
       : 'No timeline events defined.';
 
     return NextResponse.json({
       universe_id: id,
       universe_name: canonBlock.universe.name,
+      // tone / universe_tone — both provided:
+      // Rainstorms FastAPI uses `universe_tone`, SagaArchitect uses `tone`
       tone: canonBlock.universe.tone,
+      universe_tone: canonBlock.universe.tone,
       genre: canonBlock.universe.genre,
       era: canonBlock.universe.era,
       magic_system: canonBlock.universe.magic_system,
+      // tech_level / technology_level — both provided:
+      // Rainstorms FastAPI Universe model uses `technology_level`
       tech_level: canonBlock.universe.tech_level,
+      technology_level: canonBlock.universe.tech_level,
+      // themes / core_theme — both provided:
+      // Rainstorms FastAPI Universe model uses `core_theme` (string)
       themes: canonBlock.universe.themes,
+      core_theme: Array.isArray(canonBlock.universe.themes)
+        ? canonBlock.universe.themes.join(', ')
+        : (canonBlock.universe.themes ?? ''),
       current_conflict: canonBlock.universe.current_conflict,
       prophecy_hooks: canonBlock.universe.prophecy_hooks,
       world_overview: canonBlock.universe.world_overview,
@@ -174,7 +188,10 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
       relevant_characters: relevantCharacters,
       relevant_factions: relevantFactions,
       relevant_locations: relevantLocations,
-      timeline_context: timelineContext,
+      // timeline_context: string[] (Rainstorms FastAPI format)
+      // timeline_context_text: string (SagaArchitect / prompt-injection format)
+      timeline_context: timelineContextArray,
+      timeline_context_text: timelineContextText,
       story_arcs: canonBlock.story_arcs,
       prompt_context: promptContext,
       stats,

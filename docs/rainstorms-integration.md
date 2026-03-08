@@ -10,17 +10,239 @@ The bridge is **LoreEngine**, a shared API layer.
 ```
 User builds universe in SagaArchitect
             ↓
-  [Export Canon button]
-  Copies CanonBlockInput JSON to clipboard
+  [🌧 Sync to Rainstorms button]
+  Translates field names, POSTs data to Rainstorms
             ↓
-  Rainstorms POSTs that JSON to LoreEngine API
+  Rainstorms creates the universe in its MongoDB
             ↓
-  LoreEngine returns { canonBlock, promptContext, stats }
+  GET /api/universes/{id}/story-context (from Rainstorms)
+  Returns universe_tone, world_rules, characters, factions, etc.
             ↓
-  Rainstorms injects promptContext into AI generation prompt
+  Rainstorms injects context into AI generation prompts
             ↓
-  Generated story is canon-consistent with SagaArchitect universe
+  Generated stories are canon-consistent with SagaArchitect universe
 ```
+
+---
+
+## Field Mapping: SagaArchitect → Rainstorms
+
+The two systems were built from the same spec but with slightly different field names.
+The `src/lib/rainstorms.ts` helper handles all translations automatically.
+
+### Universe model
+
+| SagaArchitect field | Rainstorms field | Notes |
+|---|---|---|
+| `tech_level: string` | `technology_level: string` | Renamed |
+| `themes: string[]` | `core_theme: string` | Array joined with `", "` |
+| `name` | `name` | ✅ Same |
+| `genre` | `genre` | ✅ Same |
+| `tone` | `tone` | ✅ Same |
+| `concept` | `concept` | ✅ Same |
+| `magic_system` | `magic_system` | ✅ Same |
+| `era` | `era` | ✅ Same |
+| `world_overview` | `world_overview` | ✅ Same |
+| `creation_myth` | `creation_myth` | ✅ Same |
+| `current_conflict` | `current_conflict` | ✅ Same |
+| `prophecy_hooks: string[]` | `prophecy_hooks: string[]` | ✅ Same |
+
+### story-context response
+
+Both field names are returned from SagaArchitect so Rainstorms can use either:
+
+| SagaArchitect field | Rainstorms expects | Notes |
+|---|---|---|
+| `tone: string` | `universe_tone: string` | Both returned |
+| `tech_level: string` | `technology_level: string` | Both returned |
+| `themes: string[]` | `core_theme: string` | Both returned |
+| `timeline_context_text: string` | `timeline_context: string[]` | Both returned; array version = `timeline_context` |
+| `world_rules: string[]` | `world_rules: string[]` | ✅ Same |
+| `relevant_characters: object[]` | `relevant_characters: object[]` | ✅ Same |
+| `relevant_factions: object[]` | `relevant_factions: object[]` | ✅ Same |
+| `relevant_locations: object[]` | `relevant_locations: object[]` | ✅ Same |
+
+---
+
+## Integration Methods
+
+### Method 1: Sync to Rainstorms button (recommended)
+
+In SagaArchitect, open any universe's Canon Core page and click **🌧 Sync to Rainstorms**.
+
+1. Enter the Rainstorms base URL (e.g. `http://localhost:8001`)
+2. Click **Test** to verify connectivity
+3. Click **Sync Universe to Rainstorms**
+
+This will:
+- Map field names (`tech_level → technology_level`, `themes[] → core_theme`)
+- POST to `POST /api/lore/sync` (full sync endpoint including all entities)
+- Fall back to `POST /api/universes` if `/api/lore/sync` is not found
+
+### Method 2: Export Canon JSON
+
+Click **⚡ Export Canon** on the Canon Core page. This copies raw `CanonBlockInput` JSON to clipboard:
+
+```json
+{
+  "universe": { "id": "...", "name": "...", "tech_level": "Medieval", "themes": ["..."], ... },
+  "factions": [...],
+  "characters": [...],
+  "locations": [...],
+  "timeline": [...],
+  "lore_rules": [...],
+  "story_arcs": [...]
+}
+```
+
+Then in Rainstorms: paste and POST to `/api/lore-engine/canon-block` (on SagaArchitect) or `/api/lore/sync` (on Rainstorms).
+
+### Method 3: Direct API call from Rainstorms
+
+Rainstorms can call SagaArchitect's API directly (CORS is configured):
+
+```typescript
+// Rainstorms calls SagaArchitect to get story context
+const res = await fetch(`https://sagaarchitect.app/api/universes/${universeId}/story-context`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(canonBlockInputPayload), // exported from SagaArchitect
+});
+const ctx = await res.json();
+
+// ctx.universe_tone  (Rainstorms field name) ✅
+// ctx.timeline_context (string[])             ✅
+// ctx.world_rules (string[])                  ✅
+// ctx.relevant_characters                     ✅
+// ctx.technology_level                        ✅
+// ctx.core_theme                              ✅
+// ctx.prompt_context (pre-formatted string)  ← inject directly into AI prompt
+```
+
+---
+
+## Rainstorms `POST /api/lore/sync` Endpoint
+
+The cleanest integration point. SagaArchitect posts a full universe payload and Rainstorms creates/updates everything in MongoDB.
+
+**SagaArchitect sends:**
+
+```json
+{
+  "universe": {
+    "name": "The Ashen Veil",
+    "genre": "Fantasy",
+    "tone": "Dark",
+    "concept": "...",
+    "technology_level": "Medieval",
+    "magic_system": "Veilweaving",
+    "era": "Age of Ash",
+    "core_theme": "The price of memory, Power born from forgetting",
+    "world_overview": "...",
+    "creation_myth": "...",
+    "current_conflict": "...",
+    "prophecy_hooks": ["..."]
+  },
+  "factions": [ ... ],
+  "characters": [ ... ],
+  "locations": [ ... ],
+  "timeline": [ ... ],
+  "story_arcs": [ ... ],
+  "lore_rules": [ ... ]
+}
+```
+
+**Rainstorms responds:**
+
+```json
+{
+  "universe_id": "abc123",
+  "message": "Universe synced successfully"
+}
+```
+
+---
+
+## Rainstorms `/api/universes/{id}/story-context` Response
+
+When Rainstorms generates a story it calls its own internal endpoint. The fields map to what SagaArchitect produces:
+
+```json
+{
+  "universe_tone": "Dark",
+  "world_rules": ["[Magic System] Veilweaving Costs Memory: ..."],
+  "relevant_characters": [{ "name": "Kael", "role": "hero", ... }],
+  "relevant_factions": [{ "name": "The Veil Wardens", "type": "Order", ... }],
+  "relevant_locations": [{ "name": "The Pale Library", ... }],
+  "timeline_context": ["[Year 0] The Veilbreak: ...", "[Year 50] ..."]
+}
+```
+
+---
+
+## CORS
+
+Both LoreEngine endpoints on SagaArchitect respond with `Access-Control-Allow-Origin: *` and handle OPTIONS preflight. Rainstorms can call them from any origin.
+
+The Rainstorms FastAPI backend must also configure CORS to allow the SagaArchitect origin. Add to the Rainstorms `server.py`:
+
+```python
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # tighten to specific SagaArchitect URL in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+---
+
+## Demo Universe
+
+The **Ashen Veil** is pre-loaded in SagaArchitect. To test:
+
+1. SagaArchitect → Dashboard → **🌑 Load Demo: The Ashen Veil**
+2. Universe Canon Core → **🌧 Sync to Rainstorms**
+3. Enter Rainstorms URL → **Test** → **Sync**
+4. Rainstorms now has The Ashen Veil in its MongoDB
+5. Generate stories in Rainstorms — they'll reference canon characters, factions, and lore
+
+---
+
+## TypeScript helper (`src/lib/rainstorms.ts`)
+
+```typescript
+import {
+  buildRainstormsSyncPayload,
+  syncToRainstorms,
+  pingRainstorms,
+} from '@/lib/rainstorms';
+
+// Build the mapped payload
+const payload = buildRainstormsSyncPayload(
+  universe,     // SagaArchitect Universe (tech_level, themes[])
+  factions,     // Faction[]
+  characters,   // Character[]
+  locations,    // Location[]
+  timeline,     // TimelineEvent[]
+  story_arcs,   // StoryArc[]
+  lore_rules,   // LoreRule[]
+);
+// payload.universe.technology_level ← mapped automatically
+// payload.universe.core_theme       ← mapped automatically
+
+// Test connectivity
+const ping = await pingRainstorms('http://localhost:8001');
+// { reachable: true, detail: 'Rainstorms universes endpoint responded.' }
+
+// Sync
+const result = await syncToRainstorms('http://localhost:8001', payload);
+// { success: true, universe_id: 'abc123', message: 'Universe synced...' }
+```
+
 
 ---
 

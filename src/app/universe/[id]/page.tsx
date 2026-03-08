@@ -5,12 +5,14 @@ import { useRouter } from 'next/navigation';
 import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
+import { Modal } from '@/components/ui/Modal';
 import { Spinner } from '@/components/ui/Spinner';
 import {
   getUniverseById, getFactions, getCharacters, getLocations,
   getTimeline, getArcs, getLoreRules,
   saveLocations, saveCharacters, saveFactions
 } from '@/lib/storage';
+import { buildRainstormsSyncPayload, syncToRainstorms, pingRainstorms } from '@/lib/rainstorms';
 import type { Universe, Faction, Character, Location } from '@/lib/types';
 
 interface Section {
@@ -24,6 +26,8 @@ interface CanonPageProps {
   params: Promise<{ id: string }>;
 }
 
+const RAINSTORMS_URL_KEY = 'loreengine_rainstorms_url';
+
 export default function CanonCorePage({ params }: CanonPageProps) {
   const { id } = use(params);
   const router = useRouter();
@@ -33,6 +37,13 @@ export default function CanonCorePage({ params }: CanonPageProps) {
   const [stats, setStats] = useState({ chars: 0, factions: 0, locations: 0, events: 0, arcs: 0, lore: 0 });
   const [genLoading, setGenLoading] = useState<string | null>(null);
   const [exportCopied, setExportCopied] = useState(false);
+
+  // Rainstorms sync state
+  const [showRainstormsModal, setShowRainstormsModal] = useState(false);
+  const [rainstormsUrl, setRainstormsUrl] = useState('');
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'pinging' | 'syncing' | 'success' | 'error'>('idle');
+  const [syncMessage, setSyncMessage] = useState('');
+  const [pingOk, setPingOk] = useState<boolean | null>(null);
 
   useEffect(() => {
     const u = getUniverseById(id);
@@ -46,6 +57,9 @@ export default function CanonCorePage({ params }: CanonPageProps) {
       arcs: getArcs(id).length,
       lore: getLoreRules(id).length,
     });
+    // Restore saved Rainstorms URL
+    const saved = localStorage.getItem(RAINSTORMS_URL_KEY);
+    if (saved) setRainstormsUrl(saved);
     setLoading(false);
   }, [id, router]);
 
@@ -96,10 +110,50 @@ export default function CanonCorePage({ params }: CanonPageProps) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${universe.name.replace(/\s+/g, '_')}_lore_export.json`;
+      // Sanitize filename: replace whitespace and any character not safe in filenames
+      const safeName = universe.name.replace(/[^\w\-. ]/g, '').replace(/\s+/g, '_');
+      a.download = `${safeName}_lore_export.json`;
       a.click();
       URL.revokeObjectURL(url);
     }
+  };
+
+  /** Open the Rainstorms sync modal, resetting previous sync state */
+  const handleOpenRainstormsModal = () => {
+    setSyncStatus('idle');
+    setSyncMessage('');
+    setPingOk(null);
+    setShowRainstormsModal(true);
+  };
+  const handlePing = async () => {
+    if (!rainstormsUrl.trim()) return;
+    setSyncStatus('pinging');
+    setPingOk(null);
+    const result = await pingRainstorms(rainstormsUrl.trim());
+    setPingOk(result.reachable);
+    setSyncMessage(result.detail);
+    setSyncStatus('idle');
+  };
+
+  /** Push this universe to the Rainstorms backend */
+  const handleSyncToRainstorms = async () => {
+    if (!universe || !rainstormsUrl.trim()) return;
+    // Save URL for next time
+    localStorage.setItem(RAINSTORMS_URL_KEY, rainstormsUrl.trim());
+    setSyncStatus('syncing');
+    setSyncMessage('');
+    const payload = buildRainstormsSyncPayload(
+      universe,
+      getFactions(id),
+      getCharacters(id),
+      getLocations(id),
+      getTimeline(id),
+      getArcs(id),
+      getLoreRules(id),
+    );
+    const result = await syncToRainstorms(rainstormsUrl.trim(), payload);
+    setSyncStatus(result.success ? 'success' : 'error');
+    setSyncMessage(result.message + (result.detail ? `\n\nDetail: ${result.detail}` : ''));
   };
 
   const generateLocations = async () => {
@@ -294,6 +348,8 @@ export default function CanonCorePage({ params }: CanonPageProps) {
     },
   ];
 
+  const inputClass = 'w-full bg-[#0a0a0f] border border-[#c9a84c]/30 text-white rounded px-3 py-2 text-sm focus:outline-none focus:border-[#c9a84c] placeholder-gray-600';
+
   return (
     <Navigation>
       <Header
@@ -309,6 +365,12 @@ export default function CanonCorePage({ params }: CanonPageProps) {
               onClick={handleExportCanon}
             >
               {exportCopied ? '✓ Copied!' : '⚡ Export Canon'}
+            </Button>
+            <Button
+              variant="secondary" size="sm"
+              onClick={handleOpenRainstormsModal}
+            >
+              🌧 Sync to Rainstorms
             </Button>
             <Button variant="secondary" size="sm" onClick={() => router.push(`/universe/${id}/arcs`)}>
               ⚔️ Arc Forge
@@ -382,6 +444,93 @@ export default function CanonCorePage({ params }: CanonPageProps) {
           ))}
         </div>
       </div>
+
+      {/* Sync to Rainstorms modal */}
+      <Modal open={showRainstormsModal} onClose={() => setShowRainstormsModal(false)} title="Sync to Rainstorms" size="lg">
+        <div className="space-y-4">
+          {/* Explanation */}
+          <div className="bg-[#0a0a0f] border border-[#c9a84c]/20 rounded-lg p-3">
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Push <span className="text-[#c9a84c] font-semibold">{universe.name}</span> — including all factions, characters, locations, timeline events, arcs, and lore rules — into the Rainstorms backend so it can generate canon-consistent stories from this universe.
+            </p>
+            <p className="text-xs text-gray-600 mt-2">
+              Field mappings applied automatically: <code className="text-gray-500">tech_level → technology_level</code>, <code className="text-gray-500">themes[] → core_theme</code>
+            </p>
+          </div>
+
+          {/* URL input */}
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">
+              Rainstorms Base URL
+            </label>
+            <div className="flex gap-2">
+              <input
+                className={inputClass}
+                value={rainstormsUrl}
+                onChange={e => { setRainstormsUrl(e.target.value); setPingOk(null); setSyncMessage(''); }}
+                placeholder="http://localhost:8001"
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                loading={syncStatus === 'pinging'}
+                onClick={handlePing}
+                disabled={!rainstormsUrl.trim()}
+              >
+                Test
+              </Button>
+            </div>
+            {pingOk === true && (
+              <p className="text-xs text-green-400 mt-1">✓ Rainstorms is reachable</p>
+            )}
+            {pingOk === false && (
+              <p className="text-xs text-red-400 mt-1">✗ Cannot reach Rainstorms — check URL and CORS</p>
+            )}
+          </div>
+
+          {/* Stats summary */}
+          <div className="grid grid-cols-3 gap-2 text-center">
+            {[
+              { label: 'Factions', value: stats.factions },
+              { label: 'Characters', value: stats.chars },
+              { label: 'Locations', value: stats.locations },
+              { label: 'Events', value: stats.events },
+              { label: 'Arcs', value: stats.arcs },
+              { label: 'Lore Rules', value: stats.lore },
+            ].map(s => (
+              <div key={s.label} className="bg-[#0f0f1a] border border-[#c9a84c]/10 rounded p-2">
+                <div className="text-lg font-bold text-[#c9a84c]">{s.value}</div>
+                <div className="text-[10px] text-gray-600 uppercase tracking-widest">{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Result message */}
+          {syncMessage && (
+            <div className={`rounded-lg p-3 text-xs font-mono whitespace-pre-wrap ${
+              syncStatus === 'success' ? 'bg-green-900/20 border border-green-500/20 text-green-300' : 'bg-red-900/20 border border-red-500/20 text-red-300'
+            }`}>
+              {syncMessage}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex gap-2 pt-1">
+            <Button
+              variant="gold"
+              loading={syncStatus === 'syncing'}
+              disabled={!rainstormsUrl.trim() || syncStatus === 'pinging'}
+              onClick={handleSyncToRainstorms}
+            >
+              {syncStatus === 'success' ? '✓ Synced!' : '🌧 Sync Universe to Rainstorms'}
+            </Button>
+            <Button variant="ghost" onClick={() => setShowRainstormsModal(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </Navigation>
   );
 }
+
