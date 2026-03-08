@@ -200,7 +200,9 @@ export type SharedLoreSourceType =
   | 'location'
   | 'arc'
   | 'world_seed'
-  | 'rule_set';
+  | 'rule_set'
+  | 'story_seed'      // Rainstorms story concepts
+  | 'book_concept';   // Rainstorms children's book concepts
 
 /**
  * A single entry in the Shared Lore Pool.
@@ -211,6 +213,8 @@ export type SharedLoreSourceType =
  */
 export interface SharedLoreEntry {
   id: string;
+  /** Which app produced this entry (sagaarch, rainstorms, …). Helps Rainstorms filter SagaARCH archetypes. */
+  source_app?: 'sagaarch' | 'rainstorms' | string;
   source_type: SharedLoreSourceType;
   source_id: string;             // id of the original entity (for owner reference only)
   owner_user_id?: string;        // owner — not exposed in public responses
@@ -218,7 +222,8 @@ export interface SharedLoreEntry {
   visibility: LoreVisibility;
   archetype_name: string;        // e.g. "fallen storm knight"
   category: string;              // e.g. "warrior", "empire", "ancient ruin"
-  role_pattern?: string;         // character role pattern
+  role_type?: string;            // e.g. "reluctant mythic warrior", "oracle", "trickster"
+  role_pattern?: string;         // character role pattern (longer description)
   ideology_pattern?: string;     // faction ideology pattern
   location_pattern?: string;     // location archetype pattern
   conflict_pattern?: string;     // arc or event conflict pattern

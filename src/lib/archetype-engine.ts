@@ -94,10 +94,12 @@ export function extractCharacterArchetype(
   const archetypeName = deriveCharacterArchetypeName(character);
 
   return {
+    source_app: 'sagaarch',
     source_type: 'character' as SharedLoreSourceType,
     visibility: character.visibility ?? 'shared_archetype',
     archetype_name: archetypeName,
     category: character.role.split(' ').slice(0, 3).join(' ') || 'warrior',
+    role_type: character.role || undefined,
     role_pattern: rolePattern,
     theme_tags: themeTags,
     visual_tags: visualTags,
@@ -138,6 +140,7 @@ export function extractFactionArchetype(
   const visualTags = visualDescriptors(faction.territory, 4);
 
   return {
+    source_app: 'sagaarch',
     source_type: 'faction' as SharedLoreSourceType,
     visibility: faction.visibility ?? 'shared_archetype',
     archetype_name: `${faction.type} faction archetype`,
@@ -178,6 +181,7 @@ export function extractLocationArchetype(
   const visualTags = visualDescriptors(location.description, 5);
 
   return {
+    source_app: 'sagaarch',
     source_type: 'location' as SharedLoreSourceType,
     visibility: location.visibility ?? 'shared_archetype',
     archetype_name: `${location.type} location archetype`,
@@ -212,6 +216,7 @@ export function extractArcArchetype(
   const visualTags = visualDescriptors(arc.summary, 4);
 
   return {
+    source_app: 'sagaarch',
     source_type: 'arc' as SharedLoreSourceType,
     visibility: arc.visibility ?? 'shared_archetype',
     archetype_name: `${arc.type} arc archetype`,
@@ -248,6 +253,7 @@ export function extractTimelineEventArchetype(
   const visualTags = visualDescriptors(event.summary, 5);
 
   return {
+    source_app: 'sagaarch',
     source_type: 'arc' as SharedLoreSourceType, // timeline events map to the 'arc' bucket
     visibility: event.visibility ?? 'shared_archetype',
     archetype_name: `historical event archetype (${event.era_marker || 'unknown era'})`,
@@ -281,6 +287,7 @@ export function extractLoreRuleArchetype(
   ].slice(0, 8);
 
   return {
+    source_app: 'sagaarch',
     source_type: 'rule_set' as SharedLoreSourceType,
     visibility: rule.visibility ?? 'shared_archetype',
     archetype_name: `${rule.category.toLowerCase()} rule archetype`,
@@ -314,6 +321,7 @@ export function extractWorldSeedArchetype(
   const visualTags = visualDescriptors(universe.world_overview, 5);
 
   return {
+    source_app: 'sagaarch',
     source_type: 'world_seed' as SharedLoreSourceType,
     visibility: universe.visibility ?? 'shared_archetype',
     archetype_name: `${universe.genre} world seed archetype`,

@@ -7,6 +7,8 @@ import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Spinner } from '@/components/ui/Spinner';
+import { LocationCard } from '@/components/location/LocationCard';
+import { ShareAsArchetypeButton } from '@/components/shared-lore/ShareAsArchetypeButton';
 import {
   getUniverseById, getFactions, getCharacters, getLocations,
   getTimeline, getArcs, getLoreRules,
@@ -35,6 +37,7 @@ export default function CanonCorePage({ params }: CanonPageProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ chars: 0, factions: 0, locations: 0, events: 0, arcs: 0, lore: 0 });
+  const [locations, setLocations] = useState<Location[]>([]);
   const [genLoading, setGenLoading] = useState<string | null>(null);
   const [exportCopied, setExportCopied] = useState(false);
 
@@ -49,10 +52,12 @@ export default function CanonCorePage({ params }: CanonPageProps) {
     const u = getUniverseById(id);
     if (!u) { router.push('/dashboard'); return; }
     setUniverse(u);
+    const locs = getLocations(id);
+    setLocations(locs);
     setStats({
       chars: getCharacters(id).length,
       factions: getFactions(id).length,
-      locations: getLocations(id).length,
+      locations: locs.length,
       events: getTimeline(id).length,
       arcs: getArcs(id).length,
       lore: getLoreRules(id).length,
@@ -168,12 +173,14 @@ export default function CanonCorePage({ params }: CanonPageProps) {
       });
       const data = await res.json();
       if (data.locations) {
-        saveLocations(id, data.locations.map((l: Omit<Location, 'id' | 'universe_id'>) => ({
+        const newLocs: Location[] = data.locations.map((l: Omit<Location, 'id' | 'universe_id'>) => ({
           ...l,
           id: crypto.randomUUID(),
           universe_id: id,
-        })));
-        setStats(prev => ({ ...prev, locations: data.locations.length }));
+        }));
+        saveLocations(id, newLocs);
+        setLocations(newLocs);
+        setStats(prev => ({ ...prev, locations: newLocs.length }));
       }
     } finally {
       setGenLoading(null);
@@ -319,10 +326,28 @@ export default function CanonCorePage({ params }: CanonPageProps) {
       icon: '📍',
       title: `Locations (${stats.locations})`,
       content: (
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" loading={genLoading === 'locations'} onClick={generateLocations}>
-            ✨ Generate Locations
-          </Button>
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" loading={genLoading === 'locations'} onClick={generateLocations}>
+              ✨ Generate Locations
+            </Button>
+          </div>
+          {locations.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+              {locations.map(loc => (
+                <LocationCard
+                  key={loc.id}
+                  location={loc}
+                  universeMeta={{ genre: universe.genre, tone: universe.tone, era: universe.era }}
+                  onDelete={locId => {
+                    setLocations(prev => prev.filter(l => l.id !== locId));
+                    setStats(prev => ({ ...prev, locations: prev.locations - 1 }));
+                    saveLocations(id, locations.filter(l => l.id !== locId));
+                  }}
+                />
+              ))}
+            </div>
+          )}
         </div>
       ),
     },
@@ -356,7 +381,7 @@ export default function CanonCorePage({ params }: CanonPageProps) {
         title={universe.name}
         subtitle={`${universe.genre} · ${universe.tone} · ${universe.era}`}
         actions={
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap items-center">
             <Button variant="gold" size="sm" onClick={() => router.push(`/universe/${id}/stories`)}>
               📖 Story Forge
             </Button>
@@ -378,6 +403,9 @@ export default function CanonCorePage({ params }: CanonPageProps) {
             <Button variant="secondary" size="sm" onClick={() => router.push(`/universe/${id}/lore`)}>
               🔮 Lore Memory
             </Button>
+            <ShareAsArchetypeButton
+              target={{ kind: 'universe', entity: universe }}
+            />
           </div>
         }
       />
