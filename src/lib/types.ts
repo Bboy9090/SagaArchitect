@@ -41,6 +41,7 @@ export interface Faction {
   territory: string;
   internal_conflict: string;
   objective: string;
+  symbol?: string;
   canon_status: CanonStatus;
 }
 
@@ -59,6 +60,8 @@ export interface Character {
   arc_potential: string;
   status: CharacterStatus;
   canon_status: CanonStatus;
+  appearance?: string;
+  speech_style?: string;
 }
 
 export interface Location {
@@ -83,6 +86,7 @@ export interface TimelineEvent {
   affected_factions: string[];
   affected_locations: string[];
   consequences: string;
+  hidden_truths?: string;
   canon_status: CanonStatus;
 }
 
@@ -97,6 +101,8 @@ export interface StoryArc {
   involved_characters: string[];
   involved_factions: string[];
   themes: string[];
+  turning_points?: string[];
+  canon_status?: CanonStatus;
 }
 
 export interface LoreRule {

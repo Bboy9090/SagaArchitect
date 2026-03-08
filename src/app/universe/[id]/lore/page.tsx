@@ -10,16 +10,21 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Spinner } from '@/components/ui/Spinner';
 import { getLoreRules, saveLoreRule, deleteLoreRule, getUniverseById, getCharacters, getFactions, getTimeline } from '@/lib/storage';
-import type { LoreRule, CanonStatus, LoreConflictEntry } from '@/lib/types';
+import type { LoreRule, CanonStatus, LoreConflictEntry, Character, Faction, TimelineEvent } from '@/lib/types';
 
 interface LorePageProps {
   params: Promise<{ id: string }>;
 }
 
-function detectConflicts(rules: LoreRule[], characters: unknown[], factions: unknown[], events: unknown[]): LoreConflictEntry[] {
+function detectConflicts(
+  rules: LoreRule[],
+  characters: Character[],
+  factions: Faction[],
+  events: TimelineEvent[],
+): LoreConflictEntry[] {
   const conflicts: LoreConflictEntry[] = [];
 
-  // Check for duplicate rule titles
+  // ── Duplicate rule titles ─────────────────────────────────────────────────
   const titleCounts = new Map<string, number>();
   rules.forEach(r => {
     const key = r.title.toLowerCase().trim();
@@ -39,7 +44,7 @@ function detectConflicts(rules: LoreRule[], characters: unknown[], factions: unk
     }
   });
 
-  // Check for mystery items with no explanation
+  // ── Mystery rules with no canon resolution ───────────────────────────────
   const mysteryRules = rules.filter(r => r.canon_status === 'mystery');
   mysteryRules.forEach(r => {
     conflicts.push({
@@ -53,7 +58,7 @@ function detectConflicts(rules: LoreRule[], characters: unknown[], factions: unk
     });
   });
 
-  // Check for deprecated items still referenced
+  // ── Deprecated rules still in archive ────────────────────────────────────
   const deprecatedRules = rules.filter(r => r.canon_status === 'deprecated');
   if (deprecatedRules.length > 0) {
     conflicts.push({
@@ -67,29 +72,125 @@ function detectConflicts(rules: LoreRule[], characters: unknown[], factions: unk
     });
   }
 
-  // Check for empty timeline
-  if ((events as unknown[]).length === 0 && (characters as unknown[]).length > 0) {
+  // ── Characters exist without timeline context ─────────────────────────────
+  if (events.length === 0 && characters.length > 0) {
     conflicts.push({
       id: 'missing-timeline',
       universe_id: '',
       type: 'missing_link',
       title: 'Characters Exist Without Historical Context',
-      description: `${(characters as unknown[]).length} character(s) exist but no timeline events explain the world they inhabit.`,
+      description: `${characters.length} character(s) exist but no timeline events explain the world they inhabit.`,
       related_entities: ['Timeline', 'Characters'],
       severity: 'high',
     });
   }
 
-  // Check for characters with no faction
-  if ((factions as unknown[]).length > 0) {
+  // ── Dead characters appearing in timeline events after their death ────────
+  // We check if any dead/missing character's name appears in an event's
+  // affected_characters list more than once, flagging it as a potential contradiction.
+  if (characters.length > 0 && events.length > 1) {
+    const deadChars = characters.filter(c => c.status === 'dead');
+    deadChars.forEach(deadChar => {
+      const deadNameLower = deadChar.name.toLowerCase();
+      // Use strict equality on each entry to avoid partial-name false positives
+      const mentioningEvents = events.filter(e =>
+        e.affected_characters.some(name => name.toLowerCase() === deadNameLower)
+      );
+      if (mentioningEvents.length > 1) {
+        conflicts.push({
+          id: `dead-char-${deadChar.id}`,
+          universe_id: '',
+          type: 'contradiction',
+          title: 'Dead Character Appears in Multiple Events',
+          description: `"${deadChar.name}" has status "dead" but appears in ${mentioningEvents.length} timeline events. Verify their death hasn't been contradicted.`,
+          related_entities: [deadChar.name, ...mentioningEvents.map(e => e.title)],
+          severity: 'high',
+        });
+      }
+    });
+  }
+
+  // ── Faction ally/enemy asymmetry conflicts ────────────────────────────────
+  // If Faction A lists Faction B as an enemy, but Faction B lists Faction A as an ally,
+  // that's a canon contradiction.
+  if (factions.length > 1) {
+    factions.forEach(factionA => {
+      factionA.enemies.forEach(enemyName => {
+        const factionB = factions.find(f =>
+          f.name.toLowerCase() === enemyName.toLowerCase()
+        );
+        if (factionB && factionB.allies.some(a => a.toLowerCase() === factionA.name.toLowerCase())) {
+          const conflictId = `ally-enemy-${factionA.id}-${factionB.id}`;
+          // Avoid adding the same conflict twice (A→B and B→A)
+          if (!conflicts.some(c => c.id === conflictId || c.id === `ally-enemy-${factionB.id}-${factionA.id}`)) {
+            conflicts.push({
+              id: conflictId,
+              universe_id: '',
+              type: 'contradiction',
+              title: 'Faction Alliance Contradiction',
+              description: `"${factionA.name}" lists "${factionB.name}" as an enemy, but "${factionB.name}" lists "${factionA.name}" as an ally. This is a canon conflict.`,
+              related_entities: [factionA.name, factionB.name],
+              severity: 'high',
+            });
+          }
+        }
+      });
+    });
+  }
+
+  // ── Magic system rules potentially violated by character powers ───────────
+  // Look for lore rules categorised as "Magic" or with magic-related titles,
+  // then check if any character's powers description may contradict those rules.
+  // We use word-boundary matching to avoid substring false positives.
+  const magicRules = rules.filter(r =>
+    r.category.toLowerCase().includes('magic') ||
+    r.title.toLowerCase().includes('magic') ||
+    r.title.toLowerCase().includes('forbidden')
+  );
+  if (magicRules.length > 0 && characters.length > 0) {
+    magicRules.forEach(rule => {
+      const forbiddenPatterns = ['cannot ', 'never ', 'impossible to ', 'forbidden to ', 'prohibited'];
+      const ruleText = rule.description.toLowerCase();
+      const hasForbiddenClause = forbiddenPatterns.some(p => ruleText.includes(p));
+      if (hasForbiddenClause) {
+        characters.forEach(char => {
+          if (char.canon_status === 'canon' && char.powers) {
+            const powersLower = char.powers.toLowerCase();
+            // Tokenize powers into words to avoid substring false positives
+            const powerWords = new Set(powersLower.match(/\b\w+\b/g) ?? []);
+            const hasViolation = rule.applies_to.some(keyword => {
+              if (keyword.length <= 3) return false;
+              const kLower = keyword.toLowerCase();
+              // Match on whole-word tokens only
+              return powerWords.has(kLower);
+            });
+            if (hasViolation) {
+              conflicts.push({
+                id: `magic-violation-${rule.id}-${char.id}`,
+                universe_id: '',
+                type: 'contradiction',
+                title: 'Potential Magic Rule Violation',
+                description: `Character "${char.name}" has powers that may conflict with the lore rule "${rule.title}". Verify their abilities comply with: "${rule.description}"`,
+                related_entities: [char.name, rule.title],
+                severity: 'medium',
+              });
+            }
+          }
+        });
+      }
+    });
+  }
+
+  // ── Arcs without connected characters or factions ─────────────────────────
+  if (factions.length > 0 && characters.length === 0) {
     conflicts.push({
-      id: 'no-faction-check',
+      id: 'no-characters-for-factions',
       universe_id: '',
       type: 'missing_link',
-      title: 'Canon Consistency Note',
-      description: 'Verify all characters have faction affiliations if the faction system is active.',
-      related_entities: ['Characters', 'Factions'],
-      severity: 'low',
+      title: 'Factions Without Characters',
+      description: `${factions.length} faction(s) exist but no characters have been created. Factions need leaders and members to drive story arcs.`,
+      related_entities: factions.slice(0, 3).map(f => f.name),
+      severity: 'medium',
     });
   }
 
