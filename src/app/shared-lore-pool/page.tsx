@@ -69,6 +69,7 @@ export default function SharedLorePoolPage() {
   const [poolEntries, setPoolEntries] = useState<SharedLoreEntry[]>([]);
   const [apiEntries, setApiEntries] = useState<Omit<SharedLoreEntry, 'owner_user_id' | 'universe_id' | 'source_id'>[]>([]);
   const [loading, setLoading] = useState(true);
+  const [apiLoading, setApiLoading] = useState(true);
 
   // Filters
   const [filterSourceType, setFilterSourceType] = useState<'' | SharedLoreSourceType>('');
@@ -89,19 +90,26 @@ export default function SharedLorePoolPage() {
   // Load local pool + API pool
   useEffect(() => {
     setPoolEntries(getSharedLorePool());
-    fetchApiPool();
     setLoading(false);
+    fetchApiPool();
   }, []);
 
   const fetchApiPool = async (params?: Record<string, string>) => {
-    const url = new URL('/api/shared-lore-pool', window.location.origin);
-    if (params) {
-      Object.entries(params).forEach(([k, v]) => { if (v) url.searchParams.set(k, v); });
-    }
-    const res = await fetch(url.toString());
-    if (res.ok) {
-      const data = await res.json() as { entries: Omit<SharedLoreEntry, 'owner_user_id' | 'universe_id' | 'source_id'>[] };
-      setApiEntries(data.entries ?? []);
+    setApiLoading(true);
+    try {
+      const url = new URL('/api/shared-lore-pool', window.location.origin);
+      if (params) {
+        Object.entries(params).forEach(([k, v]) => { if (v) url.searchParams.set(k, v); });
+      }
+      const res = await fetch(url.toString());
+      if (res.ok) {
+        const data = await res.json() as { entries: Omit<SharedLoreEntry, 'owner_user_id' | 'universe_id' | 'source_id'>[] };
+        setApiEntries(data.entries ?? []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch community lore pool:', error);
+    } finally {
+      setApiLoading(false);
     }
   };
 
@@ -418,7 +426,11 @@ export default function SharedLorePoolPage() {
             <span className="text-gray-600 font-normal text-xs">({apiEntries.length})</span>
           </h2>
 
-          {allDisplayEntries.length === 0 ? (
+          {apiLoading ? (
+            <div className="flex items-center justify-center py-10">
+              <Spinner text="Loading community archetypes..." />
+            </div>
+          ) : apiEntries.filter(ae => !poolEntryIds.has(ae.id)).length === 0 ? (
             <div className="text-center py-20">
               <div className="text-5xl mb-4">🌐</div>
               <h3 className="text-xl font-bold text-white mb-2">No Archetypes Yet</h3>
@@ -431,7 +443,7 @@ export default function SharedLorePoolPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {apiEntries
-                .filter(ae => !poolEntries.some(pe => pe.id === ae.id))
+                .filter(ae => !poolEntryIds.has(ae.id))
                 .map(entry => (
                   <SharedLoreCard key={entry.id} entry={entry} />
                 ))}
