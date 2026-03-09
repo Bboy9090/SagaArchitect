@@ -93,6 +93,19 @@ Without an API key, the app uses built-in mock data for all generation features 
 
 ---
 
+## Deployment
+
+For a full deployment guide — Vercel, Railway, Docker, CORS configuration, and Rainstorms integration — see **[docs/deployment.md](docs/deployment.md)**.
+
+**Quick deploy to Vercel:**
+
+1. Push this repository to GitHub.
+2. Import the project at [vercel.com](https://vercel.com) — Next.js is auto-detected.
+3. Add `OPENAI_API_KEY` (optional) in **Settings → Environment Variables**.
+4. Click **Deploy**.
+
+---
+
 ## Tech Stack
 
 - **Next.js 14** (App Router)
