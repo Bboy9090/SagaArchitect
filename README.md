@@ -1,22 +1,93 @@
-# SagaLoreBuilder
+# Saga Architect
 
-**Build your universe bible. Track your canon. Generate your saga.**
+**Universe Bible + Canon Engine for Creators**
 
-SagaLoreBuilder is a **Universe Bible Generator + Canon Tracker + Story Arc Engine** for serious creators building worlds, franchises, timelines, factions, and canon — the kind of structured creative infrastructure that powers books, games, comics, and films.
+Saga Architect is a structured world-building and canon management platform designed for writers, game creators, comic creators, and franchise builders.
+
+It helps creators organize complex story worlds by managing characters, factions, timelines, lore, and narrative arcs inside a single connected system.
+
+Unlike traditional note apps, Saga Architect focuses on continuity and canon integrity.
 
 ---
 
-## What It Does
+## Why It Exists
 
-SagaLoreBuilder gives creators a connected, AI-assisted system to:
+Most writing tools store notes. Saga Architect manages canon.
 
-- **Forge universes** from a single concept prompt
-- **Build factions** with ideology, power structures, conflicts, and objectives
-- **Define characters** tied to factions, timelines, and story arcs
-- **Map locations** with strategic and mythic significance
-- **Track timelines** with canon status and consequence chains
-- **Generate story arcs** (trilogy, villain, prophecy, war, and more)
-- **Monitor lore consistency** with a built-in contradiction detector
+---
+
+## Core Features
+
+### Universe Engine
+
+Create and manage entire fictional universes.
+
+Each universe can contain:
+- Factions
+- Characters
+- Locations
+- Artifacts
+- Timelines
+- Story arcs
+
+### Canon Tracking
+
+Every entry can be assigned a canon status.
+
+Examples:
+- Canon
+- Alternate Timeline
+- Experimental
+- Deprecated
+
+This allows creators to track official lore without losing experimental ideas.
+
+### Character System
+
+Characters include structured data fields such as:
+- Name
+- Faction
+- Abilities
+- Relationships
+- Narrative arc
+- Timeline appearances
+
+This makes it easy to maintain consistent character histories.
+
+### Timeline Management
+
+Stories can be organized along a master timeline.
+
+Events can be linked to:
+- Characters
+- Locations
+- Factions
+- Major narrative arcs
+
+This allows creators to track story progression across multiple books, games, or series.
+
+### Story Arc Generator
+
+Saga Architect can generate story arc frameworks based on existing world data.
+
+Example outputs include:
+- Conflict arcs
+- Faction wars
+- Prophecy arcs
+- Character redemption arcs
+- Empire collapse arcs
+
+These tools help creators expand their worlds while maintaining internal logic.
+
+---
+
+## Who It's For
+
+Novelists
+Comic creators
+Game writers
+Franchise builders
+Lore-heavy worldbuilders
 
 ---
 
@@ -78,7 +149,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to access SagaLoreBuilder.
+Open [http://localhost:3000](http://localhost:3000) to access Saga Architect.
 
 ### AI Generation (Optional)
 
@@ -125,3 +196,9 @@ Dark cinematic theme — feels like opening a forbidden archive:
 - Expandable lore panels
 - Canon status badges
 - Premium dashboard cards
+
+---
+
+## License
+
+MIT License
