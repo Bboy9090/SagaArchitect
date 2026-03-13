@@ -1,14 +1,14 @@
-# SagaLoreBuilder
+# Saga Architect
 
-**Build your universe bible. Track your canon. Generate your saga.**
+**Universe Bible + Canon Engine for creators**
 
-SagaLoreBuilder is a **Universe Bible Generator + Canon Tracker + Story Arc Engine** for serious creators building worlds, franchises, timelines, factions, and canon — the kind of structured creative infrastructure that powers books, games, comics, and films.
+Saga Architect is a **Universe Bible Generator + Canon Tracker + Story Arc Engine** for serious creators building worlds, franchises, timelines, factions, and canon — the kind of structured creative infrastructure that powers books, games, comics, and films.
 
 ---
 
 ## What It Does
 
-SagaLoreBuilder gives creators a connected, AI-assisted system to:
+Saga Architect gives creators a connected, AI-assisted system to:
 
 - **Forge universes** from a single concept prompt
 - **Build factions** with ideology, power structures, conflicts, and objectives
@@ -61,13 +61,18 @@ Every entity supports a canon status:
 
 ---
 
-## Demo Universe: The Ashen Veil
+## Example Universe
 
-A built-in demo universe is included:
+### Universe: The Ashen Veil
 
 > An ancient empire fell when the sky split open and released memory-eating storms across the world. Now kingdoms, outlaw guilds, relic hunters, and forgotten bloodlines battle over the shattered remains of history.
 
-Includes 5 factions, 8 characters, 8 locations, 10 timeline events, 3 story arcs, and 5 lore rules — ready to explore immediately.
+**Factions:** 5
+**Characters:** 8
+**Timeline events:** 10
+**Story arcs:** 3
+
+Includes 8 locations and 5 lore rules — ready to explore immediately.
 
 ---
 
@@ -78,7 +83,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to access SagaLoreBuilder.
+Open [http://localhost:3000](http://localhost:3000) to access Saga Architect.
 
 ### AI Generation (Optional)
 
@@ -125,3 +130,16 @@ Dark cinematic theme — feels like opening a forbidden archive:
 - Expandable lore panels
 - Canon status badges
 - Premium dashboard cards
+
+---
+
+## Screenshots
+
+### Universe Forge
+*Coming soon*
+
+### Character Engine
+*Coming soon*
+
+### Timeline Engine
+*Coming soon*
