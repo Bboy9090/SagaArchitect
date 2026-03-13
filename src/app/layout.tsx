@@ -3,8 +3,8 @@ import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SagaLoreBuilder — Universe Bible Generator",
-  description: "Build your universe bible. Track your canon. Generate your saga.",
+  title: "Saga Architect — Universe Bible Generator",
+  description: "Universe Bible + Canon Engine for creators",
 };
 
 export default function RootLayout({

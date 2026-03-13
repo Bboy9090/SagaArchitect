@@ -1,5 +1,8 @@
 # Saga Architect
 
+**Universe Bible + Canon Engine for creators**
+
+Saga Architect is a **Universe Bible Generator + Canon Tracker + Story Arc Engine** for serious creators building worlds, franchises, timelines, factions, and canon — the kind of structured creative infrastructure that powers books, games, comics, and films.
 **Universe Bible + Canon Engine for Creators**
 
 Saga Architect is a structured world-building and canon management platform designed for writers, game creators, comic creators, and franchise builders.
@@ -52,6 +55,7 @@ Characters include structured data fields such as:
 - Narrative arc
 - Timeline appearances
 
+Saga Architect gives creators a connected, AI-assisted system to:
 This makes it easy to maintain consistent character histories.
 
 ### Timeline Management
@@ -132,13 +136,18 @@ Every entity supports a canon status:
 
 ---
 
-## Demo Universe: The Ashen Veil
+## Example Universe
 
-A built-in demo universe is included:
+### Universe: The Ashen Veil
 
 > An ancient empire fell when the sky split open and released memory-eating storms across the world. Now kingdoms, outlaw guilds, relic hunters, and forgotten bloodlines battle over the shattered remains of history.
 
-Includes 5 factions, 8 characters, 8 locations, 10 timeline events, 3 story arcs, and 5 lore rules — ready to explore immediately.
+**Factions:** 5
+**Characters:** 8
+**Timeline events:** 10
+**Story arcs:** 3
+
+Includes 8 locations and 5 lore rules — ready to explore immediately.
 
 ---
 
@@ -199,6 +208,16 @@ Dark cinematic theme — feels like opening a forbidden archive:
 
 ---
 
+## Screenshots
+
+### Universe Forge
+*Coming soon*
+
+### Character Engine
+*Coming soon*
+
+### Timeline Engine
+*Coming soon*
 ## License
 
 MIT License

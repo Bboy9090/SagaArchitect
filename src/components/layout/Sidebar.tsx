@@ -37,7 +37,7 @@ export function Sidebar() {
       <div className="p-4 border-b border-[#c9a84c]/20">
         <Link href="/dashboard" className="block">
           <h1 className="text-xl font-black text-[#c9a84c] tracking-wider">SAGA</h1>
-          <p className="text-xs text-gray-500 tracking-widest uppercase">LoreBuilder</p>
+          <p className="text-xs text-gray-500 tracking-widest uppercase">Architect</p>
         </Link>
       </div>
 
@@ -99,7 +99,7 @@ export function Sidebar() {
           <span className="text-[10px] text-[#c9a84c]/40">⚡</span>
           <span className="text-[10px] text-gray-700 tracking-wider uppercase">LoreEngine v1</span>
         </div>
-        <p className="text-[9px] text-gray-800 text-center tracking-widest uppercase">SagaLoreBuilder</p>
+        <p className="text-[9px] text-gray-800 text-center tracking-widest uppercase">Saga Architect</p>
       </div>
     </aside>
   );
