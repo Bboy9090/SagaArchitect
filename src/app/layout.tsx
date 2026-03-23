@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Saga Architect — Universe Bible Generator",
-  description: "Build your universe bible. Track your canon. Generate your saga.",
+  description: "Universe Bible + Canon Engine for creators",
   icons: { icon: "/sagaarchitect-logo.png" },
 };
 
@@ -16,6 +17,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased bg-[#0a0a0f] text-white">
         {children}
+        <Analytics />
       </body>
     </html>
   );
