@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useParams, usePathname } from 'next/navigation';
 
 interface NavItem {
@@ -35,9 +36,15 @@ export function Sidebar() {
   return (
     <aside className="w-64 min-h-screen bg-[#0a0a0f] border-r border-[#c9a84c]/20 flex flex-col">
       <div className="p-4 border-b border-[#c9a84c]/20">
-        <Link href="/dashboard" className="block">
-          <h1 className="text-xl font-black text-[#c9a84c] tracking-wider">SAGA</h1>
-          <p className="text-xs text-gray-500 tracking-widest uppercase">LoreBuilder</p>
+        <Link href="/dashboard" className="block flex flex-col items-center">
+          <Image
+            src="/sagaarchitect-logo.png"
+            alt="Saga Architect"
+            width={160}
+            height={160}
+            className="w-24 h-24 object-contain"
+            priority
+          />
         </Link>
       </div>
 
@@ -99,7 +106,7 @@ export function Sidebar() {
           <span className="text-[10px] text-[#c9a84c]/40">⚡</span>
           <span className="text-[10px] text-gray-700 tracking-wider uppercase">LoreEngine v1</span>
         </div>
-        <p className="text-[9px] text-gray-800 text-center tracking-widest uppercase">SagaLoreBuilder</p>
+        <p className="text-[9px] text-gray-600 text-center tracking-widest uppercase">Saga Architect</p>
       </div>
     </aside>
   );

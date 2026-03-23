@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Navigation } from '@/components/layout/Navigation';
 import { UniverseCard } from '@/components/universe/UniverseCard';
@@ -96,9 +97,12 @@ export default function DashboardPage() {
         {/* Hero Header */}
         <div className="border-b border-[#c9a84c]/20 bg-gradient-to-r from-[#0a0a0f] via-[#0f0f1a] to-[#0a0a0f] px-8 py-10">
           <div className="max-w-5xl mx-auto">
-            <h1 className="text-4xl font-black text-white tracking-tight mb-2">
-              <span className="text-[#c9a84c]">SagaLore</span>Builder
-            </h1>
+            <div className="flex items-center gap-4 mb-4">
+              <Image src="/sagaarchitect-logo.png" alt="Saga Architect" width={64} height={64} className="flex-shrink-0" />
+              <h1 className="text-4xl font-black text-white tracking-tight">
+                <span className="text-[#c9a84c]">Saga</span> Architect
+              </h1>
+            </div>
             <p className="text-gray-400 text-lg">
               Build your universe bible. Track your canon. Generate your saga.
             </p>

@@ -51,9 +51,13 @@ export default function UniverseNewPage() {
         body: JSON.stringify(data),
       });
       const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.error ?? result.detail ?? `API returned ${res.status}`);
+      }
       setGenerated(result);
       setStep('review');
     } catch {
+      // Fallback to placeholder content on network/API errors
       setGenerated({
         world_overview: `${data.name} is a world shaped by ${data.concept}`,
         creation_myth: `In the beginning, the forces of ${data.genre} shaped this world...`,

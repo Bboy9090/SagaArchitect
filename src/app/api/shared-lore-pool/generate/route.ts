@@ -121,8 +121,9 @@ async function handleFreshRecombination(
     ? (filters.theme_tags as string[])
     : [];
 
-  // Fetch matching pool entries
-  const poolUrl = new URL('/api/shared-lore-pool', req.url);
+  // Fetch matching pool entries — use nextUrl.origin for reliable base in serverless (Vercel, etc.)
+  const base = req.nextUrl?.origin ?? new URL(req.url).origin;
+  const poolUrl = new URL('/api/shared-lore-pool', base);
   if (genre) poolUrl.searchParams.set('genre', genre);
   if (tone) poolUrl.searchParams.set('tone', tone);
   if (ageBand) poolUrl.searchParams.set('age_band', ageBand);
@@ -256,8 +257,9 @@ async function handleLegacyGeneration(
     );
   }
 
-  // Fetch archetypes to use as inspiration patterns
-  const poolUrl = new URL('/api/shared-lore-pool', req.url);
+  // Fetch archetypes — use nextUrl.origin for reliable base in serverless
+  const base = req.nextUrl?.origin ?? new URL(req.url).origin;
+  const poolUrl = new URL('/api/shared-lore-pool', base);
   if (genre) poolUrl.searchParams.set('genre', genre);
   if (tone) poolUrl.searchParams.set('tone', tone);
   if (theme_tags.length > 0) poolUrl.searchParams.set('theme_tags', theme_tags.join(','));
