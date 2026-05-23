@@ -1,17 +1,39 @@
-# LoreEngine + MythLoreBuilder — Product Roadmap
+# Saga Architect — Product Roadmap
 
 ## Vision
 
-Build a **creative platform** where creators construct fictional universes once and generate stories, games, comics, and scripts across multiple mediums without contradictions.
+Build a **creative platform** where creators construct fictional universes once and generate stories, games, comics, and scripts across multiple mediums without contradictions — all within **Bobby's World / Blue Phoenix OS**.
 
 ```
 LoreEngine (canonical brain)
    │
-   ├── MythLoreBuilder / SagaArchitect  →  universe building
+   ├── Saga Architect                   →  universe building (MVP COMPLETE)
    ├── Rainstorms                        →  books / children's stories
    ├── StoryMap                          →  plot visualization (planned)
    └── GameLore                          →  game narrative design (planned)
 ```
+
+---
+
+## Current Status: MVP Foundation Complete (Reforged)
+
+**Package ID:** com.bobbysworld.sagaarchitect
+**Version:** 0.1.0
+**Status:** MVP Ready
+
+### MVP Features Delivered
+
+✅ **Universe Dashboard** - Create, load demo, manage universes
+✅ **Character Cards** - Full character profiles with relationships
+✅ **Lore/Canon Rule Entries** - Canon rule management with conflict detection
+✅ **Timeline Events** - Chronological event tracking with affected entities
+✅ **Export Functionality** - JSON export and canon block export
+✅ **Faction Management** - Full faction profiles with relationships
+✅ **Location Tracking** - Location profiles with strategic/mythic value
+✅ **Story Arc Management** - Multi-type story arc system
+✅ **AI Generation** - Optional AI-powered generation (with mock fallback)
+✅ **Canon Tracking** - 5-tier canon status system (canon/draft/alternate/deprecated/mystery)
+✅ **Build/Test Infrastructure** - Lint, build, healthcheck, smoke tests
 
 ---
 
@@ -42,7 +64,7 @@ API endpoints:
 
 ---
 
-## Phase 2 — MythLoreBuilder / SagaArchitect ✅ Complete
+## Phase 2 — Saga Architect MVP ✅ Complete (Reforged)
 
 **Goal**: The universe builder. Writers create worlds that LoreEngine stores.
 
@@ -90,17 +112,30 @@ Data models:
 
 ---
 
-## Phase 3 — Rainstorms Integration 🔄 In Progress
+## Known Limitations (MVP)
+
+As documented in **docs/PRD.md**:
+
+- **Data Model:** Basic data structures, no advanced validation yet
+- **Collaboration:** Single-user only, no multi-user support
+- **Storage:** localStorage only, no cloud sync or backup
+- **Export:** JSON only, no PDF or visual exports yet
+
+---
+
+## Next Planned Features (Post-MVP Issues)
+
+### Phase 3 — Rainstorms Integration 🔄 In Progress
 
 **Goal**: Rainstorms reads from LoreEngine to generate canon-consistent stories.
 
 - [x] `POST /api/lore-engine/canon-block` — primary sync endpoint
 - [x] `POST /api/universes/{id}/story-context` — story-context endpoint
-- [x] Story Forge within SagaArchitect (generate stories from any universe)
+- [x] Story Forge within Saga Architect (generate stories from any universe)
 - [x] Export Canon Block button (copies canon JSON for external tools)
-- [ ] Rainstorms UI integration (happens in Rainstorms repo)
-- [ ] Universe selector in Rainstorms
-- [ ] Auto-pull canon on story generation in Rainstorms
+- [ ] **Rainstorms UI integration** (happens in Rainstorms repo)
+- [ ] **Universe selector in Rainstorms**
+- [ ] **Auto-pull canon on story generation in Rainstorms**
 
 Story formats supported:
 - [x] opening_chapter
@@ -109,26 +144,28 @@ Story formats supported:
 - [x] book_outline
 - [x] children_book
 
----
+### Phase 4 — Multiple Timelines & Import
 
-## Phase 4 — Extended Fields & Canon Validation 🔄 In Progress
+**Goal**: Advanced timeline management and data import.
 
-**Goal**: Richer data models, sharper conflict detection.
+- [ ] **Multiple timeline support** (alternate timelines, parallel timelines)
+- [ ] **Import from external sources** (JSON, CSV, other formats)
+- [ ] Timeline chronological order verification
+- [ ] Character age/era consistency checks
+- [ ] Location control changes over time
 
-- [x] Character: `appearance`, `speech_style`
-- [x] Faction: `symbol`
-- [x] TimelineEvent: `hidden_truths`
-- [x] StoryArc: `turning_points`, `canon_status`
-- [x] Conflict: dead characters in multiple events
-- [x] Conflict: faction ally/enemy asymmetry
-- [x] Conflict: magic rule violation hints
-- [ ] Conflict: timeline chronological order verification
-- [ ] Conflict: character age/era consistency checks
-- [ ] Conflict: location control changes over time
+### Phase 5 — Collaboration Features
 
----
+**Goal**: Multi-user collaboration and cloud sync.
 
-## Phase 5 — StoryMap (Planned)
+- [ ] **MongoDB backend** (replace localStorage)
+- [ ] **User authentication** (JWT auth)
+- [ ] **Multi-user support** (shared universes)
+- [ ] **Real-time collaboration** (live updates)
+- [ ] **Cloud sync** (backup and restore)
+- [ ] **Version history** (track changes over time)
+
+### Phase 6 — StoryMap (Planned)
 
 **Goal**: Visual plot map. See your universe as a connected graph instead of a list.
 
@@ -141,9 +178,7 @@ Planned visualizations:
 
 API reads from: `timeline_events`, `story_arcs`, `characters`, `factions`, `locations`
 
----
-
-## Phase 6 — GameLore (Planned)
+### Phase 7 — GameLore (Planned)
 
 **Goal**: Generate game narrative design assets from universe data.
 

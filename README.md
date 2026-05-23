@@ -1,13 +1,10 @@
 # Saga Architect
 
-**Universe Bible + Canon Engine for creators**
-
-Saga Architect is a **Universe Bible Generator + Canon Tracker + Story Arc Engine** for serious creators building worlds, franchises, timelines, factions, and canon — the kind of structured creative infrastructure that powers books, games, comics, and films.
 **Universe Bible + Canon Engine for Creators**
 
-Saga Architect is a structured world-building and canon management platform designed for writers, game creators, comic creators, and franchise builders.
+Saga Architect is a structured world-building and canon management platform for **Bobby's World / Blue Phoenix OS**, designed for writers, game creators, comic creators, and franchise builders.
 
-It helps creators organize complex story worlds by managing characters, factions, timelines, lore, and narrative arcs inside a single connected system.
+It helps creators organize complex story worlds by managing characters, factions, timelines, lore, and narrative arcs inside a single connected system with AI-powered generation and canon tracking.
 
 Unlike traditional note apps, Saga Architect focuses on continuity and canon integrity.
 
@@ -153,12 +150,49 @@ Includes 8 locations and 5 lore rules — ready to explore immediately.
 
 ## Getting Started
 
+### Prerequisites
+
+- Node.js 20 or higher
+- npm or yarn
+
+### Installation
+
 ```bash
+# Clone the repository
+git clone https://github.com/Bboy9090/SagaArchitect.git
+cd SagaArchitect
+
+# Install dependencies
 npm install
+
+# Start development server
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to access Saga Architect.
+
+### Building for Production
+
+```bash
+# Build the application
+npm run build
+
+# Start production server
+npm start
+```
+
+### Testing
+
+```bash
+# Run linter
+npm run lint
+
+# Run healthcheck (basic functionality tests)
+./scripts/healthcheck.sh
+
+# Run smoke tests
+./scripts/smoke-test.sh
+```
 
 ### AI Generation (Optional)
 
@@ -221,3 +255,7 @@ Dark cinematic theme — feels like opening a forbidden archive:
 ## License
 
 MIT License
+
+## About Bobby's World / Blue Phoenix OS
+
+Saga Architect is part of the Bobby's World / Blue Phoenix OS ecosystem - a creative platform for building and managing fictional universes across multiple mediums.
