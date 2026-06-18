@@ -1,0 +1,43 @@
+{
+  "id": "com.bobbysworld.sagaarchitect",
+  "name": "Saga Architect",
+  "version": "0.1.0",
+  "description": "Universe Bible + Canon Engine for Creators - A structured world-building and canon management platform for Bobby's World / Blue Phoenix OS",
+  "author": "Bobby's World",
+  "license": "MIT",
+  "category": "creativity",
+  "platform": {
+    "web": true,
+    "windows": true,
+    "bluephoenixos": true
+  },
+  "features": {
+    "universe_dashboard": true,
+    "character_cards": true,
+    "lore_canon_rules": true,
+    "timeline_events": true,
+    "export_functionality": true,
+    "ai_generation": true,
+    "canon_tracking": true
+  },
+  "mvp_limitations": {
+    "data_model": "Basic data model, no collaborative features yet",
+    "collaboration": "Single-user only",
+    "storage": "localStorage only, no cloud sync"
+  },
+  "repository": "https://github.com/Bboy9090/SagaArchitect",
+  "homepage": "https://github.com/Bboy9090/SagaArchitect",
+  "keywords": [
+    "worldbuilding",
+    "lore",
+    "canon",
+    "story",
+    "universe",
+    "creative-writing",
+    "fantasy",
+    "sci-fi",
+    "game-design",
+    "bobby's world",
+    "blue phoenix os"
+  ]
+}
