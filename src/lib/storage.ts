@@ -1,20 +1,63 @@
-import type { Universe, Faction, Character, Location, TimelineEvent, StoryArc, LoreRule, GeneratedStory, MediaProject, SharedLoreEntry } from './types';
+import type { Universe, Faction, Character, Location, TimelineEvent, StoryArc, LoreRule, GeneratedStory, MediaProject, SharedLoreEntry, Scene, StoryboardPanel } from './types';
 
 const KEYS = {
-  universes: 'saga_universes',
-  factions: (uid: string) => `saga_factions_${uid}`,
-  characters: (uid: string) => `saga_characters_${uid}`,
-  locations: (uid: string) => `saga_locations_${uid}`,
-  timeline: (uid: string) => `saga_timeline_${uid}`,
-  arcs: (uid: string) => `saga_arcs_${uid}`,
-  lore: (uid: string) => `saga_lore_${uid}`,
-  stories: (uid: string) => `saga_stories_${uid}`,
-  projects: (uid: string) => `saga_projects_${uid}`,
-  sharedLorePool: 'saga_shared_lore_pool',
+  universes: 'phoenix_projects',
+  factions: (uid: string) => `phoenix_factions_${uid}`,
+  characters: (uid: string) => `phoenix_characters_${uid}`,
+  locations: (uid: string) => `phoenix_locations_${uid}`,
+  timeline: (uid: string) => `phoenix_timeline_${uid}`,
+  arcs: (uid: string) => `phoenix_arcs_${uid}`,
+  lore: (uid: string) => `phoenix_lore_${uid}`,
+  stories: (uid: string) => `phoenix_stories_${uid}`,
+  projects: (uid: string) => `phoenix_projects_${uid}`,
+  sharedLorePool: 'phoenix_shared_lore_pool',
+  scenes: (uid: string) => `phoenix_scenes_${uid}`,
+  storyboardPanels: (sid: string) => `phoenix_storyboard_panels_${sid}`,
 };
+
+function migrateLegacyData(): void {
+  if (typeof window === 'undefined') return;
+  const legacyUniversesRaw = localStorage.getItem('saga_universes');
+  const newProjectsRaw = localStorage.getItem('phoenix_projects');
+  
+  if (legacyUniversesRaw && !newProjectsRaw) {
+    try {
+      const universes = JSON.parse(legacyUniversesRaw) as Universe[];
+      localStorage.setItem('phoenix_projects', legacyUniversesRaw);
+      
+      universes.forEach(u => {
+        const uid = u.id;
+        const copyCollection = (legacyKey: string, newKey: string) => {
+          const rawLegacy = localStorage.getItem(legacyKey);
+          const rawNew = localStorage.getItem(newKey);
+          if (rawLegacy && !rawNew) {
+            localStorage.setItem(newKey, rawLegacy);
+          }
+        };
+        copyCollection(`saga_factions_${uid}`, `phoenix_factions_${uid}`);
+        copyCollection(`saga_characters_${uid}`, `phoenix_characters_${uid}`);
+        copyCollection(`saga_locations_${uid}`, `phoenix_locations_${uid}`);
+        copyCollection(`saga_timeline_${uid}`, `phoenix_timeline_${uid}`);
+        copyCollection(`saga_arcs_${uid}`, `phoenix_arcs_${uid}`);
+        copyCollection(`saga_lore_${uid}`, `phoenix_lore_${uid}`);
+        copyCollection(`saga_stories_${uid}`, `phoenix_stories_${uid}`);
+        copyCollection(`saga_projects_${uid}`, `phoenix_projects_${uid}`);
+      });
+      
+      const rawLegacyPool = localStorage.getItem('saga_shared_lore_pool');
+      const rawNewPool = localStorage.getItem('phoenix_shared_lore_pool');
+      if (rawLegacyPool && !rawNewPool) {
+        localStorage.setItem('phoenix_shared_lore_pool', rawLegacyPool);
+      }
+    } catch (e) {
+      console.error('Migration failed:', e);
+    }
+  }
+}
 
 function get<T>(key: string): T[] {
   if (typeof window === 'undefined') return [];
+  migrateLegacyData();
   try {
     const raw = localStorage.getItem(key);
     return raw ? (JSON.parse(raw) as T[]) : [];
@@ -27,6 +70,7 @@ function set<T>(key: string, data: T[]): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(key, JSON.stringify(data));
 }
+
 
 // Universes
 export const getUniverses = (): Universe[] => get<Universe>(KEYS.universes);
@@ -187,3 +231,52 @@ export const deleteSharedLoreEntry = (id: string): void =>
 /** Check whether a source entity already has a pool entry. */
 export const getSharedLoreEntryBySourceId = (sourceId: string): SharedLoreEntry | undefined =>
   getSharedLorePool().find(e => e.source_id === sourceId);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scenes
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const getScenes = (projectId: string): Scene[] => get<Scene>(KEYS.scenes(projectId));
+
+export const saveScene = (scene: Scene): void => {
+  const all = getScenes(scene.project_id);
+  const idx = all.findIndex(s => s.id === scene.id);
+  const now = new Date().toISOString();
+  const updatedScene = { ...scene, updated_at: now, created_at: scene.created_at || now };
+  if (idx >= 0) {
+    all[idx] = updatedScene;
+  } else {
+    all.push(updatedScene);
+  }
+  // Sort scenes by order field
+  all.sort((a, b) => a.order - b.order);
+  set(KEYS.scenes(scene.project_id), all);
+};
+
+export const deleteScene = (projectId: string, id: string): void =>
+  set(KEYS.scenes(projectId), getScenes(projectId).filter(s => s.id !== id));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Storyboard Panels
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const getStoryboardPanels = (sceneId: string): StoryboardPanel[] => get<StoryboardPanel>(KEYS.storyboardPanels(sceneId));
+
+export const saveStoryboardPanel = (panel: StoryboardPanel): void => {
+  const all = getStoryboardPanels(panel.scene_id);
+  const idx = all.findIndex(p => p.id === panel.id);
+  const now = new Date().toISOString();
+  const updatedPanel = { ...panel, updated_at: now, created_at: panel.created_at || now };
+  if (idx >= 0) {
+    all[idx] = updatedPanel;
+  } else {
+    all.push(updatedPanel);
+  }
+  // Sort panels by panel_number field
+  all.sort((a, b) => a.panel_number - b.panel_number);
+  set(KEYS.storyboardPanels(panel.scene_id), all);
+};
+
+export const deleteStoryboardPanel = (sceneId: string, id: string): void =>
+  set(KEYS.storyboardPanels(sceneId), getStoryboardPanels(sceneId).filter(p => p.id !== id));
+

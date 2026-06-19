@@ -7,8 +7,8 @@
 set -e  # Exit on error
 
 echo "========================================"
-echo "Saga Architect - Healthcheck"
-echo "Package ID: com.bobbysworld.sagaarchitect"
+echo "Phoenix Creator Studio - Healthcheck"
+echo "Package ID: com.bobbysworld.phoenixcreatorstudio"
 echo "========================================"
 echo ""
 
@@ -88,7 +88,7 @@ echo "-----------------------------------"
 
 # Check app.metadata.json has correct package ID
 if check_file app.metadata.json; then
-    if grep -q "com.bobbysworld.sagaarchitect" app.metadata.json; then
+    if grep -q "com.bobbysworld.phoenixcreatorstudio" app.metadata.json; then
         echo -ne "Testing: Package ID is correct... "
         echo -e "${GREEN}✓ PASS${NC}"
         TESTS_RUN=$((TESTS_RUN + 1))
@@ -103,14 +103,14 @@ fi
 
 # Check package.json has correct name
 if check_file package.json; then
-    if grep -q '"name".*"saga-architect"' package.json; then
-        echo -ne "Testing: Package name is 'saga-architect'... "
+    if grep -q '"name".*"phoenix-creator-studio"' package.json; then
+        echo -ne "Testing: Package name is 'phoenix-creator-studio'... "
         echo -e "${GREEN}✓ PASS${NC}"
         TESTS_RUN=$((TESTS_RUN + 1))
         TESTS_PASSED=$((TESTS_PASSED + 1))
     else
-        echo -ne "Testing: Package name is 'saga-architect'... "
-        echo -e "${YELLOW}⚠ WARNING${NC} (name should be 'saga-architect')"
+        echo -ne "Testing: Package name is 'phoenix-creator-studio'... "
+        echo -e "${YELLOW}⚠ WARNING${NC} (name should be 'phoenix-creator-studio')"
         TESTS_RUN=$((TESTS_RUN + 1))
     fi
 fi

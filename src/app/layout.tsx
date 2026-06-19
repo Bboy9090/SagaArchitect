@@ -3,8 +3,8 @@ import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Saga Architect — Universe Bible Generator",
-  description: "Universe Bible + Canon Engine for creators",
+  title: "Phoenix Creator Studio — Project Bible Generator",
+  description: "Project Bible + Canon Engine for creators",
   icons: { icon: "/sagaarchitect-logo.png" },
 };
 

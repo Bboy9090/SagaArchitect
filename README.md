@@ -1,18 +1,18 @@
-# Saga Architect
+# Phoenix Creator Studio
 
 **Universe Bible + Canon Engine for Creators**
 
-Saga Architect is a structured world-building and canon management platform for **Bobby's World / Blue Phoenix OS**, designed for writers, game creators, comic creators, and franchise builders.
+Phoenix Creator Studio is a structured world-building and canon management platform for **Bobby's World / Blue Phoenix OS**, designed for writers, game creators, comic creators, storyboard artists, and franchise builders.
 
-It helps creators organize complex story worlds by managing characters, factions, timelines, lore, and narrative arcs inside a single connected system with AI-powered generation and canon tracking.
+It helps creators organize complex story worlds by managing characters, factions, timelines, lore, scenes, storyboard panels, and narrative arcs inside a single connected system with AI-powered generation, canvas sketching, and canon tracking.
 
-Unlike traditional note apps, Saga Architect focuses on continuity and canon integrity.
+Unlike traditional note apps, Phoenix Creator Studio focuses on continuity, canon integrity, and media-ready production pipelines.
 
 ---
 
 ## Why It Exists
 
-Most writing tools store notes. Saga Architect manages canon.
+Most writing tools store notes. Phoenix Creator Studio manages canon.
 
 ---
 
@@ -52,8 +52,7 @@ Characters include structured data fields such as:
 - Narrative arc
 - Timeline appearances
 
-Saga Architect gives creators a connected, AI-assisted system to:
-This makes it easy to maintain consistent character histories.
+Phoenix Creator Studio gives creators a connected, AI-assisted system to maintain consistent character histories.
 
 ### Timeline Management
 
@@ -69,7 +68,7 @@ This allows creators to track story progression across multiple books, games, or
 
 ### Story Arc Generator
 
-Saga Architect can generate story arc frameworks based on existing world data.
+Phoenix Creator Studio can generate story arc frameworks based on existing world data.
 
 Example outputs include:
 - Conflict arcs
@@ -96,10 +95,13 @@ Lore-heavy worldbuilders
 
 | Screen | Purpose |
 |--------|---------|
-| **Dashboard** | Universe gallery, demo loader, quick create |
-| **Universe Forge** | Input form → AI generates world overview, myth, themes |
+| **Dashboard** | Project gallery, demo loader, quick create |
+| **Project Forge** | Input form → AI generates world overview, myth, themes |
 | **Canon Core** | Expandable command center for all lore sections |
 | **Character Engine** | Character cards with faction ties, arc potential, relationships |
+| **Scenes Page** | Chronological list of story beats, forms for adding and editing |
+| **Storyboard Studio** | Visual panel layout, sketch drawing canvas, mock AI generator |
+| **Export Center** | Summarize project stats, outline preview, and print to PDF |
 | **Faction Builder** | Faction cards with ideology, resources, allies/enemies |
 | **Timeline Engine** | Chronological events with canon status and consequences |
 | **Arc Forge** | AI-generated story arcs using current canon |
@@ -109,9 +111,11 @@ Lore-heavy worldbuilders
 
 ## Data Model
 
-Seven connected entity types:
+Nine connected entity types:
 
-- `universes` — world overview, myth, themes, conflict, prophecy hooks
+- `universes` (Projects) — world overview, myth, themes, conflict, prophecy hooks
+- `scenes` — chronological beats, location reference, summary, order
+- `storyboard_panels` — panel numbers, camera shots, visual prompt details, dialog, base64 drawings
 - `factions` — ideology, leader, resources, allies, enemies, objectives
 - `characters` — motivations, powers, relationships, arc potential, status
 - `locations` — type, region, strategic value, mythic importance
@@ -169,7 +173,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to access Saga Architect.
+Open [http://localhost:3000](http://localhost:3000) to access Phoenix Creator Studio.
 
 ### Building for Production
 
@@ -258,4 +262,4 @@ MIT License
 
 ## About Bobby's World / Blue Phoenix OS
 
-Saga Architect is part of the Bobby's World / Blue Phoenix OS ecosystem - a creative platform for building and managing fictional universes across multiple mediums.
+Phoenix Creator Studio is part of the Bobby's World / Blue Phoenix OS ecosystem - a creative platform for building and managing fictional universes across multiple mediums.

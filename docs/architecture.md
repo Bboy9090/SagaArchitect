@@ -144,14 +144,57 @@ All endpoints have mock fallbacks when `OPENAI_API_KEY` is absent.
 
 ```
 universes
-  └─ factions
-  └─ characters
-  └─ locations
-  └─ timeline_events
-  └─ story_arcs
-  └─ lore_rules
-  └─ generated_stories   ← output of Story Forge
-  └─ media_projects      ← book, game, comic, film projects
+  ├─ factions
+  ├─ characters
+  ├─ locations
+  ├─ timeline_events
+  ├─ story_arcs
+  ├─ lore_rules
+  ├─ generated_stories   ← output of Story Forge
+  ├─ media_projects      ← book, game, comic, film projects
+  ├─ scenes              ← scene beats list for narrative planning
+  └─ storyboard_panels   ← storyboard panels and visual prompts linked to scenes
+```
+
+### Compatibility Note: Universe vs Project
+
+In the UI, the top-level entity is named **Project** to make the app feel like a unified creative studio. Internally, the code and datastores use **Universe** structure for full backward compatibility, keeping all legacy code intact. A TypeScript type alias maps `Project = Universe`.
+
+### Scenes
+
+A `Scene` is a structured beat in a narrative script or outline.
+
+```typescript
+interface Scene {
+  id: string;
+  project_id: string;      // maps to universe_id
+  title: string;
+  summary: string;
+  order: number;
+  location_id?: string;
+  canon_status: CanonStatus;
+  created_at?: string;
+  updated_at?: string;
+}
+```
+
+### Storyboard Panels
+
+A `StoryboardPanel` maps to a scene and represents a visual scene setup, with camera directions and dialogues.
+
+```typescript
+interface StoryboardPanel {
+  id: string;
+  scene_id: string;
+  panel_number: number;
+  visual_prompt: string;
+  action_description: string;
+  dialogue?: string;
+  camera_shot?: string;    // e.g. 'Close-Up', 'Wide Shot'
+  image_base64?: string;   // drawn canvas base64 image string
+  created_at?: string;
+  updated_at?: string;
+}
 ```
 
 ### Media Projects

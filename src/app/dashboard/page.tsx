@@ -98,13 +98,13 @@ export default function DashboardPage() {
         <div className="border-b border-[#c9a84c]/20 bg-gradient-to-r from-[#0a0a0f] via-[#0f0f1a] to-[#0a0a0f] px-8 py-10">
           <div className="max-w-5xl mx-auto">
             <div className="flex items-center gap-4 mb-4">
-              <Image src="/sagaarchitect-logo.png" alt="Saga Architect" width={64} height={64} className="flex-shrink-0" />
+              <Image src="/sagaarchitect-logo.png" alt="Phoenix Creator Studio" width={64} height={64} className="flex-shrink-0" />
               <h1 className="text-4xl font-black text-white tracking-tight">
-                <span className="text-[#c9a84c]">Saga</span> Architect
+                <span className="text-[#c9a84c]">Phoenix</span> Creator Studio
               </h1>
             </div>
             <p className="text-gray-400 text-lg">
-              Build your universe bible. Track your canon. Generate your saga.
+              Build your project bible. Track your canon. Generate your story boards.
             </p>
             <div className="flex items-center gap-3 mt-6">
               <Button
@@ -112,7 +112,7 @@ export default function DashboardPage() {
                 size="lg"
                 onClick={() => router.push('/universe/new')}
               >
-                ✨ Create New Universe
+                ✨ Create New Project
               </Button>
               <Button
                 variant="secondary"
@@ -120,7 +120,7 @@ export default function DashboardPage() {
                 loading={loadingDemo}
                 onClick={handleLoadDemo}
               >
-                🌑 Load Demo: The Ashen Veil
+                🌑 Load Demo Project: The Ashen Veil
               </Button>
             </div>
           </div>
@@ -130,16 +130,16 @@ export default function DashboardPage() {
           {universes.length === 0 ? (
             <div className="text-center py-24">
               <div className="text-6xl mb-6">📜</div>
-              <h2 className="text-2xl font-bold text-white mb-3">No Universes Yet</h2>
+              <h2 className="text-2xl font-bold text-white mb-3">No Projects Yet</h2>
               <p className="text-gray-500 mb-8 max-w-md mx-auto">
-                Every great saga begins with a blank page. Forge your first universe — or explore the depths of the Ashen Veil.
+                Every great project begins with a blank page. Forge your first project — or explore the depths of the Ashen Veil.
               </p>
               <div className="flex items-center justify-center gap-3">
                 <Button variant="gold" size="lg" onClick={() => router.push('/universe/new')}>
-                  ✨ Forge Your First Universe
+                  ✨ Forge Your First Project
                 </Button>
                 <Button variant="secondary" size="lg" loading={loadingDemo} onClick={handleLoadDemo}>
-                  🌑 Load Demo Universe
+                  🌑 Load Demo Project
                 </Button>
               </div>
             </div>
@@ -147,7 +147,7 @@ export default function DashboardPage() {
             <>
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-bold text-white">
-                  Your Universes <span className="text-[#c9a84c]">({universes.length})</span>
+                  Your Projects <span className="text-[#c9a84c]">({universes.length})</span>
                 </h2>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

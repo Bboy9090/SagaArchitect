@@ -16,19 +16,22 @@ export function Sidebar() {
   const universeId = params?.id as string | undefined;
 
   const mainNav: NavItem[] = [
-    { href: '/dashboard', label: 'Dashboard', icon: '🏛️' },
-    { href: '/universe/new', label: 'New Universe', icon: '✨' },
+    { href: '/dashboard', label: 'Projects', icon: '🏛️' },
+    { href: '/universe/new', label: 'New Project', icon: '✨' },
     { href: '/shared-lore-pool', label: 'Shared Lore Pool', icon: '🌐' },
   ];
 
   const universeNav: NavItem[] = universeId ? [
-    { href: `/universe/${universeId}`, label: 'Canon Core', icon: '🌍' },
+    { href: `/universe/${universeId}`, label: 'Canon Engine', icon: '🌍' },
     { href: `/universe/${universeId}/characters`, label: 'Characters', icon: '👤' },
+    { href: `/universe/${universeId}/scenes`, label: 'Scenes', icon: '🎬' },
+    { href: `/universe/${universeId}/storyboard`, label: 'Storyboard', icon: '🖼️' },
     { href: `/universe/${universeId}/factions`, label: 'Factions', icon: '🏛️' },
     { href: `/universe/${universeId}/timeline`, label: 'Timeline', icon: '⏳' },
     { href: `/universe/${universeId}/arcs`, label: 'Arc Forge', icon: '⚔️' },
     { href: `/universe/${universeId}/lore`, label: 'Lore Memory', icon: '🔮' },
     { href: `/universe/${universeId}/stories`, label: 'Story Forge', icon: '📖' },
+    { href: `/universe/${universeId}/export`, label: 'Export', icon: '📥' },
   ] : [];
 
   const isActive = (href: string) => pathname === href;
@@ -39,7 +42,7 @@ export function Sidebar() {
         <Link href="/dashboard" className="block flex flex-col items-center">
           <Image
             src="/sagaarchitect-logo.png"
-            alt="Saga Architect"
+            alt="Phoenix Creator Studio"
             width={160}
             height={160}
             className="w-24 h-24 object-contain"
@@ -75,7 +78,7 @@ export function Sidebar() {
 
         {universeNav.length > 0 && (
           <div>
-            <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-2 px-2">Universe</p>
+            <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-2 px-2">Project Context</p>
             {universeNav.map(item => (
               <Link
                 key={item.href}
@@ -106,9 +109,8 @@ export function Sidebar() {
           <span className="text-[10px] text-[#c9a84c]/40">⚡</span>
           <span className="text-[10px] text-gray-700 tracking-wider uppercase">LoreEngine v1</span>
         </div>
-        <p className="text-[9px] text-gray-600 text-center tracking-widest uppercase">Saga Architect</p>
+        <p className="text-[9px] text-gray-600 text-center tracking-widest uppercase">Phoenix Creator Studio</p>
       </div>
     </aside>
   );
 }
-
