@@ -20,6 +20,10 @@ import {
   demoTimeline, demoArcs, demoLoreRules, DEMO_UNIVERSE_ID
 } from '@/lib/demo-universe';
 
+// Storage mode helper & client
+import { getStorageMode, setStorageMode, isDbMode } from '@/lib/storage-mode';
+import { dbGetProjects, dbCreateProject, dbDeleteProject, dbGetCharacters, dbSaveCharacter } from '@/lib/db-client';
+
 type DashboardState = {
   universes: Universe[];
   counts: Record<string, { chars: number; factions: number; events: number }>;
@@ -30,6 +34,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const [state, setState] = useState<DashboardState>({ universes: [], counts: {}, mounted: false });
   const [loadingDemo, setLoadingDemo] = useState(false);
+  const [currentMode, setCurrentMode] = useState<'local' | 'db'>(() => getStorageMode());
 
   // Migration states
   const [legacyStats, setLegacyStats] = useState<LegacyDataStats | null>(null);
@@ -49,16 +54,32 @@ export default function DashboardPage() {
 
   const { universes, counts, mounted } = state;
 
-  const refreshDashboardData = () => {
-    const all = getUniverses();
+  const refreshDashboardData = async () => {
+    const isDb = isDbMode();
+    let all: Universe[] = [];
+    if (isDb) {
+      all = await dbGetProjects();
+    } else {
+      all = getUniverses();
+    }
+
     const c: DashboardState['counts'] = {};
-    all.forEach(u => {
-      c[u.id] = {
-        chars: getCharacters(u.id).length,
-        factions: getFactions(u.id).length,
-        events: getTimeline(u.id).length,
-      };
-    });
+    for (const u of all) {
+      if (isDb) {
+        const dbChars = await dbGetCharacters(u.id);
+        c[u.id] = {
+          chars: dbChars.length,
+          factions: getFactions(u.id).length,
+          events: getTimeline(u.id).length,
+        };
+      } else {
+        c[u.id] = {
+          chars: getCharacters(u.id).length,
+          factions: getFactions(u.id).length,
+          events: getTimeline(u.id).length,
+        };
+      }
+    }
     setState({ universes: all, counts: c, mounted: true });
 
     // Check for legacy storage data
@@ -77,9 +98,19 @@ export default function DashboardPage() {
     return () => clearTimeout(timer);
   }, []);
 
-  const handleDelete = (id: string) => {
+  const handleToggleMode = (mode: 'local' | 'db') => {
+    setStorageMode(mode);
+    setCurrentMode(mode);
+    refreshDashboardData();
+  };
+
+  const handleDelete = async (id: string) => {
     if (!confirm('Delete this universe and all its data?')) return;
-    deleteUniverse(id);
+    if (isDbMode()) {
+      await dbDeleteProject(id);
+    } else {
+      deleteUniverse(id);
+    }
     setState(prev => {
       const nextCounts = { ...prev.counts };
       delete nextCounts[id];
@@ -87,31 +118,34 @@ export default function DashboardPage() {
     });
   };
 
-  const handleLoadDemo = () => {
+  const handleLoadDemo = async () => {
     setLoadingDemo(true);
-    setTimeout(() => {
-      saveUniverse(demoUniverse);
-      saveFactions(DEMO_UNIVERSE_ID, demoFactions);
-      saveCharacters(DEMO_UNIVERSE_ID, demoCharacters);
-      saveLocations(DEMO_UNIVERSE_ID, demoLocations);
-      saveTimelineEvents(DEMO_UNIVERSE_ID, demoTimeline);
-      saveArcs(DEMO_UNIVERSE_ID, demoArcs);
-      saveLoreRules(DEMO_UNIVERSE_ID, demoLoreRules);
-      setState(prev => ({
-        ...prev,
-        universes: getUniverses(),
-        counts: {
-          ...prev.counts,
-          [DEMO_UNIVERSE_ID]: {
-            chars: demoCharacters.length,
-            factions: demoFactions.length,
-            events: demoTimeline.length,
-          }
+    if (isDbMode()) {
+      try {
+        await dbCreateProject(demoUniverse);
+        for (const char of demoCharacters) {
+          await dbSaveCharacter(DEMO_UNIVERSE_ID, char);
         }
-      }));
+      } catch (err) {
+        console.error(err);
+      }
+      refreshDashboardData();
       setLoadingDemo(false);
       router.push(`/universe/${DEMO_UNIVERSE_ID}`);
-    }, 800);
+    } else {
+      setTimeout(() => {
+        saveUniverse(demoUniverse);
+        saveFactions(DEMO_UNIVERSE_ID, demoFactions);
+        saveCharacters(DEMO_UNIVERSE_ID, demoCharacters);
+        saveLocations(DEMO_UNIVERSE_ID, demoLocations);
+        saveTimelineEvents(DEMO_UNIVERSE_ID, demoTimeline);
+        saveArcs(DEMO_UNIVERSE_ID, demoArcs);
+        saveLoreRules(DEMO_UNIVERSE_ID, demoLoreRules);
+        refreshDashboardData();
+        setLoadingDemo(false);
+        router.push(`/universe/${DEMO_UNIVERSE_ID}`);
+      }, 800);
+    }
   };
 
   const dumpLocalStorageData = () => {
@@ -257,11 +291,37 @@ export default function DashboardPage() {
         {/* Hero Header */}
         <div className="border-b border-[#c9a84c]/20 bg-gradient-to-r from-[#0a0a0f] via-[#0f0f1a] to-[#0a0a0f] px-8 py-10">
           <div className="max-w-5xl mx-auto">
-            <div className="flex items-center gap-4 mb-4">
-              <Image src="/sagaarchitect-logo.png" alt="Phoenix Creator Studio" width={64} height={64} className="flex-shrink-0" />
-              <h1 className="text-4xl font-black text-white tracking-tight">
-                <span className="text-[#c9a84c]">Phoenix</span> Creator Studio
-              </h1>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-4">
+              <div className="flex items-center gap-4">
+                <Image src="/sagaarchitect-logo.png" alt="Phoenix Creator Studio" width={64} height={64} className="flex-shrink-0" />
+                <h1 className="text-4xl font-black text-white tracking-tight">
+                  <span className="text-[#c9a84c]">Phoenix</span> Creator Studio
+                </h1>
+              </div>
+
+              {/* Storage Mode Toggle Switcher */}
+              <div className="bg-[#121217] border border-[#c9a84c]/20 rounded-lg p-1 flex items-center gap-1 self-start md:self-auto">
+                <button
+                  onClick={() => handleToggleMode('local')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded transition-colors ${
+                    currentMode === 'local'
+                      ? 'bg-[#c9a84c] text-black font-black'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  💻 Local Storage
+                </button>
+                <button
+                  onClick={() => handleToggleMode('db')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded transition-colors ${
+                    currentMode === 'db'
+                      ? 'bg-[#c9a84c] text-black font-black'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  🗄️ PostgreSQL DB
+                </button>
+              </div>
             </div>
             <p className="text-gray-400 text-lg">
               Build your project bible. Track your canon. Generate your story boards.
