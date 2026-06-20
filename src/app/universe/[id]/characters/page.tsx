@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
@@ -11,6 +11,10 @@ import { Modal } from '@/components/ui/Modal';
 import { Spinner } from '@/components/ui/Spinner';
 import { getCharacters, saveCharacter, deleteCharacter, saveCharacters, getUniverseById, getFactions } from '@/lib/storage';
 import type { Character } from '@/lib/types';
+
+// Storage mode helper & client
+import { isDbMode } from '@/lib/storage-mode';
+import { dbGetCharacters, dbSaveCharacter, dbDeleteCharacter } from '@/lib/db-client';
 
 interface CharactersPageProps {
   params: Promise<{ id: string }>;
@@ -24,26 +28,54 @@ export default function CharactersPage({ params }: CharactersPageProps) {
   const [generating, setGenerating] = useState(false);
   const [showForm, setShowForm] = useState(false);
 
+  const fetchCharacters = useCallback(async () => {
+    try {
+      if (isDbMode()) {
+        setCharacters(await dbGetCharacters(id));
+      } else {
+        setCharacters(getCharacters(id));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }, [id]);
+
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       const u = getUniverseById(id);
       if (!u) { router.push('/dashboard'); return; }
-      setCharacters(getCharacters(id));
+      await fetchCharacters();
       setLoading(false);
     }, 0);
     return () => clearTimeout(timer);
-  }, [id, router]);
+  }, [id, router, fetchCharacters]);
 
-  const handleDelete = (charId: string) => {
-    deleteCharacter(id, charId);
-    setCharacters(prev => prev.filter(c => c.id !== charId));
+  const handleDelete = async (charId: string) => {
+    try {
+      if (isDbMode()) {
+        await dbDeleteCharacter(charId);
+      } else {
+        deleteCharacter(id, charId);
+      }
+      setCharacters(prev => prev.filter(c => c.id !== charId));
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  const handleSave = (data: Omit<Character, 'id'>) => {
+  const handleSave = async (data: Omit<Character, 'id'>) => {
     const character: Character = { ...data, id: crypto.randomUUID() };
-    saveCharacter(character);
-    setCharacters(prev => [...prev, character]);
-    setShowForm(false);
+    try {
+      if (isDbMode()) {
+        await dbSaveCharacter(id, character);
+      } else {
+        saveCharacter(character);
+      }
+      setCharacters(prev => [...prev, character]);
+      setShowForm(false);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleGenerate = async () => {
@@ -63,9 +95,17 @@ export default function CharactersPage({ params }: CharactersPageProps) {
           id: crypto.randomUUID(),
           universe_id: id,
         }));
-        saveCharacters(id, newChars);
+        if (isDbMode()) {
+          for (const char of newChars) {
+            await dbSaveCharacter(id, char);
+          }
+        } else {
+          saveCharacters(id, newChars);
+        }
         setCharacters(newChars);
       }
+    } catch (err) {
+      console.error(err);
     } finally {
       setGenerating(false);
     }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
@@ -16,6 +16,8 @@ import {
 } from '@/lib/storage';
 import { buildRainstormsSyncPayload, syncToRainstorms, pingRainstorms } from '@/lib/rainstorms';
 import type { Universe, Faction, Character, Location } from '@/lib/types';
+import { isDbMode } from '@/lib/storage-mode';
+import { dbGetProject, dbGetCharacters, dbSaveCharacter } from '@/lib/db-client';
 
 interface Section {
   id: string;
@@ -34,6 +36,7 @@ export default function CanonCorePage({ params }: CanonPageProps) {
   const { id } = use(params);
   const router = useRouter();
   const [universe, setUniverse] = useState<Universe | null>(null);
+  const [charactersList, setCharactersList] = useState<Character[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ chars: 0, factions: 0, locations: 0, events: 0, arcs: 0, lore: 0 });
@@ -48,28 +51,52 @@ export default function CanonCorePage({ params }: CanonPageProps) {
   const [syncMessage, setSyncMessage] = useState('');
   const [pingOk, setPingOk] = useState<boolean | null>(null);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const u = getUniverseById(id);
-      if (!u) { router.push('/dashboard'); return; }
+  const fetchProjectData = useCallback(async () => {
+    try {
+      const isDb = isDbMode();
+      let u: Universe | null = null;
+      let chars: Character[] = [];
+      if (isDb) {
+        u = await dbGetProject(id);
+        chars = await dbGetCharacters(id);
+      } else {
+        u = getUniverseById(id) || null;
+        chars = getCharacters(id);
+      }
+
+      if (!u) {
+        router.push('/dashboard');
+        return;
+      }
+
       setUniverse(u);
+      setCharactersList(chars);
       const locs = getLocations(id);
       setLocations(locs);
       setStats({
-        chars: getCharacters(id).length,
+        chars: chars.length,
         factions: getFactions(id).length,
         locations: locs.length,
         events: getTimeline(id).length,
         arcs: getArcs(id).length,
         lore: getLoreRules(id).length,
       });
-      // Restore saved Rainstorms URL
+    } catch (err) {
+      console.error(err);
+      router.push('/dashboard');
+    } finally {
+      setLoading(false);
+    }
+  }, [id, router]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchProjectData();
       const saved = localStorage.getItem(RAINSTORMS_URL_KEY);
       if (saved) setRainstormsUrl(saved);
-      setLoading(false);
     }, 0);
     return () => clearTimeout(timer);
-  }, [id, router]);
+  }, [id, router, fetchProjectData]);
 
   const toggleSection = (sectionId: string) => {
     setExpanded(prev => ({ ...prev, [sectionId]: !prev[sectionId] }));
@@ -81,7 +108,7 @@ export default function CanonCorePage({ params }: CanonPageProps) {
     return {
       universe,
       factions: getFactions(id),
-      characters: getCharacters(id),
+      characters: charactersList,
       locations: getLocations(id),
       timeline: getTimeline(id),
       lore_rules: getLoreRules(id),
@@ -153,7 +180,7 @@ export default function CanonCorePage({ params }: CanonPageProps) {
     const payload = buildRainstormsSyncPayload(
       universe,
       getFactions(id),
-      getCharacters(id),
+      charactersList,
       getLocations(id),
       getTimeline(id),
       getArcs(id),
@@ -311,10 +338,17 @@ export default function CanonCorePage({ params }: CanonPageProps) {
                 });
                 const data = await res.json();
                 if (data.characters) {
-                  saveCharacters(id, data.characters.map((c: Omit<Character, 'id' | 'universe_id'>) => ({
+                  const newChars = data.characters.map((c: Omit<Character, 'id' | 'universe_id'>) => ({
                     ...c, id: crypto.randomUUID(), universe_id: id,
-                  })));
-                  setStats(prev => ({ ...prev, chars: data.characters.length }));
+                  }));
+                  if (isDbMode()) {
+                    for (const char of newChars) {
+                      await dbSaveCharacter(id, char);
+                    }
+                  } else {
+                    saveCharacters(id, newChars);
+                  }
+                  await fetchProjectData();
                 }
               } finally { setGenLoading(null); }
             }}

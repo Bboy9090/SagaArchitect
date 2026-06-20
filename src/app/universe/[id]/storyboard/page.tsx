@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, use } from 'react';
+import { useState, useEffect, useRef, use, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
@@ -10,6 +10,8 @@ import { Spinner } from '@/components/ui/Spinner';
 import { Card } from '@/components/ui/Card';
 import { getScenes, getStoryboardPanels, saveStoryboardPanel, deleteStoryboardPanel, getUniverseById } from '@/lib/storage';
 import type { Scene, StoryboardPanel } from '@/lib/types';
+import { isDbMode } from '@/lib/storage-mode';
+import { dbGetScenes, dbGetStoryboardPanels, dbSaveStoryboardPanel, dbDeleteStoryboardPanel } from '@/lib/db-client';
 
 interface StoryboardPageProps {
   params: Promise<{ id: string }>;
@@ -55,9 +57,8 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
   const [brushColor, setBrushColor] = useState('#c9a84c'); // Gold
   const [brushSize, setBrushSize] = useState(3);
 
-  // Fetch project, scenes, and panels
-  useEffect(() => {
-    const timer = setTimeout(() => {
+  const fetchInitialData = useCallback(async () => {
+    try {
       const u = getUniverseById(id);
       if (!u) {
         router.push('/dashboard');
@@ -65,24 +66,43 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
       }
       setProjectName(u.name);
 
-      const projectScenes = getScenes(id);
+      const isDb = isDbMode();
+      const projectScenes = isDb ? await dbGetScenes(id) : getScenes(id);
       setScenes(projectScenes);
 
       if (projectScenes.length > 0) {
-        // Prioritize URL sceneId, otherwise first scene
         const activeScene = projectScenes.find(s => s.id === initialSceneId) || projectScenes[0];
         setSelectedSceneId(activeScene.id);
-        setPanels(getStoryboardPanels(activeScene.id));
+        const projectPanels = isDb ? await dbGetStoryboardPanels(activeScene.id) : getStoryboardPanels(activeScene.id);
+        setPanels(projectPanels);
       }
+    } catch (err) {
+      console.error(err);
+    } finally {
       setLoading(false);
-    }, 0);
-    return () => clearTimeout(timer);
+    }
   }, [id, initialSceneId, router]);
 
+  // Fetch project, scenes, and panels
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchInitialData();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [id, initialSceneId, router, fetchInitialData]);
+
   // Update panels list when selected scene changes
-  const handleSelectScene = (sceneId: string) => {
+  const handleSelectScene = async (sceneId: string) => {
     setSelectedSceneId(sceneId);
-    setPanels(getStoryboardPanels(sceneId));
+    try {
+      if (isDbMode()) {
+        setPanels(await dbGetStoryboardPanels(sceneId));
+      } else {
+        setPanels(getStoryboardPanels(sceneId));
+      }
+    } catch (err) {
+      console.error(err);
+    }
     router.replace(`/universe/${id}/storyboard?sceneId=${sceneId}`);
   };
 
@@ -334,13 +354,21 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
     }, 100);
   };
 
-  const handleDelete = (panelId: string) => {
+  const handleDelete = async (panelId: string) => {
     if (!confirm('Delete this storyboard panel?')) return;
-    deleteStoryboardPanel(selectedSceneId, panelId);
-    setPanels(prev => prev.filter(p => p.id !== panelId));
+    try {
+      if (isDbMode()) {
+        await dbDeleteStoryboardPanel(panelId);
+      } else {
+        deleteStoryboardPanel(selectedSceneId, panelId);
+      }
+      setPanels(prev => prev.filter(p => p.id !== panelId));
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSceneId) return;
 
@@ -356,9 +384,18 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
       created_at: editingPanel?.created_at,
     };
 
-    saveStoryboardPanel(panel);
-    setPanels(getStoryboardPanels(selectedSceneId));
-    setShowModal(false);
+    try {
+      if (isDbMode()) {
+        await dbSaveStoryboardPanel(selectedSceneId, panel);
+        setPanels(await dbGetStoryboardPanels(selectedSceneId));
+      } else {
+        saveStoryboardPanel(panel);
+        setPanels(getStoryboardPanels(selectedSceneId));
+      }
+      setShowModal(false);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   if (loading) {

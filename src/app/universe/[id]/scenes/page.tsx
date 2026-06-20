@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
@@ -11,6 +11,10 @@ import { Card } from '@/components/ui/Card';
 import { CanonBadge } from '@/components/ui/Badge';
 import { getScenes, saveScene, deleteScene, getUniverseById } from '@/lib/storage';
 import type { Scene, CanonStatus } from '@/lib/types';
+
+// Storage mode helper & client
+import { isDbMode } from '@/lib/storage-mode';
+import { dbGetScenes, dbSaveScene, dbDeleteScene } from '@/lib/db-client';
 
 interface ScenesPageProps {
   params: Promise<{ id: string }>;
@@ -31,19 +35,31 @@ export default function ScenesPage({ params }: ScenesPageProps) {
   const [order, setOrder] = useState(1);
   const [canonStatus, setCanonStatus] = useState<CanonStatus>('draft');
 
+  const fetchScenes = useCallback(async () => {
+    try {
+      if (isDbMode()) {
+        setScenes(await dbGetScenes(id));
+      } else {
+        setScenes(getScenes(id));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }, [id]);
+
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       const u = getUniverseById(id);
       if (!u) {
         router.push('/dashboard');
         return;
       }
       setProjectName(u.name);
-      setScenes(getScenes(id));
+      await fetchScenes();
       setLoading(false);
     }, 0);
     return () => clearTimeout(timer);
-  }, [id, router]);
+  }, [id, router, fetchScenes]);
 
   const handleOpenAdd = () => {
     setEditingScene(null);
@@ -63,13 +79,21 @@ export default function ScenesPage({ params }: ScenesPageProps) {
     setShowModal(true);
   };
 
-  const handleDelete = (sceneId: string) => {
+  const handleDelete = async (sceneId: string) => {
     if (!confirm('Delete this scene? Storyboard panels linked to it will remain in memory.')) return;
-    deleteScene(id, sceneId);
-    setScenes(prev => prev.filter(s => s.id !== sceneId));
+    try {
+      if (isDbMode()) {
+        await dbDeleteScene(sceneId);
+      } else {
+        deleteScene(id, sceneId);
+      }
+      setScenes(prev => prev.filter(s => s.id !== sceneId));
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
 
@@ -83,9 +107,17 @@ export default function ScenesPage({ params }: ScenesPageProps) {
       created_at: editingScene?.created_at,
     };
 
-    saveScene(scene);
-    setScenes(getScenes(id));
-    setShowModal(false);
+    try {
+      if (isDbMode()) {
+        await dbSaveScene(id, scene);
+      } else {
+        saveScene(scene);
+      }
+      await fetchScenes();
+      setShowModal(false);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   if (loading) {
