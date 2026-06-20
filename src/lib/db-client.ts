@@ -129,3 +129,45 @@ export async function dbDeleteStoryboardPanel(panelId: string): Promise<void> {
     throw new Error(json.error || 'Failed to delete panel');
   }
 }
+
+// ASSETS
+export interface ProjectAsset {
+  id: string;
+  project_id: string;
+  name: string;
+  file_size: number;
+  mime_type: string;
+  storage_provider: string;
+  created_at: string;
+  updated_at: string;
+  serve_url: string;
+}
+
+export async function dbGetAssets(projectId: string): Promise<ProjectAsset[]> {
+  const res = await fetch(`/api/db/projects/${projectId}/assets`);
+  const json = await res.json();
+  if (!res.ok || !json.ok) return [];
+  return (json.data || []) as ProjectAsset[];
+}
+
+export async function dbUploadAsset(projectId: string, file: File): Promise<ProjectAsset> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('projectId', projectId);
+
+  const res = await fetch('/api/db/assets/upload', {
+    method: 'POST',
+    body: formData,
+  });
+  return handleResponse<ProjectAsset>(res);
+}
+
+export async function dbDeleteAsset(assetId: string): Promise<void> {
+  const res = await fetch(`/api/db/assets/${assetId}`, {
+    method: 'DELETE',
+  });
+  const json = await res.json();
+  if (!res.ok || !json.ok) {
+    throw new Error(json.error || 'Failed to delete asset');
+  }
+}
