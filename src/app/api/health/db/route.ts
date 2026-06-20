@@ -24,13 +24,14 @@ export async function GET() {
       message: 'Database connection verified successfully.',
       timestamp,
     });
-  } catch (error: any) {
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown database error';
     console.error('Database connection check failed:', error);
     return NextResponse.json({
       ok: false,
       status: 'error',
       message: 'Failed to communicate with the database.',
-      error: error.message || 'Unknown database error',
+      error: errorMessage,
       timestamp,
     }, { status: 500 });
   }

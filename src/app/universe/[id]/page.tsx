@@ -49,23 +49,26 @@ export default function CanonCorePage({ params }: CanonPageProps) {
   const [pingOk, setPingOk] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const u = getUniverseById(id);
-    if (!u) { router.push('/dashboard'); return; }
-    setUniverse(u);
-    const locs = getLocations(id);
-    setLocations(locs);
-    setStats({
-      chars: getCharacters(id).length,
-      factions: getFactions(id).length,
-      locations: locs.length,
-      events: getTimeline(id).length,
-      arcs: getArcs(id).length,
-      lore: getLoreRules(id).length,
-    });
-    // Restore saved Rainstorms URL
-    const saved = localStorage.getItem(RAINSTORMS_URL_KEY);
-    if (saved) setRainstormsUrl(saved);
-    setLoading(false);
+    const timer = setTimeout(() => {
+      const u = getUniverseById(id);
+      if (!u) { router.push('/dashboard'); return; }
+      setUniverse(u);
+      const locs = getLocations(id);
+      setLocations(locs);
+      setStats({
+        chars: getCharacters(id).length,
+        factions: getFactions(id).length,
+        locations: locs.length,
+        events: getTimeline(id).length,
+        arcs: getArcs(id).length,
+        lore: getLoreRules(id).length,
+      });
+      // Restore saved Rainstorms URL
+      const saved = localStorage.getItem(RAINSTORMS_URL_KEY);
+      if (saved) setRainstormsUrl(saved);
+      setLoading(false);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [id, router]);
 
   const toggleSection = (sectionId: string) => {

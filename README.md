@@ -185,6 +185,25 @@ npm run build
 npm start
 ```
 
+### Database Schema & Migrations (PostgreSQL + Drizzle)
+
+The database schema is defined inside `src/db/schema.ts` and managed using Drizzle ORM.
+
+```bash
+# Generate SQL migrations files
+npm run db:generate
+
+# Apply migrations to PostgreSQL instance
+npm run db:migrate
+
+# Push schema directly (dev environment check)
+npm run db:push
+
+# Open the Drizzle Studio visualizer dashboard
+npm run db:studio
+```
+
+
 ### Testing
 
 ```bash

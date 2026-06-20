@@ -25,10 +25,13 @@ export default function CharactersPage({ params }: CharactersPageProps) {
   const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
-    const u = getUniverseById(id);
-    if (!u) { router.push('/dashboard'); return; }
-    setCharacters(getCharacters(id));
-    setLoading(false);
+    const timer = setTimeout(() => {
+      const u = getUniverseById(id);
+      if (!u) { router.push('/dashboard'); return; }
+      setCharacters(getCharacters(id));
+      setLoading(false);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [id, router]);
 
   const handleDelete = (charId: string) => {

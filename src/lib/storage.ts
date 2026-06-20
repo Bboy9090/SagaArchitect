@@ -280,3 +280,224 @@ export const saveStoryboardPanel = (panel: StoryboardPanel): void => {
 export const deleteStoryboardPanel = (sceneId: string, id: string): void =>
   set(KEYS.storyboardPanels(sceneId), getStoryboardPanels(sceneId).filter(p => p.id !== id));
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MIGRATION HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface LegacyDataStats {
+  hasLegacyData: boolean;
+  projectCount: number;
+  characterCount: number;
+  factionCount: number;
+  locationCount: number;
+  timelineCount: number;
+  arcCount: number;
+  ruleCount: number;
+  storyCount: number;
+  sceneCount: number;
+  storyboardCount: number;
+}
+
+export const detectLegacyData = (): LegacyDataStats => {
+  if (typeof window === 'undefined') {
+    return {
+      hasLegacyData: false,
+      projectCount: 0,
+      characterCount: 0,
+      factionCount: 0,
+      locationCount: 0,
+      timelineCount: 0,
+      arcCount: 0,
+      ruleCount: 0,
+      storyCount: 0,
+      sceneCount: 0,
+      storyboardCount: 0,
+    };
+  }
+
+  let projectsRaw = '';
+  const projectKeys = ['phoenix_projects', 'saga_universes'];
+  for (const k of projectKeys) {
+    const raw = localStorage.getItem(k);
+    if (raw && JSON.parse(raw || '[]').length > 0) {
+      projectsRaw = raw;
+      break;
+    }
+  }
+
+  if (!projectsRaw) {
+    return {
+      hasLegacyData: false,
+      projectCount: 0,
+      characterCount: 0,
+      factionCount: 0,
+      locationCount: 0,
+      timelineCount: 0,
+      arcCount: 0,
+      ruleCount: 0,
+      storyCount: 0,
+      sceneCount: 0,
+      storyboardCount: 0,
+    };
+  }
+
+  let localProjects: { id: string }[] = [];
+  try {
+    localProjects = JSON.parse(projectsRaw);
+  } catch {
+    return {
+      hasLegacyData: false,
+      projectCount: 0,
+      characterCount: 0,
+      factionCount: 0,
+      locationCount: 0,
+      timelineCount: 0,
+      arcCount: 0,
+      ruleCount: 0,
+      storyCount: 0,
+      sceneCount: 0,
+      storyboardCount: 0,
+    };
+  }
+
+  let characterCount = 0;
+  let factionCount = 0;
+  let locationCount = 0;
+  let timelineCount = 0;
+  let arcCount = 0;
+  let ruleCount = 0;
+  let storyCount = 0;
+  let sceneCount = 0;
+  let storyboardCount = 0;
+
+  localProjects.forEach(proj => {
+    const uid = proj.id;
+    
+    const getCount = (prefix: string) => {
+      const keys = [`phoenix_${prefix}_${uid}`, `saga_${prefix}_${uid}`];
+      for (const k of keys) {
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          try {
+            return JSON.parse(raw).length;
+          } catch {}
+        }
+      }
+      return 0;
+    };
+
+    characterCount += getCount('characters');
+    factionCount += getCount('factions');
+    locationCount += getCount('locations');
+    timelineCount += getCount('timeline');
+    arcCount += getCount('arcs');
+    ruleCount += getCount('lore');
+    storyCount += getCount('stories');
+    
+    let scenesLength = 0;
+    const sceneKeys = [`phoenix_scenes_${uid}`, `saga_scenes_${uid}`];
+    for (const k of sceneKeys) {
+      const raw = localStorage.getItem(k);
+      if (raw) {
+        try {
+          const list = JSON.parse(raw);
+          scenesLength = list.length;
+          sceneCount += scenesLength;
+          list.forEach((sc: { id: string }) => {
+            const sid = sc.id;
+            const panelKeys = [`phoenix_storyboard_panels_${sid}`, `saga_storyboard_panels_${sid}`];
+            for (const pk of panelKeys) {
+              const drawRaw = localStorage.getItem(pk);
+              if (drawRaw) {
+                try {
+                  storyboardCount += JSON.parse(drawRaw).length;
+                  break;
+                } catch {}
+              }
+            }
+          });
+          break;
+        } catch {}
+      }
+    }
+  });
+
+  return {
+    hasLegacyData: localProjects.length > 0,
+    projectCount: localProjects.length,
+    characterCount,
+    factionCount,
+    locationCount,
+    timelineCount,
+    arcCount,
+    ruleCount,
+    storyCount,
+    sceneCount,
+    storyboardCount,
+  };
+};
+
+export const renameLocalStorageKeysPostMigration = (): void => {
+  if (typeof window === 'undefined') return;
+
+  const yyyymmdd = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const prefix = `phoenix_migrated_${yyyymmdd}_`;
+
+  const keysToRename = [
+    'phoenix_projects',
+    'saga_universes',
+    'phoenix_shared_lore_pool',
+    'saga_shared_lore_pool'
+  ];
+
+  const projectsRaw = localStorage.getItem('phoenix_projects') || localStorage.getItem('saga_universes');
+  if (projectsRaw) {
+    try {
+      const list = JSON.parse(projectsRaw);
+      list.forEach((proj: { id: string }) => {
+        const uid = proj.id;
+        keysToRename.push(`phoenix_characters_${uid}`);
+        keysToRename.push(`saga_characters_${uid}`);
+        keysToRename.push(`phoenix_factions_${uid}`);
+        keysToRename.push(`saga_factions_${uid}`);
+        keysToRename.push(`phoenix_locations_${uid}`);
+        keysToRename.push(`saga_locations_${uid}`);
+        keysToRename.push(`phoenix_timeline_${uid}`);
+        keysToRename.push(`saga_timeline_${uid}`);
+        keysToRename.push(`phoenix_arcs_${uid}`);
+        keysToRename.push(`saga_arcs_${uid}`);
+        keysToRename.push(`phoenix_lore_${uid}`);
+        keysToRename.push(`saga_lore_${uid}`);
+        keysToRename.push(`phoenix_stories_${uid}`);
+        keysToRename.push(`saga_stories_${uid}`);
+        keysToRename.push(`phoenix_projects_${uid}`);
+        keysToRename.push(`saga_projects_${uid}`);
+        keysToRename.push(`phoenix_scenes_${uid}`);
+        keysToRename.push(`saga_scenes_${uid}`);
+
+        const rawScenes = localStorage.getItem(`phoenix_scenes_${uid}`) || localStorage.getItem(`saga_scenes_${uid}`);
+        if (rawScenes) {
+          try {
+            const scenesList = JSON.parse(rawScenes);
+            scenesList.forEach((sc: { id: string }) => {
+              keysToRename.push(`phoenix_storyboard_panels_${sc.id}`);
+              keysToRename.push(`saga_storyboard_panels_${sc.id}`);
+            });
+          } catch {}
+        }
+      });
+    } catch {}
+  }
+
+  keysToRename.forEach(k => {
+    const val = localStorage.getItem(k);
+    if (val) {
+      localStorage.setItem(`${prefix}${k}`, val);
+      localStorage.removeItem(k);
+    }
+  });
+};
+
+
+

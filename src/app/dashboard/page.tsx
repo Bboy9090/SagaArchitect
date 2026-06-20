@@ -10,9 +10,11 @@ import { Spinner } from '@/components/ui/Spinner';
 import {
   getUniverses, saveUniverse, deleteUniverse,
   getFactions, getCharacters, getTimeline,
-  saveFactions, saveCharacters, saveLocations, saveTimelineEvents, saveArcs, saveLoreRules
+  saveFactions, saveCharacters, saveLocations, saveTimelineEvents, saveArcs, saveLoreRules,
+  getLocations, getArcs, getLoreRules, getStories, getScenes, getStoryboardPanels,
+  detectLegacyData, renameLocalStorageKeysPostMigration, type LegacyDataStats
 } from '@/lib/storage';
-import type { Universe } from '@/lib/types';
+import type { Universe, Faction, Character, Location, TimelineEvent, StoryArc, LoreRule, GeneratedStory, Scene, StoryboardPanel } from '@/lib/types';
 import {
   demoUniverse, demoFactions, demoCharacters, demoLocations,
   demoTimeline, demoArcs, demoLoreRules, DEMO_UNIVERSE_ID
@@ -29,21 +31,50 @@ export default function DashboardPage() {
   const [state, setState] = useState<DashboardState>({ universes: [], counts: {}, mounted: false });
   const [loadingDemo, setLoadingDemo] = useState(false);
 
+  // Migration states
+  const [legacyStats, setLegacyStats] = useState<LegacyDataStats | null>(null);
+  const [isMigrating, setIsMigrating] = useState(false);
+  const [migrationStep, setMigrationStep] = useState<'idle' | 'preview' | 'importing' | 'completed'>('idle');
+  const [previewResponse, setPreviewResponse] = useState<{
+    stats: Record<string, number>;
+    warnings: string[];
+    conflicts: string[];
+  } | null>(null);
+  const [importResponse, setImportResponse] = useState<{
+    imported: Record<string, number>;
+    conflicts: number;
+    warnings: number;
+  } | null>(null);
+  const [migrationError, setMigrationError] = useState<string | null>(null);
+
   const { universes, counts, mounted } = state;
 
+  const refreshDashboardData = () => {
+    const all = getUniverses();
+    const c: DashboardState['counts'] = {};
+    all.forEach(u => {
+      c[u.id] = {
+        chars: getCharacters(u.id).length,
+        factions: getFactions(u.id).length,
+        events: getTimeline(u.id).length,
+      };
+    });
+    setState({ universes: all, counts: c, mounted: true });
+
+    // Check for legacy storage data
+    const stats = detectLegacyData();
+    if (stats.hasLegacyData) {
+      setLegacyStats(stats);
+    } else {
+      setLegacyStats(null);
+    }
+  };
+
   useEffect(() => {
-    void (async () => {
-      const all = getUniverses();
-      const c: DashboardState['counts'] = {};
-      all.forEach(u => {
-        c[u.id] = {
-          chars: getCharacters(u.id).length,
-          factions: getFactions(u.id).length,
-          events: getTimeline(u.id).length,
-        };
-      });
-      setState({ universes: all, counts: c, mounted: true });
-    })();
+    const timer = setTimeout(() => {
+      refreshDashboardData();
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   const handleDelete = (id: string) => {
@@ -83,6 +114,107 @@ export default function DashboardPage() {
     }, 800);
   };
 
+  const dumpLocalStorageData = () => {
+    const localProjects = getUniverses();
+    const characters: Character[] = [];
+    const factions: Faction[] = [];
+    const locations: Location[] = [];
+    const timelineEvents: TimelineEvent[] = [];
+    const storyArcs: StoryArc[] = [];
+    const loreRules: LoreRule[] = [];
+    const generatedStories: GeneratedStory[] = [];
+    const scenes: Scene[] = [];
+    const storyboardPanels: StoryboardPanel[] = [];
+
+    localProjects.forEach(u => {
+      const uid = u.id;
+      characters.push(...getCharacters(uid));
+      factions.push(...getFactions(uid));
+      locations.push(...getLocations(uid));
+      timelineEvents.push(...getTimeline(uid));
+      storyArcs.push(...getArcs(uid));
+      loreRules.push(...getLoreRules(uid));
+      generatedStories.push(...getStories(uid));
+      
+      const scList = getScenes(uid);
+      scenes.push(...scList);
+      scList.forEach(sc => {
+        storyboardPanels.push(...getStoryboardPanels(sc.id));
+      });
+    });
+
+    return {
+      projects: localProjects,
+      characters,
+      factions,
+      locations,
+      timelineEvents,
+      storyArcs,
+      loreRules,
+      generatedStories,
+      scenes,
+      storyboardPanels,
+    };
+  };
+
+  const triggerMigrationPreview = async () => {
+    setIsMigrating(true);
+    setMigrationStep('preview');
+    setMigrationError(null);
+    try {
+      const payload = dumpLocalStorageData();
+      const res = await fetch('/api/migration/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'Failed to fetch migration preview');
+      }
+      setPreviewResponse({
+        stats: data.stats,
+        warnings: data.warnings || [],
+        conflicts: data.conflicts || [],
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'An error occurred during preview generation';
+      setMigrationError(msg);
+    } finally {
+      setIsMigrating(false);
+    }
+  };
+
+  const executeMigrationImport = async () => {
+    setIsMigrating(true);
+    setMigrationStep('importing');
+    setMigrationError(null);
+    try {
+      const payload = dumpLocalStorageData();
+      const res = await fetch('/api/migration/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'Failed to execute database migration');
+      }
+      setImportResponse(data.report);
+      setMigrationStep('completed');
+
+      // Post-migration: safe rename of keys
+      renameLocalStorageKeysPostMigration();
+      refreshDashboardData();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Migration transaction failed';
+      setMigrationError(msg);
+      setMigrationStep('preview');
+    } finally {
+      setIsMigrating(false);
+    }
+  };
+
   if (!mounted) return (
     <Navigation>
       <div className="flex items-center justify-center h-64">
@@ -94,6 +226,34 @@ export default function DashboardPage() {
   return (
     <Navigation>
       <div className="min-h-screen">
+        {/* Legacy Storage Migration Banner */}
+        {legacyStats && migrationStep === 'idle' && (
+          <div className="bg-gradient-to-r from-[#1a1505] via-[#2a220a] to-[#1a1505] border-b border-[#c9a84c]/30 px-8 py-4">
+            <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">💾</span>
+                <div>
+                  <h4 className="font-bold text-white text-sm md:text-base">
+                    Local Storage Data Found ({legacyStats.projectCount} Projects)
+                  </h4>
+                  <p className="text-xs text-gray-300">
+                    We found legacy offline projects containing {legacyStats.characterCount} characters, {legacyStats.sceneCount} scenes, and {legacyStats.storyboardCount} panels. Migrate them to PostgreSQL for persistent cloud storage.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="gold"
+                  size="sm"
+                  onClick={triggerMigrationPreview}
+                >
+                  🚀 Migrate to Database
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Hero Header */}
         <div className="border-b border-[#c9a84c]/20 bg-gradient-to-r from-[#0a0a0f] via-[#0f0f1a] to-[#0a0a0f] px-8 py-10">
           <div className="max-w-5xl mx-auto">
@@ -166,6 +326,151 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Migration Wizard Modal */}
+      {migrationStep !== 'idle' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+          <div className="relative w-full max-w-2xl bg-[#0d0d12] border border-[#c9a84c]/30 rounded-xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+            {/* Modal Header */}
+            <div className="border-b border-[#c9a84c]/20 bg-gradient-to-r from-[#111] to-[#0c0c10] px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">⛓️</span>
+                <h3 className="text-xl font-bold text-white">PostgreSQL Database Migration</h3>
+              </div>
+              {migrationStep !== 'importing' && (
+                <button
+                  onClick={() => setMigrationStep('idle')}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {migrationError && (
+                <div className="bg-red-950/50 border border-red-500/50 rounded-lg p-4 text-red-200 text-sm">
+                  <h4 className="font-bold mb-1">Migration Warning / Error</h4>
+                  <p>{migrationError}</p>
+                </div>
+              )}
+
+              {migrationStep === 'preview' && (
+                <>
+                  {isMigrating ? (
+                    <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                      <Spinner text="Analyzing legacy assets & structure..." />
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      <p className="text-gray-300 text-sm leading-relaxed">
+                        Below is a list of creative assets staged for import. All original localStorage keys will be safely backed up and renamed after success.
+                      </p>
+
+                      {previewResponse && (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                          {Object.entries(previewResponse.stats).map(([k, count]) => (
+                            <div key={k} className="bg-[#121217] border border-[#c9a84c]/10 rounded-lg p-3">
+                              <div className="text-xs text-gray-500 capitalize">{k.replace(/([A-Z])/g, ' $1')}</div>
+                              <div className="text-xl font-black text-white">{count}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {previewResponse && previewResponse.warnings.length > 0 && (
+                        <div className="bg-amber-950/30 border border-amber-500/40 rounded-lg p-4 text-amber-200 text-xs space-y-1 max-h-40 overflow-y-auto">
+                          <h5 className="font-bold text-sm text-amber-400">Execution Warnings ({previewResponse.warnings.length})</h5>
+                          <ul className="list-disc list-inside space-y-1">
+                            {previewResponse.warnings.map((w, idx) => (
+                              <li key={idx}>{w}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      <div className="bg-[#15151e] border border-[#c9a84c]/20 rounded-lg p-4 flex gap-3 text-xs text-gray-400">
+                        <span className="text-amber-500 text-base">⚠️</span>
+                        <p>
+                          <strong>Transaction Safe:</strong> The import operates inside a Postgres transaction. If any sub-entity insertion fails, all modifications will rollback automatically.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {migrationStep === 'importing' && (
+                <div className="flex flex-col items-center justify-center py-16 space-y-4">
+                  <Spinner text="Performing atomic Postgres insertions..." />
+                  <p className="text-xs text-gray-500">Writing relational entities, remapping keys...</p>
+                </div>
+              )}
+
+              {migrationStep === 'completed' && importResponse && (
+                <div className="space-y-6">
+                  <div className="bg-emerald-950/40 border border-emerald-500/40 rounded-lg p-5 text-center">
+                    <div className="text-4xl mb-2">🎉</div>
+                    <h4 className="text-lg font-bold text-white mb-1">Migration Successful!</h4>
+                    <p className="text-xs text-emerald-300">
+                      All assets have been successfully persisted to PostgreSQL under Creator ID: <code className="bg-black/40 px-1 py-0.5 rounded">11111111-1111-4111-8111-111111111111</code>.
+                    </p>
+                  </div>
+
+                  <h5 className="font-bold text-sm text-white">Import Summary Report:</h5>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {Object.entries(importResponse.imported).map(([k, count]) => (
+                      <div key={k} className="bg-[#121217] border border-emerald-500/10 rounded-lg p-3">
+                        <div className="text-xs text-gray-500 capitalize">{k.replace(/([A-Z])/g, ' $1')}</div>
+                        <div className="text-xl font-black text-emerald-400">{count}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="bg-[#15151e] border border-[#c9a84c]/20 rounded-lg p-4 text-xs text-gray-400">
+                    <p className="mb-2"><strong>Safety Renaming Done:</strong></p>
+                    <p>
+                      Your browser local storage keys have been renamed using prefix <code>phoenix_migrated_...</code> to prevent collision. The dashboard will continue displaying local data only until Phase 2C DB-backed reads are fully deployed.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="border-t border-[#c9a84c]/20 bg-gradient-to-r from-[#0c0c10] to-[#111] px-6 py-4 flex items-center justify-end gap-3">
+              {migrationStep === 'preview' && (
+                <>
+                  <Button
+                    variant="secondary"
+                    disabled={isMigrating}
+                    onClick={() => setMigrationStep('idle')}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="gold"
+                    disabled={isMigrating || !previewResponse}
+                    onClick={executeMigrationImport}
+                  >
+                    Confirm & Start Import
+                  </Button>
+                </>
+              )}
+
+              {migrationStep === 'completed' && (
+                <Button
+                  variant="gold"
+                  onClick={() => setMigrationStep('idle')}
+                >
+                  Close & Refresh Dashboard
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </Navigation>
   );
 }
