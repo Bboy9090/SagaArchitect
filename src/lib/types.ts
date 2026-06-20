@@ -263,6 +263,7 @@ export interface StoryboardPanel {
   dialogue?: string;
   camera_shot?: string;
   image_base64?: string;
+  asset_id?: string;          // DB mode: references an Asset Library upload
   created_at?: string;
   updated_at?: string;
 }

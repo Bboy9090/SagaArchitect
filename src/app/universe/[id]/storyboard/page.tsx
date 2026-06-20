@@ -11,7 +11,15 @@ import { Card } from '@/components/ui/Card';
 import { getScenes, getStoryboardPanels, saveStoryboardPanel, deleteStoryboardPanel, getUniverseById } from '@/lib/storage';
 import type { Scene, StoryboardPanel } from '@/lib/types';
 import { isDbMode } from '@/lib/storage-mode';
-import { dbGetScenes, dbGetStoryboardPanels, dbSaveStoryboardPanel, dbDeleteStoryboardPanel } from '@/lib/db-client';
+import {
+  dbGetScenes,
+  dbGetStoryboardPanels,
+  dbSaveStoryboardPanel,
+  dbDeleteStoryboardPanel,
+  dbGetAssets,
+  dbClearStoryboardPanelAsset,
+  type ProjectAsset,
+} from '@/lib/db-client';
 
 interface StoryboardPageProps {
   params: Promise<{ id: string }>;
@@ -29,11 +37,15 @@ const CAMERA_SHOT_OPTIONS = [
   'Establishing Shot',
 ];
 
+// Which tab is active in the modal image column
+type ImageTab = 'draw' | 'asset';
+
 export default function StoryboardPage({ params }: StoryboardPageProps) {
   const { id } = use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialSceneId = searchParams.get('sceneId');
+  const inDbMode = isDbMode();
 
   const [projectName, setProjectName] = useState('');
   const [scenes, setScenes] = useState<Scene[]>([]);
@@ -43,6 +55,9 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
   const [showModal, setShowModal] = useState(false);
   const [editingPanel, setEditingPanel] = useState<StoryboardPanel | null>(null);
 
+  // Project assets (DB mode only)
+  const [projectAssets, setProjectAssets] = useState<ProjectAsset[]>([]);
+
   // Form states
   const [panelNumber, setPanelNumber] = useState(1);
   const [visualPrompt, setVisualPrompt] = useState('');
@@ -51,10 +66,17 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
   const [cameraShot, setCameraShot] = useState('Medium Shot');
   const [imageBase64, setImageBase64] = useState<string>('');
 
+  // Asset selection state (DB mode only)
+  const [imageTab, setImageTab] = useState<ImageTab>('draw');
+  const [selectedAssetId, setSelectedAssetId] = useState<string>('');
+
+  // Per-panel attach/clear in-progress tracking
+  const [attachingPanelId, setAttachingPanelId] = useState<string>('');
+
   // Canvas drawing state
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [brushColor, setBrushColor] = useState('#c9a84c'); // Gold
+  const [brushColor, setBrushColor] = useState('#c9a84c');
   const [brushSize, setBrushSize] = useState(3);
 
   const fetchInitialData = useCallback(async () => {
@@ -66,14 +88,19 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
       }
       setProjectName(u.name);
 
-      const isDb = isDbMode();
-      const projectScenes = isDb ? await dbGetScenes(id) : getScenes(id);
+      const projectScenes = inDbMode ? await dbGetScenes(id) : getScenes(id);
       setScenes(projectScenes);
+
+      // Load project assets in DB mode for the asset picker
+      if (inDbMode) {
+        const assets = await dbGetAssets(id);
+        setProjectAssets(assets);
+      }
 
       if (projectScenes.length > 0) {
         const activeScene = projectScenes.find(s => s.id === initialSceneId) || projectScenes[0];
         setSelectedSceneId(activeScene.id);
-        const projectPanels = isDb ? await dbGetStoryboardPanels(activeScene.id) : getStoryboardPanels(activeScene.id);
+        const projectPanels = inDbMode ? await dbGetStoryboardPanels(activeScene.id) : getStoryboardPanels(activeScene.id);
         setPanels(projectPanels);
       }
     } catch (err) {
@@ -81,21 +108,19 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
     } finally {
       setLoading(false);
     }
-  }, [id, initialSceneId, router]);
+  }, [id, initialSceneId, router, inDbMode]);
 
-  // Fetch project, scenes, and panels
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchInitialData();
     }, 0);
     return () => clearTimeout(timer);
-  }, [id, initialSceneId, router, fetchInitialData]);
+  }, [fetchInitialData]);
 
-  // Update panels list when selected scene changes
   const handleSelectScene = async (sceneId: string) => {
     setSelectedSceneId(sceneId);
     try {
-      if (isDbMode()) {
+      if (inDbMode) {
         setPanels(await dbGetStoryboardPanels(sceneId));
       } else {
         setPanels(getStoryboardPanels(sceneId));
@@ -106,19 +131,15 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
     router.replace(`/universe/${id}/storyboard?sceneId=${sceneId}`);
   };
 
-  // Canvas drawing helpers
+  // ─── Canvas drawing helpers ─────────────────────────────────────────────────
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
     ctx.beginPath();
-    ctx.moveTo(x, y);
+    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
     setIsDrawing(true);
   };
 
@@ -128,16 +149,12 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
     ctx.strokeStyle = brushColor;
     ctx.lineWidth = brushSize;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.lineTo(x, y);
+    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
     ctx.stroke();
   };
 
@@ -160,157 +177,77 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
     if (!ctx) return;
     ctx.fillStyle = '#0f0f16';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    // Draw boundary/blueprint grid lines for premium feel
     ctx.strokeStyle = '#c9a84c10';
     ctx.lineWidth = 1;
     for (let i = 20; i < canvas.width; i += 20) {
-      ctx.beginPath();
-      ctx.moveTo(i, 0);
-      ctx.lineTo(i, canvas.height);
-      ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke();
     }
     for (let i = 20; i < canvas.height; i += 20) {
-      ctx.beginPath();
-      ctx.moveTo(0, i);
-      ctx.lineTo(canvas.width, i);
-      ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(canvas.width, i); ctx.stroke();
     }
     setImageBase64('');
   };
 
-  // Mock AI Generator that draws on the canvas based on shot type and prompt
   const generateMockSketch = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Clear with premium dark background
     ctx.fillStyle = '#0f0f16';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Sketch style: blue/gold blueprint lines
-    ctx.strokeStyle = '#3b82f640'; // neon blue blueprint
+    ctx.strokeStyle = '#3b82f640';
     ctx.lineWidth = 1;
-    // Draw crosshair/grid lines
     ctx.beginPath();
-    ctx.moveTo(canvas.width / 2, 0);
-    ctx.lineTo(canvas.width / 2, canvas.height);
-    ctx.moveTo(0, canvas.height / 2);
-    ctx.lineTo(canvas.width, canvas.height / 2);
+    ctx.moveTo(canvas.width / 2, 0); ctx.lineTo(canvas.width / 2, canvas.height);
+    ctx.moveTo(0, canvas.height / 2); ctx.lineTo(canvas.width, canvas.height / 2);
     ctx.stroke();
 
-    // Select color for sketch lines
-    ctx.strokeStyle = '#c9a84c90'; // sketch gold
+    ctx.strokeStyle = '#c9a84c90';
     ctx.lineWidth = 2;
+    const w = canvas.width, h = canvas.height;
 
-    const w = canvas.width;
-    const h = canvas.height;
-
-    // Generate schematic shapes based on camera shot
     if (cameraShot.includes('Wide') || cameraShot.includes('Establishing')) {
-      // Horizon line
+      ctx.beginPath(); ctx.moveTo(0, h * 0.65); ctx.lineTo(w, h * 0.65); ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(0, h * 0.65);
-      ctx.lineTo(w, h * 0.65);
-      ctx.stroke();
-
-      // Mountains or buildings
+      ctx.moveTo(w * 0.1, h * 0.65); ctx.lineTo(w * 0.3, h * 0.3);
+      ctx.lineTo(w * 0.5, h * 0.65); ctx.lineTo(w * 0.7, h * 0.25);
+      ctx.lineTo(w * 0.9, h * 0.65); ctx.stroke();
+      ctx.beginPath(); ctx.arc(w * 0.75, h * 0.4, 20, 0, Math.PI * 2); ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(w * 0.1, h * 0.65);
-      ctx.lineTo(w * 0.3, h * 0.3);
-      ctx.lineTo(w * 0.5, h * 0.65);
-      ctx.lineTo(w * 0.7, h * 0.25);
-      ctx.lineTo(w * 0.9, h * 0.65);
-      ctx.stroke();
-
-      // Sun or moon
-      ctx.beginPath();
-      ctx.arc(w * 0.75, h * 0.4, 20, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // Small character stick figure
-      ctx.beginPath();
-      ctx.arc(w * 0.4, h * 0.58, 4, 0, Math.PI * 2); // Head
-      ctx.moveTo(w * 0.4, h * 0.6);
-      ctx.lineTo(w * 0.4, h * 0.63); // Body
-      ctx.moveTo(w * 0.39, h * 0.61);
-      ctx.lineTo(w * 0.41, h * 0.61); // Arms
-      ctx.moveTo(w * 0.4, h * 0.63);
-      ctx.lineTo(w * 0.39, h * 0.65); // Left leg
-      ctx.moveTo(w * 0.4, h * 0.63);
-      ctx.lineTo(w * 0.41, h * 0.65); // Right leg
+      ctx.arc(w * 0.4, h * 0.58, 4, 0, Math.PI * 2);
+      ctx.moveTo(w * 0.4, h * 0.6); ctx.lineTo(w * 0.4, h * 0.63);
+      ctx.moveTo(w * 0.39, h * 0.61); ctx.lineTo(w * 0.41, h * 0.61);
+      ctx.moveTo(w * 0.4, h * 0.63); ctx.lineTo(w * 0.39, h * 0.65);
+      ctx.moveTo(w * 0.4, h * 0.63); ctx.lineTo(w * 0.41, h * 0.65);
       ctx.stroke();
     } else if (cameraShot.includes('Close-Up') || cameraShot.includes('Extreme')) {
-      // Large head frame
-      ctx.beginPath();
-      ctx.arc(w / 2, h * 0.45, 45, 0, Math.PI * 2); // head circle
-      ctx.stroke();
-
-      // Eyes
+      ctx.beginPath(); ctx.arc(w / 2, h * 0.45, 45, 0, Math.PI * 2); ctx.stroke();
       ctx.beginPath();
       ctx.arc(w / 2 - 15, h * 0.42, 6, 0, Math.PI * 2);
-      ctx.arc(w / 2 + 15, h * 0.42, 6, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // Eyebrows/Focus lines
+      ctx.arc(w / 2 + 15, h * 0.42, 6, 0, Math.PI * 2); ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(w / 2 - 25, h * 0.35);
-      ctx.lineTo(w / 2 - 8, h * 0.38);
-      ctx.moveTo(w / 2 + 25, h * 0.35);
-      ctx.lineTo(w / 2 + 8, h * 0.38);
-      ctx.stroke();
-
-      // Mouth
+      ctx.moveTo(w / 2 - 25, h * 0.35); ctx.lineTo(w / 2 - 8, h * 0.38);
+      ctx.moveTo(w / 2 + 25, h * 0.35); ctx.lineTo(w / 2 + 8, h * 0.38); ctx.stroke();
       ctx.beginPath();
       ctx.moveTo(w / 2 - 12, h * 0.53);
-      ctx.quadraticCurveTo(w / 2, h * 0.56, w / 2 + 12, h * 0.53);
-      ctx.stroke();
-
-      // Hair silhouette
-      ctx.beginPath();
-      ctx.moveTo(w / 2 - 40, h * 0.3);
-      ctx.lineTo(w / 2, h * 0.2);
-      ctx.lineTo(w / 2 + 40, h * 0.3);
-      ctx.stroke();
+      ctx.quadraticCurveTo(w / 2, h * 0.56, w / 2 + 12, h * 0.53); ctx.stroke();
     } else {
-      // Medium shot / Default: torso and head
-      // Head
+      ctx.beginPath(); ctx.arc(w / 2, h * 0.35, 25, 0, Math.PI * 2); ctx.stroke();
       ctx.beginPath();
-      ctx.arc(w / 2, h * 0.35, 25, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // Torso
-      ctx.beginPath();
-      ctx.moveTo(w / 2 - 30, h * 0.7);
-      ctx.lineTo(w / 2 - 15, h * 0.48);
-      ctx.lineTo(w / 2 + 15, h * 0.48);
-      ctx.lineTo(w / 2 + 30, h * 0.7);
-      ctx.closePath();
-      ctx.stroke();
-
-      // Floor line
-      ctx.beginPath();
-      ctx.moveTo(0, h * 0.75);
-      ctx.lineTo(w, h * 0.75);
-      ctx.stroke();
-
-      // Background accent
-      ctx.beginPath();
-      ctx.moveTo(w * 0.2, h * 0.75);
-      ctx.lineTo(w * 0.2, h * 0.35);
-      ctx.lineTo(w * 0.1, h * 0.35);
-      ctx.stroke();
+      ctx.moveTo(w / 2 - 30, h * 0.7); ctx.lineTo(w / 2 - 15, h * 0.48);
+      ctx.lineTo(w / 2 + 15, h * 0.48); ctx.lineTo(w / 2 + 30, h * 0.7);
+      ctx.closePath(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, h * 0.75); ctx.lineTo(w, h * 0.75); ctx.stroke();
     }
 
-    // Write metadata watermark
     ctx.fillStyle = '#c9a84c60';
     ctx.font = '9px monospace';
     ctx.fillText(`PHOENIX PREVIEW — ${cameraShot.toUpperCase()}`, 10, h - 12);
-
     saveCanvasToState();
   };
 
+  // ─── Modal open helpers ─────────────────────────────────────────────────────
   const handleOpenAdd = () => {
     setEditingPanel(null);
     setPanelNumber(panels.length > 0 ? Math.max(...panels.map(p => p.panel_number)) + 1 : 1);
@@ -319,11 +256,10 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
     setDialogue('');
     setCameraShot('Medium Shot');
     setImageBase64('');
+    setSelectedAssetId('');
+    setImageTab('draw');
     setShowModal(true);
-    // Wait for modal transition then initialize canvas
-    setTimeout(() => {
-      clearCanvas();
-    }, 100);
+    setTimeout(() => { clearCanvas(); }, 100);
   };
 
   const handleOpenEdit = (panel: StoryboardPanel) => {
@@ -334,30 +270,33 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
     setDialogue(panel.dialogue || '');
     setCameraShot(panel.camera_shot || 'Medium Shot');
     setImageBase64(panel.image_base64 || '');
+    setSelectedAssetId(panel.asset_id || '');
+    // Default tab: if panel already has an attached asset, open asset tab
+    setImageTab(panel.asset_id ? 'asset' : 'draw');
     setShowModal(true);
 
     setTimeout(() => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      if (panel.image_base64) {
-        const img = new Image();
-        img.onload = () => {
-          ctx.drawImage(img, 0, 0);
-        };
-        img.src = panel.image_base64;
-      } else {
-        clearCanvas();
+      if (!panel.asset_id) {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        if (panel.image_base64) {
+          const img = new Image();
+          img.onload = () => { ctx.drawImage(img, 0, 0); };
+          img.src = panel.image_base64;
+        } else {
+          clearCanvas();
+        }
       }
     }, 100);
   };
 
+  // ─── Panel CRUD ─────────────────────────────────────────────────────────────
   const handleDelete = async (panelId: string) => {
     if (!confirm('Delete this storyboard panel?')) return;
     try {
-      if (isDbMode()) {
+      if (inDbMode) {
         await dbDeleteStoryboardPanel(panelId);
       } else {
         deleteStoryboardPanel(selectedSceneId, panelId);
@@ -372,6 +311,9 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
     e.preventDefault();
     if (!selectedSceneId) return;
 
+    // In DB mode, if the user is on the asset tab, store selected asset_id (not base64).
+    const useAsset = inDbMode && imageTab === 'asset' && selectedAssetId;
+
     const panel: StoryboardPanel = {
       id: editingPanel ? editingPanel.id : crypto.randomUUID(),
       scene_id: selectedSceneId,
@@ -380,12 +322,14 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
       action_description: actionDescription.trim(),
       dialogue: dialogue.trim() || undefined,
       camera_shot: cameraShot,
-      image_base64: imageBase64 || undefined,
+      // Only persist base64 if NOT using an asset library image
+      image_base64: useAsset ? undefined : (imageBase64 || undefined),
+      asset_id: useAsset ? selectedAssetId : undefined,
       created_at: editingPanel?.created_at,
     };
 
     try {
-      if (isDbMode()) {
+      if (inDbMode) {
         await dbSaveStoryboardPanel(selectedSceneId, panel);
         setPanels(await dbGetStoryboardPanels(selectedSceneId));
       } else {
@@ -395,6 +339,21 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
       setShowModal(false);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // Quick-clear asset from an existing panel (from the card, without opening the modal)
+  const handleClearPanelAsset = async (panel: StoryboardPanel) => {
+    if (!confirm('Remove the attached asset from this panel?')) return;
+    try {
+      setAttachingPanelId(panel.id);
+      await dbClearStoryboardPanelAsset(panel.id);
+      // Refresh panels list
+      setPanels(await dbGetStoryboardPanels(selectedSceneId));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setAttachingPanelId('');
     }
   };
 
@@ -426,7 +385,7 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
 
       <div className="px-6 py-6 max-w-7xl mx-auto">
         {scenes.length === 0 ? (
-          <div className="text-center py-20 bg-[#0f0f1a] border border-[#c9a84c]/10 rounded-lg text-center">
+          <div className="text-center py-20 bg-[#0f0f1a] border border-[#c9a84c]/10 rounded-lg">
             <div className="text-5xl mb-4">🎬</div>
             <h3 className="text-xl font-bold text-white mb-2">No Scenes Available</h3>
             <p className="text-gray-500 mb-6 max-w-md mx-auto">
@@ -501,14 +460,28 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
                           <span className="text-[#c9a84c] font-black text-sm">
                             PANEL {panel.panel_number}
                           </span>
-                          <span className="text-[10px] uppercase font-bold tracking-widest text-gray-400 bg-black/40 px-2 py-0.5 rounded border border-white/5">
-                            {panel.camera_shot}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            {panel.asset_id && (
+                              <span className="text-[9px] uppercase font-bold tracking-widest text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-1.5 py-0.5 rounded">
+                                📎 Asset
+                              </span>
+                            )}
+                            <span className="text-[10px] uppercase font-bold tracking-widest text-gray-400 bg-black/40 px-2 py-0.5 rounded border border-white/5">
+                              {panel.camera_shot}
+                            </span>
+                          </div>
                         </div>
 
-                        {/* Panel Sketch Frame */}
+                        {/* Panel Image Frame */}
                         <div className="aspect-[4/3] w-full bg-[#030305] relative border-b border-[#c9a84c]/10 flex items-center justify-center overflow-hidden">
-                          {panel.image_base64 ? (
+                          {panel.asset_id ? (
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            <img
+                              src={`/api/db/assets/${panel.asset_id}/serve`}
+                              alt={`Panel ${panel.panel_number} asset`}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : panel.image_base64 ? (
                             /* eslint-disable-next-line @next/next/no-img-element */
                             <img
                               src={panel.image_base64}
@@ -533,7 +506,6 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
                               <p className="text-xs text-white leading-relaxed">{panel.visual_prompt}</p>
                             </div>
                           )}
-
                           {panel.action_description && (
                             <div>
                               <span className="text-[9px] uppercase tracking-widest text-gray-500 block font-bold mb-0.5">
@@ -542,7 +514,6 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
                               <p className="text-xs text-gray-400 leading-relaxed">{panel.action_description}</p>
                             </div>
                           )}
-
                           {panel.dialogue && (
                             <div className="bg-black/30 border-l-2 border-[#c9a84c] p-2 rounded-r">
                               <span className="text-[8px] uppercase tracking-widest text-[#c9a84c]/80 block font-bold mb-0.5">
@@ -556,6 +527,16 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
 
                       {/* Panel Footer Controls */}
                       <div className="p-4 pt-0 flex justify-end gap-2">
+                        {inDbMode && panel.asset_id && (
+                          <button
+                            onClick={() => handleClearPanelAsset(panel)}
+                            disabled={attachingPanelId === panel.id}
+                            className="text-gray-500 hover:text-orange-400 transition-colors px-2 py-1 text-xs font-mono border border-transparent hover:border-orange-400/20 rounded"
+                            title="Remove attached asset"
+                          >
+                            {attachingPanelId === panel.id ? '…' : '✕ Clear Asset'}
+                          </button>
+                        )}
                         <Button variant="ghost" size="sm" onClick={() => handleOpenEdit(panel)}>
                           ✏️ Edit
                         </Button>
@@ -586,6 +567,7 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
         size="xl"
       >
         <form onSubmit={handleSave} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Left column — text fields */}
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -611,9 +593,7 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
                   className="w-full bg-[#0a0a0f] border border-[#c9a84c]/30 text-white rounded px-3 py-2 text-sm focus:outline-none focus:border-[#c9a84c]"
                 >
                   {CAMERA_SHOT_OPTIONS.map((shot) => (
-                    <option key={shot} value={shot}>
-                      {shot}
-                    </option>
+                    <option key={shot} value={shot}>{shot}</option>
                   ))}
                 </select>
               </div>
@@ -628,21 +608,21 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
                 required
                 value={visualPrompt}
                 onChange={(e) => setVisualPrompt(e.target.value)}
-                placeholder="Detail what is visually shown inside the frame (e.g. A character standing under streetlights holding a key)..."
+                placeholder="Detail what is visually shown inside the frame…"
                 className="w-full bg-[#0a0a0f] border border-[#c9a84c]/30 text-white rounded px-3 py-2 text-sm focus:outline-none focus:border-[#c9a84c] resize-none"
               />
             </div>
 
             <div>
               <label className="block text-xs font-medium uppercase tracking-widest text-[#c9a84c]/70 mb-1">
-                Action & Camera Directions
+                Action &amp; Camera Directions
               </label>
               <textarea
                 rows={2}
                 required
                 value={actionDescription}
                 onChange={(e) => setActionDescription(e.target.value)}
-                placeholder="What action happens? (e.g. He raises the key, camera pans down to lock)..."
+                placeholder="What action happens? (e.g. He raises the key, camera pans down to lock)…"
                 className="w-full bg-[#0a0a0f] border border-[#c9a84c]/30 text-white rounded px-3 py-2 text-sm focus:outline-none focus:border-[#c9a84c] resize-none"
               />
             </div>
@@ -655,7 +635,7 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
                 type="text"
                 value={dialogue}
                 onChange={(e) => setDialogue(e.target.value)}
-                placeholder="Character lines or narration text..."
+                placeholder="Character lines or narration text…"
                 className="w-full bg-[#0a0a0f] border border-[#c9a84c]/30 text-white rounded px-3 py-2 text-sm focus:outline-none focus:border-[#c9a84c]"
               />
             </div>
@@ -670,84 +650,172 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
             </div>
           </div>
 
-          {/* Canvas sketch column */}
+          {/* Right column — image: Draw or Asset Library */}
           <div className="flex flex-col gap-3">
-            <span className="block text-xs font-medium uppercase tracking-widest text-[#c9a84c]/70">
-              Storyboard Sketch Drawing Pad
-            </span>
-            <div className="relative border border-[#c9a84c]/20 rounded overflow-hidden aspect-[4/3] w-full bg-[#0f0f16]">
-              <canvas
-                ref={canvasRef}
-                width={400}
-                height={300}
-                onMouseDown={startDrawing}
-                onMouseMove={draw}
-                onMouseUp={stopDrawing}
-                onMouseLeave={stopDrawing}
-                className="w-full h-full cursor-crosshair block touch-none"
-              />
-            </div>
+            {/* Tab switcher (DB mode only) */}
+            {inDbMode && (
+              <div className="flex items-center gap-1 bg-black/40 rounded p-1 border border-white/5 self-start">
+                <button
+                  type="button"
+                  onClick={() => setImageTab('draw')}
+                  className={`px-3 py-1 rounded text-xs font-mono transition-all ${
+                    imageTab === 'draw'
+                      ? 'bg-[#c9a84c]/20 text-[#c9a84c] border border-[#c9a84c]/30'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  ✏️ Draw
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImageTab('asset')}
+                  className={`px-3 py-1 rounded text-xs font-mono transition-all ${
+                    imageTab === 'asset'
+                      ? 'bg-emerald-400/20 text-emerald-400 border border-emerald-400/30'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  📎 Asset Library
+                </button>
+              </div>
+            )}
 
-            {/* Sketch Controls */}
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-black/40 p-3 rounded border border-white/5">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-gray-500 uppercase font-mono">Color:</span>
-                  <div className="flex items-center gap-1.5">
-                    {[
-                      { color: '#c9a84c', label: 'Gold' },
-                      { color: '#3b82f6', label: 'Blue' },
-                      { color: '#ffffff', label: 'White' },
-                      { color: '#ef4444', label: 'Red' },
-                    ].map((colorObj) => (
-                      <button
-                        key={colorObj.color}
-                        type="button"
-                        onClick={() => setBrushColor(colorObj.color)}
-                        className={`w-5 h-5 rounded-full border transition-all ${
-                          brushColor === colorObj.color
-                            ? 'border-white scale-110'
-                            : 'border-transparent scale-90'
-                        }`}
-                        style={{ backgroundColor: colorObj.color }}
-                        title={colorObj.label}
+            {/* Draw tab */}
+            {(!inDbMode || imageTab === 'draw') && (
+              <>
+                <span className="block text-xs font-medium uppercase tracking-widest text-[#c9a84c]/70">
+                  Storyboard Sketch Drawing Pad
+                </span>
+                <div className="relative border border-[#c9a84c]/20 rounded overflow-hidden aspect-[4/3] w-full bg-[#0f0f16]">
+                  <canvas
+                    ref={canvasRef}
+                    width={400}
+                    height={300}
+                    onMouseDown={startDrawing}
+                    onMouseMove={draw}
+                    onMouseUp={stopDrawing}
+                    onMouseLeave={stopDrawing}
+                    className="w-full h-full cursor-crosshair block touch-none"
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-black/40 p-3 rounded border border-white/5">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-gray-500 uppercase font-mono">Color:</span>
+                      <div className="flex items-center gap-1.5">
+                        {[
+                          { color: '#c9a84c', label: 'Gold' },
+                          { color: '#3b82f6', label: 'Blue' },
+                          { color: '#ffffff', label: 'White' },
+                          { color: '#ef4444', label: 'Red' },
+                        ].map((colorObj) => (
+                          <button
+                            key={colorObj.color}
+                            type="button"
+                            onClick={() => setBrushColor(colorObj.color)}
+                            className={`w-5 h-5 rounded-full border transition-all ${
+                              brushColor === colorObj.color ? 'border-white scale-110' : 'border-transparent scale-90'
+                            }`}
+                            style={{ backgroundColor: colorObj.color }}
+                            title={colorObj.label}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-gray-500 uppercase font-mono">Size:</span>
+                      <input
+                        type="range"
+                        min="1"
+                        max="10"
+                        value={brushSize}
+                        onChange={(e) => setBrushSize(Number(e.target.value))}
+                        className="w-16 accent-[#c9a84c] h-1 bg-white/10 rounded-lg appearance-none cursor-pointer"
                       />
-                    ))}
+                      <span className="text-[10px] text-white font-mono">{brushSize}px</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={generateMockSketch}
+                      className="px-2.5 py-1 rounded text-xs bg-[#c9a84c]/10 hover:bg-[#c9a84c]/20 text-[#c9a84c] border border-[#c9a84c]/20 font-mono transition-colors"
+                    >
+                      ⚡ Mock AI Sketch
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearCanvas}
+                      className="px-2.5 py-1 rounded text-xs bg-white/5 hover:bg-white/10 text-gray-400 border border-white/10 font-mono transition-colors"
+                    >
+                      Clear
+                    </button>
                   </div>
                 </div>
+              </>
+            )}
 
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-gray-500 uppercase font-mono">Size:</span>
-                  <input
-                    type="range"
-                    min="1"
-                    max="10"
-                    value={brushSize}
-                    onChange={(e) => setBrushSize(Number(e.target.value))}
-                    className="w-16 accent-[#c9a84c] h-1 bg-white/10 rounded-lg appearance-none cursor-pointer"
-                  />
-                  <span className="text-[10px] text-white font-mono">{brushSize}px</span>
-                </div>
+            {/* Asset Library tab (DB mode only) */}
+            {inDbMode && imageTab === 'asset' && (
+              <div className="flex flex-col gap-3">
+                <span className="block text-xs font-medium uppercase tracking-widest text-emerald-400/70">
+                  Choose from Asset Library
+                </span>
+                {projectAssets.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center aspect-[4/3] border border-dashed border-emerald-400/20 rounded bg-black/20 text-center gap-2">
+                    <span className="text-2xl">📭</span>
+                    <p className="text-xs text-gray-500 max-w-[200px]">
+                      No assets uploaded yet. Go to the Project Detail page to upload images.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-1">
+                      {projectAssets.map((asset) => (
+                        <button
+                          key={asset.id}
+                          type="button"
+                          onClick={() => setSelectedAssetId(asset.id)}
+                          className={`relative aspect-square rounded overflow-hidden border-2 transition-all ${
+                            selectedAssetId === asset.id
+                              ? 'border-emerald-400 ring-2 ring-emerald-400/30'
+                              : 'border-transparent hover:border-white/20'
+                          }`}
+                          title={asset.name}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={`/api/db/assets/${asset.id}/serve`}
+                            alt={asset.name}
+                            className="w-full h-full object-cover"
+                          />
+                          {selectedAssetId === asset.id && (
+                            <div className="absolute inset-0 bg-emerald-400/20 flex items-center justify-center">
+                              <span className="text-emerald-400 text-xl font-black">✓</span>
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                    {selectedAssetId && (
+                      <div className="flex items-center justify-between bg-emerald-400/5 border border-emerald-400/20 rounded p-2">
+                        <span className="text-xs text-emerald-400 font-mono truncate">
+                          ✓ {projectAssets.find(a => a.id === selectedAssetId)?.name || 'Asset selected'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedAssetId('')}
+                          className="text-gray-500 hover:text-red-400 text-xs ml-2 shrink-0"
+                        >
+                          ✕ Clear
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
-
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={generateMockSketch}
-                  className="px-2.5 py-1 rounded text-xs bg-[#c9a84c]/10 hover:bg-[#c9a84c]/20 text-[#c9a84c] border border-[#c9a84c]/20 font-mono transition-colors"
-                  title="Generate a sketch mock drawing based on shot choice"
-                >
-                  ⚡ Mock AI Sketch
-                </button>
-                <button
-                  type="button"
-                  onClick={clearCanvas}
-                  className="px-2.5 py-1 rounded text-xs bg-white/5 hover:bg-white/10 text-gray-400 border border-white/10 font-mono transition-colors"
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
+            )}
           </div>
         </form>
       </Modal>

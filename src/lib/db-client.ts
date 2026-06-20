@@ -130,6 +130,30 @@ export async function dbDeleteStoryboardPanel(panelId: string): Promise<void> {
   }
 }
 
+export async function dbAttachAssetToStoryboardPanel(panelId: string, assetId: string): Promise<void> {
+  const res = await fetch(`/api/db/storyboard/${panelId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ asset_id: assetId }),
+  });
+  const json = await res.json();
+  if (!res.ok || !json.ok) {
+    throw new Error(json.error || 'Failed to attach asset to panel');
+  }
+}
+
+export async function dbClearStoryboardPanelAsset(panelId: string): Promise<void> {
+  const res = await fetch(`/api/db/storyboard/${panelId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ asset_id: null }),
+  });
+  const json = await res.json();
+  if (!res.ok || !json.ok) {
+    throw new Error(json.error || 'Failed to clear panel asset');
+  }
+}
+
 // ASSETS
 export interface ProjectAsset {
   id: string;
