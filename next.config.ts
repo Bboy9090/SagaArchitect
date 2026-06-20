@@ -28,6 +28,10 @@ const rawRainstormsUrl = process.env.RAINSTORMS_BASE_URL?.trim() ?? '';
 const allowedOrigin = rawRainstormsUrl.length > 0 ? rawRainstormsUrl : '*';
 
 const nextConfig: NextConfig = {
+  // Prevent Turbopack from bundling Node.js-native packages used in server routes.
+  // puppeteer-core is ESM and relies on native Node.js binaries; it must stay external.
+  serverExternalPackages: ['puppeteer-core'],
+
   async headers() {
     return [
       {

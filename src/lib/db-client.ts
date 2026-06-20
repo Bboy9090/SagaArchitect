@@ -195,3 +195,22 @@ export async function dbDeleteAsset(assetId: string): Promise<void> {
     throw new Error(json.error || 'Failed to delete asset');
   }
 }
+
+// PDF EXPORT
+export async function dbExportProjectPdf(projectId: string): Promise<Blob> {
+  const res = await fetch(`/api/db/projects/${projectId}/export/pdf`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    // Try to extract a JSON error message; if the body isn't JSON, fall back
+    let errMsg = 'PDF export failed';
+    try {
+      const json = await res.json();
+      errMsg = json.error || errMsg;
+    } catch {
+      // non-JSON body — keep generic message
+    }
+    throw new Error(errMsg);
+  }
+  return res.blob();
+}
