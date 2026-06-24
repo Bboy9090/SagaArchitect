@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { projects } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { logVersion } from '@/lib/version-history';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!db) {
@@ -47,8 +48,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   try {
     const { id } = await params;
     const payload = await req.json();
-    
-    await db.update(projects).set({
+
+    const updates = {
       name: payload.name,
       concept: payload.concept,
       genre: payload.genre,
@@ -63,7 +64,18 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       prophecyHooks: payload.prophecy_hooks,
       version: payload.version,
       updatedAt: new Date(),
-    }).where(eq(projects.id, id));
+    };
+
+    await db.transaction(async (tx) => {
+      await tx.update(projects).set(updates).where(eq(projects.id, id));
+      await logVersion(tx, {
+        projectId: id,
+        action: 'update',
+        entityType: 'project',
+        entityId: id,
+        changeData: updates,
+      });
+    });
 
     const [p] = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
     
@@ -100,7 +112,17 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   }
   try {
     const { id } = await params;
-    await db.delete(projects).where(eq(projects.id, id));
+    const [existing] = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
+    await db.transaction(async (tx) => {
+      await logVersion(tx, {
+        projectId: id,
+        action: 'delete',
+        entityType: 'project',
+        entityId: id,
+        changeData: existing ? { name: existing.name } : { id },
+      });
+      await tx.delete(projects).where(eq(projects.id, id));
+    });
     return NextResponse.json({ ok: true });
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Database error';

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { scenes } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { logVersion } from '@/lib/version-history';
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!db) {
@@ -9,7 +10,19 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   }
   try {
     const { id } = await params;
-    await db.delete(scenes).where(eq(scenes.id, id));
+    const [existing] = await db.select().from(scenes).where(eq(scenes.id, id)).limit(1);
+    await db.transaction(async (tx) => {
+      if (existing) {
+        await logVersion(tx, {
+          projectId: existing.projectId,
+          action: 'delete',
+          entityType: 'scene',
+          entityId: id,
+          changeData: { title: existing.title },
+        });
+      }
+      await tx.delete(scenes).where(eq(scenes.id, id));
+    });
     return NextResponse.json({ ok: true });
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Database error';

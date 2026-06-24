@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { projects } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { logVersion } from '@/lib/version-history';
 
 const DEFAULT_USER_ID = '11111111-1111-4111-8111-111111111111';
 
@@ -45,7 +46,7 @@ export async function POST(req: Request) {
     const payload = await req.json();
     const id = payload.id || crypto.randomUUID();
     
-    await db.insert(projects).values({
+    const values = {
       id,
       ownerId: DEFAULT_USER_ID,
       name: payload.name || 'Untitled Project',
@@ -61,6 +62,17 @@ export async function POST(req: Request) {
       currentConflict: payload.current_conflict || '',
       prophecyHooks: payload.prophecy_hooks || [],
       version: payload.version || 1,
+    };
+
+    await db.transaction(async (tx) => {
+      await tx.insert(projects).values(values);
+      await logVersion(tx, {
+        projectId: id,
+        action: 'create',
+        entityType: 'project',
+        entityId: id,
+        changeData: values,
+      });
     });
 
     const [inserted] = await db.select().from(projects).where(eq(projects.id, id)).limit(1);

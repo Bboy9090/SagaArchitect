@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { scenes } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { logVersion } from '@/lib/version-history';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!db) {
@@ -54,11 +55,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       updatedAt: new Date(),
     };
 
-    if (existing) {
-      await db.update(scenes).set(values).where(eq(scenes.id, sceneId));
-    } else {
-      await db.insert(scenes).values(values);
-    }
+    const action = existing ? 'update' : 'create';
+
+    await db.transaction(async (tx) => {
+      if (existing) {
+        await tx.update(scenes).set(values).where(eq(scenes.id, sceneId));
+      } else {
+        await tx.insert(scenes).values(values);
+      }
+      await logVersion(tx, {
+        projectId,
+        action,
+        entityType: 'scene',
+        entityId: sceneId,
+        changeData: values,
+      });
+    });
 
     const [s] = await db.select().from(scenes).where(eq(scenes.id, sceneId)).limit(1);
 

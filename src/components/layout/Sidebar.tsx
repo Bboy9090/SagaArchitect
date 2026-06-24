@@ -32,6 +32,7 @@ export function Sidebar() {
     { href: `/universe/${universeId}/lore`, label: 'Lore Memory', icon: '🔮' },
     { href: `/universe/${universeId}/stories`, label: 'Story Forge', icon: '📖' },
     { href: `/universe/${universeId}/export`, label: 'Export', icon: '📥' },
+    { href: `/universe/${universeId}/history`, label: 'History', icon: '📜' },
   ] : [];
 
   const isActive = (href: string) => pathname === href;

@@ -228,8 +228,8 @@ export const storyboardPanels = pgTable('storyboard_panels', {
 
 export const versionHistory = pgTable('version_history', {
   id: uuid('id').primaryKey().defaultRandom(),
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id').notNull(),
+  userId: uuid('user_id').notNull(),
   action: varchar('action', { length: 50 }).notNull(), // 'create', 'update', 'delete'
   entityType: varchar('entity_type', { length: 50 }).notNull(), // 'character', 'scene', etc.
   entityId: uuid('entity_id').notNull(),
