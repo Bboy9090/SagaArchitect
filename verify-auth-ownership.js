@@ -32,7 +32,7 @@ async function run() {
   let passed = true;
 
   // 3. User A creates a project
-  const projectId = '77777777-7777-7777-7777-777777777777';
+  const projectId = '77777777-7777-4777-8777-777777777777';
   console.log('User A creating project...');
   const createRes = await fetch('http://localhost:3000/api/db/projects', {
     method: 'POST',
