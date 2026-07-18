@@ -136,23 +136,41 @@ export default function ExportPage({ params }: ExportPageProps) {
     }
   };
 
-  // ── JSON backup (unchanged) ─────────────────────────────────────────────────
-  const handleJsonExport = () => {
+  // ── JSON backup ─────────────────────────────────────────────────
+  const handleJsonExport = async () => {
     if (!project) return;
-    const exportData = {
-      project,
-      characters,
-      scenes,
-      storyboardPanels,
-      exportedAt: new Date().toISOString(),
-    };
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportData, null, 2));
-    const a = document.createElement('a');
-    a.setAttribute('href', dataStr);
-    a.setAttribute('download', `${project.name.toLowerCase().replace(/\s+/g, '_')}_export.json`);
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    if (inDbMode) {
+      try {
+        const res = await fetch(`/api/db/projects/${id}/export/json`);
+        if (!res.ok) throw new Error('Failed to download JSON backup');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${project.name.toLowerCase().replace(/\s+/g, '_')}_export.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'JSON export failed');
+      }
+    } else {
+      const exportData = {
+        project,
+        characters,
+        scenes,
+        storyboardPanels,
+        exportedAt: new Date().toISOString(),
+      };
+      const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportData, null, 2));
+      const a = document.createElement('a');
+      a.setAttribute('href', dataStr);
+      a.setAttribute('download', `${project.name.toLowerCase().replace(/\s+/g, '_')}_export.json`);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
   };
 
   if (loading) {

@@ -177,6 +177,32 @@ export default function HistoryPage({ params }: HistoryPageProps) {
                           </pre>
                         </details>
                       )}
+
+                      {/* Restore Action */}
+                      <button
+                        onClick={async () => {
+                          if (!confirm(`Restore this state for ${entry.entity_type}?`)) return;
+                          try {
+                            const res = await fetch(`/api/db/projects/${id}/history/restore`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ historyId: entry.id }),
+                            });
+                            const data = await res.json();
+                            if (data.ok) {
+                              alert('Reverted successfully!');
+                              window.location.reload();
+                            } else {
+                              alert(data.error || 'Restore failed.');
+                            }
+                          } catch {
+                            alert('A network error occurred.');
+                          }
+                        }}
+                        className="mt-2 text-[10px] bg-white/5 border border-white/10 text-gray-400 px-2 py-1 rounded hover:bg-[#c9a84c]/20 hover:text-[#c9a84c] transition-colors"
+                      >
+                        ↩️ Restore State
+                      </button>
                     </div>
                   </div>
                 ))}
