@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { assets } from '@/db/schema';
 import { saveFileLocal } from '@/lib/storage-driver';
+import { logVersion } from '@/lib/version-history';
 import path from 'path';
 
 const DEFAULT_USER_ID = '11111111-1111-4111-8111-111111111111';
@@ -45,26 +46,32 @@ export async function POST(req: Request) {
     // Save locally
     const filePath = await saveFileLocal(buffer, fileId, extension);
 
-    // Insert database record
-    await db.insert(assets).values({
-      id: fileId,
-      ownerId: DEFAULT_USER_ID,
-      projectId,
-      name: file.name,
-      filePath,
-      fileSize: file.size,
-      mimeType: file.type,
-      storageProvider: 'local',
+    // Insert database record and log version in a transaction
+    let fileRecord: { id: string; name: string; fileSize: number; mimeType: string };
+    await db!.transaction(async (tx) => {
+      await tx.insert(assets).values({
+        id: fileId,
+        ownerId: DEFAULT_USER_ID,
+        projectId,
+        name: file.name,
+        filePath,
+        fileSize: file.size,
+        mimeType: file.type,
+        storageProvider: 'local',
+      });
+      await logVersion(tx, {
+        projectId,
+        action: 'create',
+        entityType: 'asset',
+        entityId: fileId,
+        snapshot: { name: file.name, fileSize: file.size, mimeType: file.type, filePath },
+      });
+      fileRecord = { id: fileId, name: file.name, fileSize: file.size, mimeType: file.type };
     });
 
     return NextResponse.json({
       ok: true,
-      data: {
-        id: fileId,
-        name: file.name,
-        fileSize: file.size,
-        mimeType: file.type,
-      }
+      data: fileRecord!,
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Upload failed';

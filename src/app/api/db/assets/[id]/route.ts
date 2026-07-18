@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { assets } from '@/db/schema';
 import { deleteFileLocal } from '@/lib/storage-driver';
+import { logVersion } from '@/lib/version-history';
 import { eq } from 'drizzle-orm';
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -26,8 +27,17 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       }
     }
 
-    // Delete database row
-    await db.delete(assets).where(eq(assets.id, id));
+    // Delete database row and log version in a transaction
+    await db!.transaction(async (tx) => {
+      await logVersion(tx, {
+        projectId: asset.projectId,
+        action: 'delete',
+        entityType: 'asset',
+        entityId: id,
+        snapshot: { name: asset.name, filePath: asset.filePath, mimeType: asset.mimeType },
+      });
+      await tx.delete(assets).where(eq(assets.id, id));
+    });
 
     return NextResponse.json({ ok: true });
   } catch (error) {
