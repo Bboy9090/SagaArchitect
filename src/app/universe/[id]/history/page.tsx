@@ -60,13 +60,12 @@ function getEntityLabel(entry: HistoryEntry): string {
 export default function HistoryPage({ params }: HistoryPageProps) {
   const { id } = use(params);
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => isDbMode());
   const [error, setError] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<string>('all');
 
   useEffect(() => {
     if (!isDbMode()) {
-      setLoading(false);
       return;
     }
     fetch(`/api/db/projects/${id}/history`)
