@@ -1,14 +1,12 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import * as s from '@/db/schema';
-import { eq } from 'drizzle-orm';
 import { saveFileLocal } from '@/lib/storage-driver';
-
-
-const DEFAULT_USER_ID = '11111111-1111-4111-8111-111111111111';
+import { requireUser, AuthError } from '@/lib/auth-helpers';
 
 export async function POST(req: Request) {
   try {
+    const userId = await requireUser();
     const payload = await req.json();
     const {
       projects = [],
@@ -43,25 +41,15 @@ export async function POST(req: Request) {
         .filter((id): id is string => typeof id === 'string');
     };
 
-    // 2. Wrap all insertions in an atomic database transaction
+    // Wrap all insertions in an atomic database transaction
     const report = await db!.transaction(async (tx) => {
-      // Confirm or seed default user record
-      const existingUser = await tx.select().from(s.users).where(eq(s.users.id, DEFAULT_USER_ID)).limit(1);
-      if (existingUser.length === 0) {
-        await tx.insert(s.users).values({
-          id: DEFAULT_USER_ID,
-          name: 'Default Creator',
-          email: 'creator@phoenixcreator.studio',
-          passwordHash: 'seeded_placeholder',
-        });
-      }
 
       // Insert Projects
       for (const p of projects) {
         const newId = projectIdMap.get(p.id)!;
         await tx.insert(s.projects).values({
           id: newId,
-          ownerId: DEFAULT_USER_ID,
+          ownerId: userId,
           name: p.name,
           concept: p.concept,
           genre: p.genre,
@@ -278,7 +266,7 @@ export async function POST(req: Request) {
               if (newProjId) {
                 await tx.insert(s.assets).values({
                   id: fileId,
-                  ownerId: DEFAULT_USER_ID,
+                  ownerId: userId,
                   projectId: newProjId,
                   name: `Sketch Panel ${p.panel_number}${ext}`,
                   filePath,
@@ -329,6 +317,9 @@ export async function POST(req: Request) {
       report,
     });
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
     const msg = error instanceof Error ? error.message : 'Database transaction failed';
     console.error('Migration transaction error:', error);
     return NextResponse.json({

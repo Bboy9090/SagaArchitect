@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Analytics } from "@vercel/analytics/next";
+import { NextAuthProvider } from "@/components/providers/NextAuthProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -16,7 +17,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased bg-[#0a0a0f] text-white">
-        {children}
+        <NextAuthProvider>
+          {children}
+        </NextAuthProvider>
         <Analytics />
       </body>
     </html>

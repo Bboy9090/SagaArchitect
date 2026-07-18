@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { storyboardPanels, scenes } from '@/db/schema';
 import { logVersion } from '@/lib/version-history';
 import { eq } from 'drizzle-orm';
+import { requireUser, requireOwnedScene, AuthError } from '@/lib/auth-helpers';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!db) {
@@ -10,8 +11,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   }
   try {
     const { id: sceneId } = await params;
+    const userId = await requireUser();
+    await requireOwnedScene(sceneId, userId);
+
     const list = await db.select().from(storyboardPanels).where(eq(storyboardPanels.sceneId, sceneId));
-    // Sort panels by panelNumber
     list.sort((a, b) => a.panelNumber - b.panelNumber);
     const mapped = list.map((p) => ({
       id: p.id,
@@ -28,6 +31,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }));
     return NextResponse.json({ ok: true, data: mapped });
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
@@ -39,10 +45,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
   try {
     const { id: sceneId } = await params;
+    const userId = await requireUser();
+    await requireOwnedScene(sceneId, userId);
+
     const payload = await req.json();
     const panelId = payload.id || crypto.randomUUID();
 
     const [existing] = await db.select().from(storyboardPanels).where(eq(storyboardPanels.id, panelId)).limit(1);
+
+    if (existing && existing.sceneId !== sceneId) {
+      return NextResponse.json({ ok: false, error: 'Storyboard panel scene mismatch' }, { status: 400 });
+    }
 
     // Look up projectId from scene for version history
     const [scene] = await db.select().from(scenes).where(eq(scenes.id, sceneId)).limit(1);
@@ -63,7 +76,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     const action = existing ? 'update' : 'create';
 
-    await db!.transaction(async (tx) => {
+    await db.transaction(async (tx) => {
       if (existing) {
         await tx.update(storyboardPanels).set(values).where(eq(storyboardPanels.id, panelId));
       } else {
@@ -99,6 +112,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }
     });
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }

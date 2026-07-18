@@ -4,6 +4,7 @@ import { assets } from '@/db/schema';
 import { deleteFileLocal } from '@/lib/storage-driver';
 import { logVersion } from '@/lib/version-history';
 import { eq } from 'drizzle-orm';
+import { requireUser, requireOwnedAsset, AuthError } from '@/lib/auth-helpers';
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!db) {
@@ -12,11 +13,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
   try {
     const { id } = await params;
-    const [asset] = await db.select().from(assets).where(eq(assets.id, id)).limit(1);
-
-    if (!asset) {
-      return NextResponse.json({ ok: false, error: 'Asset not found' }, { status: 404 });
-    }
+    const userId = await requireUser();
+    const asset = await requireOwnedAsset(id, userId);
 
     // Delete local file if using local provider
     if (asset.storageProvider === 'local') {
@@ -28,7 +26,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     }
 
     // Delete database row and log version in a transaction
-    await db!.transaction(async (tx) => {
+    await db.transaction(async (tx) => {
       await logVersion(tx, {
         projectId: asset.projectId,
         action: 'delete',
@@ -41,6 +39,9 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
     return NextResponse.json({ ok: true });
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }

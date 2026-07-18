@@ -3,16 +3,15 @@ import { db } from '@/db';
 import { projects } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { logVersion } from '@/lib/version-history';
-
-const DEFAULT_USER_ID = '11111111-1111-4111-8111-111111111111';
+import { requireUser, AuthError } from '@/lib/auth-helpers';
 
 export async function GET() {
   if (!db) {
     return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
   }
   try {
-    const list = await db.select().from(projects).where(eq(projects.ownerId, DEFAULT_USER_ID));
-    // Transform back to camelCase/expected Universe (Project) structures on frontend if needed
+    const userId = await requireUser();
+    const list = await db.select().from(projects).where(eq(projects.ownerId, userId));
     const mapped = list.map((p) => ({
       id: p.id,
       name: p.name,
@@ -33,6 +32,9 @@ export async function GET() {
     }));
     return NextResponse.json({ ok: true, data: mapped });
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
@@ -43,12 +45,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
   }
   try {
+    const userId = await requireUser();
     const payload = await req.json();
     const id = payload.id || crypto.randomUUID();
     
     const values = {
       id,
-      ownerId: DEFAULT_USER_ID,
+      ownerId: userId,
       name: payload.name || 'Untitled Project',
       concept: payload.concept || '',
       genre: payload.genre || '',
@@ -99,6 +102,9 @@ export async function POST(req: Request) {
       }
     });
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }

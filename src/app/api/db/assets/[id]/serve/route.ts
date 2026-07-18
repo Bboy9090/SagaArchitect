@@ -1,8 +1,7 @@
 
 import { db } from '@/db';
-import { assets } from '@/db/schema';
 import { readFileLocal } from '@/lib/storage-driver';
-import { eq } from 'drizzle-orm';
+import { requireUser, requireOwnedAsset } from '@/lib/auth-helpers';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!db) {
@@ -11,11 +10,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   try {
     const { id } = await params;
-    const [asset] = await db.select().from(assets).where(eq(assets.id, id)).limit(1);
-
-    if (!asset) {
-      return new Response('Asset not found', { status: 404 });
-    }
+    const userId = await requireUser();
+    const asset = await requireOwnedAsset(id, userId);
 
     if (asset.storageProvider === 'local') {
       const buffer = await readFileLocal(asset.filePath);
@@ -31,7 +27,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     return new Response('Unsupported storage provider', { status: 400 });
   } catch (error) {
     console.error('Serve asset failed:', error);
-    return new Response('Failed to read asset file', { status: 500 });
+    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+    const status = error && (error as any).status ? (error as any).status : 500;
+    const msg = error instanceof Error ? error.message : 'Failed to read asset file';
+    return new Response(msg, { status });
   }
 }
 

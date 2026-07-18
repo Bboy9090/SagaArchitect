@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { storyboardPanels, scenes } from '@/db/schema';
 import { logVersion } from '@/lib/version-history';
 import { eq } from 'drizzle-orm';
+import { requireUser, requireOwnedStoryboardPanel, AuthError } from '@/lib/auth-helpers';
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!db) {
@@ -10,6 +11,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   }
   try {
     const { id } = await params;
+    const userId = await requireUser();
+    await requireOwnedStoryboardPanel(id, userId);
+
     const payload = await req.json();
 
     // Only allow safe partial updates — currently asset_id only.
@@ -20,9 +24,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       values.assetId = payload.asset_id ?? null;
     }
 
-    await db!.transaction(async (tx) => {
+    await db.transaction(async (tx) => {
       await tx.update(storyboardPanels).set(values).where(eq(storyboardPanels.id, id));
-      // Look up projectId for logging
       const [panel] = await tx.select().from(storyboardPanels).where(eq(storyboardPanels.id, id)).limit(1);
       if (panel) {
         const [scene] = await tx.select().from(scenes).where(eq(scenes.id, panel.sceneId)).limit(1);
@@ -60,6 +63,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       },
     });
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
@@ -71,24 +77,27 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   }
   try {
     const { id } = await params;
-    const [panel] = await db.select().from(storyboardPanels).where(eq(storyboardPanels.id, id)).limit(1);
-    await db!.transaction(async (tx) => {
-      if (panel) {
-        const [scene] = await tx.select().from(scenes).where(eq(scenes.id, panel.sceneId)).limit(1);
-        if (scene) {
-          await logVersion(tx, {
-            projectId: scene.projectId,
-            action: 'delete',
-            entityType: 'storyboard_panel',
-            entityId: id,
-            changeData: { panelNumber: panel.panelNumber, visualPrompt: panel.visualPrompt },
-          });
-        }
+    const userId = await requireUser();
+    const panel = await requireOwnedStoryboardPanel(id, userId);
+
+    await db.transaction(async (tx) => {
+      const [scene] = await tx.select().from(scenes).where(eq(scenes.id, panel.sceneId)).limit(1);
+      if (scene) {
+        await logVersion(tx, {
+          projectId: scene.projectId,
+          action: 'delete',
+          entityType: 'storyboard_panel',
+          entityId: id,
+          changeData: { panelNumber: panel.panelNumber, visualPrompt: panel.visualPrompt },
+        });
       }
       await tx.delete(storyboardPanels).where(eq(storyboardPanels.id, id));
     });
     return NextResponse.json({ ok: true });
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }

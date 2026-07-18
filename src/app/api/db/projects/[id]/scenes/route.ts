@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { scenes } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { logVersion } from '@/lib/version-history';
+import { requireUser, requireOwnedProject, AuthError } from '@/lib/auth-helpers';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!db) {
@@ -10,8 +11,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   }
   try {
     const { id: projectId } = await params;
+    const userId = await requireUser();
+    await requireOwnedProject(projectId, userId);
+
     const list = await db.select().from(scenes).where(eq(scenes.projectId, projectId));
-    // Sort scenes by order field
     list.sort((a, b) => a.order - b.order);
     const mapped = list.map((s) => ({
       id: s.id,
@@ -27,6 +30,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }));
     return NextResponse.json({ ok: true, data: mapped });
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
@@ -38,10 +44,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
   try {
     const { id: projectId } = await params;
+    const userId = await requireUser();
+    await requireOwnedProject(projectId, userId);
+
     const payload = await req.json();
     const sceneId = payload.id || crypto.randomUUID();
 
     const [existing] = await db.select().from(scenes).where(eq(scenes.id, sceneId)).limit(1);
+
+    if (existing && existing.projectId !== projectId) {
+      return NextResponse.json({ ok: false, error: 'Scene project mismatch' }, { status: 400 });
+    }
 
     const values = {
       id: sceneId,
@@ -90,6 +103,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }
     });
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }

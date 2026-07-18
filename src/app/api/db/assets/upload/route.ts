@@ -4,8 +4,8 @@ import { assets } from '@/db/schema';
 import { saveFileLocal } from '@/lib/storage-driver';
 import { logVersion } from '@/lib/version-history';
 import path from 'path';
+import { requireUser, requireOwnedProject, AuthError } from '@/lib/auth-helpers';
 
-const DEFAULT_USER_ID = '11111111-1111-4111-8111-111111111111';
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_MIME_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'];
 
@@ -15,6 +15,7 @@ export async function POST(req: Request) {
   }
 
   try {
+    const userId = await requireUser();
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
     const projectId = formData.get('projectId') as string | null;
@@ -25,6 +26,8 @@ export async function POST(req: Request) {
     if (!projectId) {
       return NextResponse.json({ ok: false, error: 'No project ID provided' }, { status: 400 });
     }
+
+    await requireOwnedProject(projectId, userId);
 
     // Validation: Mime Type
     if (!ALLOWED_MIME_TYPES.includes(file.type)) {
@@ -48,10 +51,10 @@ export async function POST(req: Request) {
 
     // Insert database record and log version in a transaction
     let fileRecord: { id: string; name: string; fileSize: number; mimeType: string };
-    await db!.transaction(async (tx) => {
+    await db.transaction(async (tx) => {
       await tx.insert(assets).values({
         id: fileId,
-        ownerId: DEFAULT_USER_ID,
+        ownerId: userId,
         projectId,
         name: file.name,
         filePath,
@@ -74,6 +77,9 @@ export async function POST(req: Request) {
       data: fileRecord!,
     });
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
     const msg = error instanceof Error ? error.message : 'Upload failed';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }

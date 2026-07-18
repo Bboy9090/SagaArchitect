@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { characters } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { logVersion } from '@/lib/version-history';
+import { requireUser, requireOwnedProject, AuthError } from '@/lib/auth-helpers';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!db) {
@@ -10,6 +11,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   }
   try {
     const { id: projectId } = await params;
+    const userId = await requireUser();
+    await requireOwnedProject(projectId, userId);
+
     const list = await db.select().from(characters).where(eq(characters.projectId, projectId));
     const mapped = list.map((c) => ({
       id: c.id,
@@ -32,6 +36,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }));
     return NextResponse.json({ ok: true, data: mapped });
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
@@ -43,11 +50,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
   try {
     const { id: projectId } = await params;
+    const userId = await requireUser();
+    await requireOwnedProject(projectId, userId);
+
     const payload = await req.json();
     const characterId = payload.id || crypto.randomUUID();
 
     // Check if character already exists
     const [existing] = await db.select().from(characters).where(eq(characters.id, characterId)).limit(1);
+
+    // If character exists, confirm it belongs to the owned project
+    if (existing && existing.projectId !== projectId) {
+      return NextResponse.json({ ok: false, error: 'Character project mismatch' }, { status: 400 });
+    }
 
     const values = {
       id: characterId,
@@ -112,6 +127,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }
     });
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }

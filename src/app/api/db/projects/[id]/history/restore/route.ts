@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import * as s from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { requireUser, requireOwnedProject, AuthError } from '@/lib/auth-helpers';
 import { logVersion } from '@/lib/version-history';
 
 const DEFAULT_USER_ID = '11111111-1111-4111-8111-111111111111';
@@ -25,6 +26,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   try {
     const { id: projectId } = await params;
+    const userId = await requireUser();
+    await requireOwnedProject(projectId, userId);
+
     const { historyId } = await req.json();
 
     if (!historyId) {
@@ -79,6 +83,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           if (exists) {
             await tx.update(s.projects).set(values).where(eq(s.projects.id, entityId));
           } else {
+            /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
             await tx.insert(s.projects).values({ id: entityId, ...values } as any);
           }
           break;
@@ -98,6 +103,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           if (exists) {
             await tx.update(s.scenes).set(values).where(eq(s.scenes.id, entityId));
           } else {
+            /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
             await tx.insert(s.scenes).values({ id: entityId, ...values } as any);
           }
           break;
@@ -126,6 +132,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           if (exists) {
             await tx.update(s.characters).set(values).where(eq(s.characters.id, entityId));
           } else {
+            /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
             await tx.insert(s.characters).values({ id: entityId, ...values } as any);
           }
           break;
@@ -146,6 +153,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           if (exists) {
             await tx.update(s.storyboardPanels).set(values).where(eq(s.storyboardPanels.id, entityId));
           } else {
+            /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
             await tx.insert(s.storyboardPanels).values({ id: entityId, ...values } as any);
           }
           break;
@@ -165,6 +173,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           if (exists) {
             await tx.update(s.assets).set(values).where(eq(s.assets.id, entityId));
           } else {
+            /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
             await tx.insert(s.assets).values({ id: entityId, ...values } as any);
           }
           break;
@@ -189,6 +198,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     return NextResponse.json({ ok: true });
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
     const msg = error instanceof Error ? error.message : 'Restore operation failed';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }

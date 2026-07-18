@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useParams, usePathname } from 'next/navigation';
+import { signOut } from 'next-auth/react';
 
 interface NavItem {
   href: string;
@@ -104,11 +105,19 @@ export function Sidebar() {
         )}
       </nav>
 
-      <div className="p-3 border-t border-[#c9a84c]/10">
-        {/* LoreEngine indicator */}
-        <div className="flex items-center gap-1.5 mb-2 px-1">
-          <span className="text-[10px] text-[#c9a84c]/40">⚡</span>
-          <span className="text-[10px] text-gray-700 tracking-wider uppercase">LoreEngine v1</span>
+      <div className="p-3 border-t border-[#c9a84c]/10 flex flex-col gap-2">
+        <button
+          onClick={() => signOut({ callbackUrl: '/login' })}
+          className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-500 hover:text-red-400 hover:bg-red-500/5 rounded transition-all cursor-pointer"
+        >
+          <span>🚪</span> Sign Out
+        </button>
+
+        <div className="flex items-center gap-1.5 px-1 justify-between">
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-[#c9a84c]/40">⚡</span>
+            <span className="text-[10px] text-gray-700 tracking-wider uppercase">LoreEngine v1</span>
+          </div>
         </div>
         <p className="text-[9px] text-gray-600 text-center tracking-widest uppercase">Phoenix Creator Studio</p>
       </div>

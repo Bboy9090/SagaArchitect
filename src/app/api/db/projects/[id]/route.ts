@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { projects } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { logVersion } from '@/lib/version-history';
+import { requireUser, requireOwnedProject, AuthError } from '@/lib/auth-helpers';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!db) {
@@ -10,10 +11,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   }
   try {
     const { id } = await params;
-    const [p] = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
-    if (!p) {
-      return NextResponse.json({ ok: false, error: 'Project not found' }, { status: 404 });
-    }
+    const userId = await requireUser();
+    const p = await requireOwnedProject(id, userId);
     return NextResponse.json({
       ok: true,
       data: {
@@ -36,6 +35,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       }
     });
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
@@ -47,6 +49,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   }
   try {
     const { id } = await params;
+    const userId = await requireUser();
+    await requireOwnedProject(id, userId);
     const payload = await req.json();
 
     const updates = {
@@ -101,6 +105,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       }
     });
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
@@ -112,6 +119,9 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   }
   try {
     const { id } = await params;
+    const userId = await requireUser();
+    await requireOwnedProject(id, userId);
+
     const [existing] = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
     await db.transaction(async (tx) => {
       await logVersion(tx, {
@@ -125,6 +135,9 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     });
     return NextResponse.json({ ok: true });
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
