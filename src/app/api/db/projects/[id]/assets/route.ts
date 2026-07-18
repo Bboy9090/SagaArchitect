@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { assets } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { requireUser, requireOwnedProject, AuthError } from '@/lib/auth-helpers';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!db) {
@@ -10,6 +11,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   try {
     const { id: projectId } = await params;
+    const userId = await requireUser();
+    await requireOwnedProject(projectId, userId);
+
     const list = await db.select().from(assets).where(eq(assets.projectId, projectId));
     const mapped = list.map((a) => ({
       id: a.id,
@@ -24,6 +28,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }));
     return NextResponse.json({ ok: true, data: mapped });
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }

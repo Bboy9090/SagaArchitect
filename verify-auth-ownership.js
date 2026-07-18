@@ -59,7 +59,21 @@ async function run() {
     console.error('❌ User A failed to read their own project');
   }
 
-  // 5. Confirm User B cannot read it (should get 403 or 404)
+  // 5. Confirm User B cannot list User A's project
+  console.log('User B listing projects...');
+  const listBRes = await fetch('http://localhost:3000/api/db/projects', {
+    headers: { 'x-test-session-user-id': userBId }
+  });
+  const listBData = await listBRes.json();
+  const foundAInList = (listBData.data || []).some(p => p.id === projectId);
+  if (foundAInList) {
+    passed = false;
+    console.error('❌ Security breach: User B saw User A\'s project in project list');
+  } else {
+    console.log('✅ Asserted: User B cannot list User A\'s project');
+  }
+
+  // 6. Confirm User B cannot fetch User A's project directly (should get 403)
   console.log('User B attempting to read User A\'s project...');
   const readBRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}`, {
     headers: { 'x-test-session-user-id': userBId }
@@ -72,7 +86,7 @@ async function run() {
     console.log('✅ Asserted: User B blocked from reading User A\'s project with status:', readBRes.status);
   }
 
-  // 6. Confirm User B cannot update it
+  // 7. Confirm User B cannot update it
   console.log('User B attempting to update User A\'s project...');
   const updateBRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}`, {
     method: 'PUT',
@@ -90,7 +104,47 @@ async function run() {
     console.log('✅ Asserted: User B blocked from updating User A\'s project with status:', updateBRes.status);
   }
 
-  // 7. Confirm User B cannot access PDF export
+  // 8. Confirm User B cannot delete it
+  console.log('User B attempting to delete User A\'s project...');
+  const deleteBRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}`, {
+    method: 'DELETE',
+    headers: { 'x-test-session-user-id': userBId }
+  });
+  console.log('   User B delete status:', deleteBRes.status);
+  if (deleteBRes.status === 200) {
+    passed = false;
+    console.error('❌ Security breach: User B was able to delete User A\'s project');
+  } else {
+    console.log('✅ Asserted: User B blocked from deleting User A\'s project with status:', deleteBRes.status);
+  }
+
+  // 9. Confirm User B cannot access child entities under it (characters list, scenes list)
+  console.log('User B attempting characters list...');
+  const charsBRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}/characters`, {
+    headers: { 'x-test-session-user-id': userBId }
+  });
+  console.log('   User B characters list status:', charsBRes.status);
+  if (charsBRes.status === 200) {
+    passed = false;
+    console.error('❌ Security breach: User B accessed User A\'s characters list');
+  } else {
+    console.log('✅ Asserted: User B blocked from characters list with status:', charsBRes.status);
+  }
+
+  // 10. Confirm User B cannot access assets list
+  console.log('User B attempting assets list...');
+  const assetsBRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}/assets`, {
+    headers: { 'x-test-session-user-id': userBId }
+  });
+  console.log('   User B assets list status:', assetsBRes.status);
+  if (assetsBRes.status === 200) {
+    passed = false;
+    console.error('❌ Security breach: User B accessed User A\'s assets list');
+  } else {
+    console.log('✅ Asserted: User B blocked from assets list with status:', assetsBRes.status);
+  }
+
+  // 11. Confirm User B cannot access PDF export
   console.log('User B attempting PDF export...');
   const pdfBRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}/export/pdf`, {
     method: 'POST',
@@ -104,7 +158,33 @@ async function run() {
     console.log('✅ Asserted: User B blocked from PDF export with status:', pdfBRes.status);
   }
 
-  // 8. Confirm User B cannot run canon scan
+  // 12. Confirm User B cannot access JSON export
+  console.log('User B attempting JSON export...');
+  const jsonBRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}/export/json`, {
+    headers: { 'x-test-session-user-id': userBId }
+  });
+  console.log('   User B JSON export status:', jsonBRes.status);
+  if (jsonBRes.status === 200) {
+    passed = false;
+    console.error('❌ Security breach: User B was able to export User A\'s project to JSON');
+  } else {
+    console.log('✅ Asserted: User B blocked from JSON export with status:', jsonBRes.status);
+  }
+
+  // 13. Confirm User B cannot access history logs
+  console.log('User B attempting history GET...');
+  const histBRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}/history`, {
+    headers: { 'x-test-session-user-id': userBId }
+  });
+  console.log('   User B history status:', histBRes.status);
+  if (histBRes.status === 200) {
+    passed = false;
+    console.error('❌ Security breach: User B accessed User A\'s history logs');
+  } else {
+    console.log('✅ Asserted: User B blocked from history logs with status:', histBRes.status);
+  }
+
+  // 14. Confirm User B cannot run canon scan
   console.log('User B attempting canon scan...');
   const scanBRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}/scan-canon`, {
     headers: { 'x-test-session-user-id': userBId }
@@ -117,7 +197,7 @@ async function run() {
     console.log('✅ Asserted: User B blocked from canon scan with status:', scanBRes.status);
   }
 
-  // 9. Confirm unauthenticated requests return 401
+  // 15. Confirm unauthenticated requests return 401
   console.log('Unauthenticated request to project GET...');
   const unauthRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}`);
   console.log('   Unauthenticated GET status:', unauthRes.status);

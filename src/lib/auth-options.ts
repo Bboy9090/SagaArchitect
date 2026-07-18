@@ -13,6 +13,7 @@ const adapter = db ? DrizzleAdapter(db as any, {
   accountsTable: schema.accounts,
   sessionsTable: schema.sessions,
   verificationTokensTable: schema.verificationTokens,
+  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
 } as any) as any : undefined;
 
 export const authOptions: NextAuthOptions = {

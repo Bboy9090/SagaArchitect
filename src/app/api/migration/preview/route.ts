@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
+import { requireUser, AuthError } from '@/lib/auth-helpers';
 
 export async function POST(req: Request) {
   try {
+    await requireUser();
     const payload = await req.json();
     const {
       projects = [],
@@ -67,6 +69,9 @@ export async function POST(req: Request) {
       warnings,
     });
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
     const msg = error instanceof Error ? error.message : 'Invalid JSON payload';
     return NextResponse.json({
       ok: false,
