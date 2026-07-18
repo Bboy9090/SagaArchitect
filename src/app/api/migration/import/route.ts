@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import * as s from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { saveFileLocal } from '@/lib/storage-driver';
+
 
 const DEFAULT_USER_ID = '11111111-1111-4111-8111-111111111111';
 
@@ -254,6 +256,44 @@ export async function POST(req: Request) {
       // Insert Storyboard Panels
       for (const p of storyboardPanels) {
         const newSceneId = sceneIdMap.get(p.scene_id)!;
+        
+        let assetId: string | null = null;
+        if (p.image_base64 && typeof p.image_base64 === 'string' && p.image_base64.startsWith('data:image/')) {
+          const match = p.image_base64.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+          if (match) {
+            const mimeType = match[1];
+            const base64Data = match[2];
+            const buffer = Buffer.from(base64Data, 'base64');
+            const fileId = crypto.randomUUID();
+            let ext = '.png';
+            if (mimeType === 'image/jpeg' || mimeType === 'image/jpg') ext = '.jpg';
+            else if (mimeType === 'image/gif') ext = '.gif';
+            else if (mimeType === 'image/webp') ext = '.webp';
+
+            try {
+              const filePath = await saveFileLocal(buffer, fileId, ext);
+              const parentScene = scenes.find((sc: { id: string }) => sc.id === p.scene_id);
+              const newProjId = parentScene ? projectIdMap.get(parentScene.project_id || parentScene.universe_id) : null;
+
+              if (newProjId) {
+                await tx.insert(s.assets).values({
+                  id: fileId,
+                  ownerId: DEFAULT_USER_ID,
+                  projectId: newProjId,
+                  name: `Sketch Panel ${p.panel_number}${ext}`,
+                  filePath,
+                  fileSize: buffer.length,
+                  mimeType,
+                  storageProvider: 'local',
+                });
+                assetId = fileId;
+              }
+            } catch (err) {
+              console.warn('Failed to migrate base64 sketch for panel:', p.panel_number, err);
+            }
+          }
+        }
+
         await tx.insert(s.storyboardPanels).values({
           sceneId: newSceneId,
           panelNumber: p.panel_number,
@@ -261,6 +301,7 @@ export async function POST(req: Request) {
           actionDescription: p.action_description,
           dialogue: p.dialogue,
           cameraShot: p.camera_shot || 'Medium Shot',
+          assetId,
           version: p.version || 1,
         });
       }
