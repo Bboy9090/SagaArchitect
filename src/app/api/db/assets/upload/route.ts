@@ -64,7 +64,7 @@ export async function POST(req: Request) {
         action: 'create',
         entityType: 'asset',
         entityId: fileId,
-        snapshot: { name: file.name, fileSize: file.size, mimeType: file.type, filePath },
+        changeData: { name: file.name, fileSize: file.size, mimeType: file.type, filePath },
       });
       fileRecord = { id: fileId, name: file.name, fileSize: file.size, mimeType: file.type };
     });

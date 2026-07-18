@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
-import { storyboardPanels } from '@/db/schema';
+import { storyboardPanels, scenes } from '@/db/schema';
+import { logVersion } from '@/lib/version-history';
 import { eq } from 'drizzle-orm';
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -19,7 +20,23 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       values.assetId = payload.asset_id ?? null;
     }
 
-    await db.update(storyboardPanels).set(values).where(eq(storyboardPanels.id, id));
+    await db!.transaction(async (tx) => {
+      await tx.update(storyboardPanels).set(values).where(eq(storyboardPanels.id, id));
+      // Look up projectId for logging
+      const [panel] = await tx.select().from(storyboardPanels).where(eq(storyboardPanels.id, id)).limit(1);
+      if (panel) {
+        const [scene] = await tx.select().from(scenes).where(eq(scenes.id, panel.sceneId)).limit(1);
+        if (scene) {
+          await logVersion(tx, {
+            projectId: scene.projectId,
+            action: 'update',
+            entityType: 'storyboard_panel',
+            entityId: id,
+            changeData: values,
+          });
+        }
+      }
+    });
 
     const [p] = await db.select().from(storyboardPanels).where(eq(storyboardPanels.id, id)).limit(1);
     if (!p) {
@@ -54,7 +71,22 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   }
   try {
     const { id } = await params;
-    await db.delete(storyboardPanels).where(eq(storyboardPanels.id, id));
+    const [panel] = await db.select().from(storyboardPanels).where(eq(storyboardPanels.id, id)).limit(1);
+    await db!.transaction(async (tx) => {
+      if (panel) {
+        const [scene] = await tx.select().from(scenes).where(eq(scenes.id, panel.sceneId)).limit(1);
+        if (scene) {
+          await logVersion(tx, {
+            projectId: scene.projectId,
+            action: 'delete',
+            entityType: 'storyboard_panel',
+            entityId: id,
+            changeData: { panelNumber: panel.panelNumber, visualPrompt: panel.visualPrompt },
+          });
+        }
+      }
+      await tx.delete(storyboardPanels).where(eq(storyboardPanels.id, id));
+    });
     return NextResponse.json({ ok: true });
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Database error';

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
-import { storyboardPanels } from '@/db/schema';
+import { storyboardPanels, scenes } from '@/db/schema';
+import { logVersion } from '@/lib/version-history';
 import { eq } from 'drizzle-orm';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -43,6 +44,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     const [existing] = await db.select().from(storyboardPanels).where(eq(storyboardPanels.id, panelId)).limit(1);
 
+    // Look up projectId from scene for version history
+    const [scene] = await db.select().from(scenes).where(eq(scenes.id, sceneId)).limit(1);
+    const projectId = scene?.projectId;
+
     const values = {
       id: panelId,
       sceneId,
@@ -56,11 +61,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       updatedAt: new Date(),
     };
 
-    if (existing) {
-      await db.update(storyboardPanels).set(values).where(eq(storyboardPanels.id, panelId));
-    } else {
-      await db.insert(storyboardPanels).values(values);
-    }
+    const action = existing ? 'update' : 'create';
+
+    await db!.transaction(async (tx) => {
+      if (existing) {
+        await tx.update(storyboardPanels).set(values).where(eq(storyboardPanels.id, panelId));
+      } else {
+        await tx.insert(storyboardPanels).values(values);
+      }
+      if (projectId) {
+        await logVersion(tx, {
+          projectId,
+          action,
+          entityType: 'storyboard_panel',
+          entityId: panelId,
+          changeData: values,
+        });
+      }
+    });
 
     const [p] = await db.select().from(storyboardPanels).where(eq(storyboardPanels.id, panelId)).limit(1);
 

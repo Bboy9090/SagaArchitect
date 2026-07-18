@@ -534,6 +534,11 @@ export default function CanonCorePage({ params }: CanonPageProps) {
             <Button variant="secondary" size="sm" onClick={() => router.push(`/universe/${id}/lore`)}>
               🔮 Lore Memory
             </Button>
+            {isDbMode() && (
+              <Button variant="secondary" size="sm" onClick={() => router.push(`/universe/${id}/history`)}>
+                ⏳ Version History
+              </Button>
+            )}
             <ShareAsArchetypeButton
               target={{ kind: 'universe', entity: universe }}
             />

@@ -34,7 +34,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
         action: 'delete',
         entityType: 'asset',
         entityId: id,
-        snapshot: { name: asset.name, filePath: asset.filePath, mimeType: asset.mimeType },
+        changeData: { name: asset.name, filePath: asset.filePath, mimeType: asset.mimeType },
       });
       await tx.delete(assets).where(eq(assets.id, id));
     });
