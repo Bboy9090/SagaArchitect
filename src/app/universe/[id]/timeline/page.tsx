@@ -25,10 +25,13 @@ export default function TimelinePage({ params }: TimelinePageProps) {
   const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
-    const u = getUniverseById(id);
-    if (!u) { router.push('/dashboard'); return; }
-    setEvents(getTimeline(id));
-    setLoading(false);
+    const timer = setTimeout(() => {
+      const u = getUniverseById(id);
+      if (!u) { router.push('/dashboard'); return; }
+      setEvents(getTimeline(id));
+      setLoading(false);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [id, router]);
 
   const handleDelete = (eventId: string) => {

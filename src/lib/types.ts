@@ -241,3 +241,32 @@ export interface SharedLoreEntry {
   created_at: string;
   updated_at: string;
 }
+
+export interface Scene {
+  id: string;
+  project_id: string;
+  title: string;
+  summary: string;
+  order: number;
+  location_id?: string;
+  canon_status: CanonStatus;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface StoryboardPanel {
+  id: string;
+  scene_id: string;
+  panel_number: number;
+  visual_prompt: string;
+  action_description: string;
+  dialogue?: string;
+  camera_shot?: string;
+  image_base64?: string;
+  asset_id?: string;          // DB mode: references an Asset Library upload
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type Project = Universe;
+

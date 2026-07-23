@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { Analytics } from "@vercel/analytics/next";
+import { NextAuthProvider } from "@/components/providers/NextAuthProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Saga Architect — Universe Bible Generator",
-  description: "Universe Bible + Canon Engine for creators",
+  title: "Phoenix Creator Studio — Project Bible Generator",
+  description: "Project Bible + Canon Engine for creators",
   icons: { icon: "/sagaarchitect-logo.png" },
 };
 
@@ -16,7 +17,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased bg-[#0a0a0f] text-white">
-        {children}
+        <NextAuthProvider>
+          {children}
+        </NextAuthProvider>
         <Analytics />
       </body>
     </html>

@@ -87,13 +87,6 @@ export default function SharedLorePoolPage() {
   const [generating, setGenerating] = useState(false);
   const [genResult, setGenResult] = useState<GenerateResult | null>(null);
 
-  // Load local pool + API pool
-  useEffect(() => {
-    setPoolEntries(getSharedLorePool());
-    setLoading(false);
-    fetchApiPool();
-  }, []);
-
   const fetchApiPool = async (params?: Record<string, string>) => {
     setApiLoading(true);
     try {
@@ -112,6 +105,16 @@ export default function SharedLorePoolPage() {
       setApiLoading(false);
     }
   };
+
+  // Load local pool + API pool
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPoolEntries(getSharedLorePool());
+      setLoading(false);
+      fetchApiPool();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
 
   const applyFilters = () => {
     const params: Record<string, string> = {};

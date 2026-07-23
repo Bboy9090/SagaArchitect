@@ -144,14 +144,57 @@ All endpoints have mock fallbacks when `OPENAI_API_KEY` is absent.
 
 ```
 universes
-  └─ factions
-  └─ characters
-  └─ locations
-  └─ timeline_events
-  └─ story_arcs
-  └─ lore_rules
-  └─ generated_stories   ← output of Story Forge
-  └─ media_projects      ← book, game, comic, film projects
+  ├─ factions
+  ├─ characters
+  ├─ locations
+  ├─ timeline_events
+  ├─ story_arcs
+  ├─ lore_rules
+  ├─ generated_stories   ← output of Story Forge
+  ├─ media_projects      ← book, game, comic, film projects
+  ├─ scenes              ← scene beats list for narrative planning
+  └─ storyboard_panels   ← storyboard panels and visual prompts linked to scenes
+```
+
+### Compatibility Note: Universe vs Project
+
+In the UI, the top-level entity is named **Project** to make the app feel like a unified creative studio. Internally, the code and datastores use **Universe** structure for full backward compatibility, keeping all legacy code intact. A TypeScript type alias maps `Project = Universe`.
+
+### Scenes
+
+A `Scene` is a structured beat in a narrative script or outline.
+
+```typescript
+interface Scene {
+  id: string;
+  project_id: string;      // maps to universe_id
+  title: string;
+  summary: string;
+  order: number;
+  location_id?: string;
+  canon_status: CanonStatus;
+  created_at?: string;
+  updated_at?: string;
+}
+```
+
+### Storyboard Panels
+
+A `StoryboardPanel` maps to a scene and represents a visual scene setup, with camera directions and dialogues.
+
+```typescript
+interface StoryboardPanel {
+  id: string;
+  scene_id: string;
+  panel_number: number;
+  visual_prompt: string;
+  action_description: string;
+  dialogue?: string;
+  camera_shot?: string;    // e.g. 'Close-Up', 'Wide Shot'
+  image_base64?: string;   // drawn canvas base64 image string
+  created_at?: string;
+  updated_at?: string;
+}
 ```
 
 ### Media Projects
@@ -265,22 +308,25 @@ Reads from: all collections. Writes to: `media_projects` with type `game`.
 
 ## Current Storage
 
-SagaArchitect v1 uses `localStorage` for all persistence. This is intentional for the MVP — no backend required.
+Phoenix Creator Studio utilizes a dual storage strategy:
+1. **Client Persistence**: By default, the application runs on high-performance `localStorage` using `phoenix_*` database keys. It includes an automatic, non-destructive legacy data migration check that transfers old `saga_*` structures.
+2. **Database Foundation (PostgreSQL + Drizzle)**: In Phase 2A, the backend was extended with a full relational schema managed via Drizzle ORM (`src/db/schema.ts`). 
 
-When a real backend is added, the same `CanonBlock` structure and all API contracts remain unchanged. Only the storage layer (`src/lib/storage.ts`) needs updating.
+### Relational Schema Design (PostgreSQL)
 
-Planned collections for a MongoDB backend:
-```
-universes
-factions
-characters
-locations
-timeline_events
-story_arcs
-lore_rules
-generated_stories
-media_projects
-```
+Tables defined inside Drizzle schema include:
+- `users`: User profiles with password hashes and credentials.
+- `accounts` / `sessions` / `verification_tokens`: First-class schemas mapping NextAuth.js tables for upcoming Auth integration.
+- `projects`: Replaced universes; maps project ownership and metadata.
+- `characters` / `factions` / `locations` / `timeline_events` / `story_arcs` / `lore_rules` / `generated_stories`: Complete world-building entities.
+- `scenes` / `storyboard_panels`: Expanded tables to support visual script drafts.
+- `assets`: Storage configuration paths (local path or S3) with timestamps.
+- `version_history`: Project logs tracking entity actions.
+
+### Schema Fields Standards
+- **Version Columns**: All editable content tables carry a `version` integer column incremented during revisions.
+- **Timestamps**: All tables carry `created_at` and `updated_at` timestamps with timezone values.
+- **Cascading Constraints**: Relationships carry safe constraints (`ON DELETE CASCADE` for owned entities, and `ON DELETE SET NULL` for optional references like `location_id` or `asset_id`).
 
 ---
 

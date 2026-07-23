@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useParams, usePathname } from 'next/navigation';
+import { signOut } from 'next-auth/react';
 
 interface NavItem {
   href: string;
@@ -16,19 +17,23 @@ export function Sidebar() {
   const universeId = params?.id as string | undefined;
 
   const mainNav: NavItem[] = [
-    { href: '/dashboard', label: 'Dashboard', icon: '🏛️' },
-    { href: '/universe/new', label: 'New Universe', icon: '✨' },
+    { href: '/dashboard', label: 'Projects', icon: '🏛️' },
+    { href: '/universe/new', label: 'New Project', icon: '✨' },
     { href: '/shared-lore-pool', label: 'Shared Lore Pool', icon: '🌐' },
   ];
 
   const universeNav: NavItem[] = universeId ? [
-    { href: `/universe/${universeId}`, label: 'Canon Core', icon: '🌍' },
+    { href: `/universe/${universeId}`, label: 'Canon Engine', icon: '🌍' },
     { href: `/universe/${universeId}/characters`, label: 'Characters', icon: '👤' },
+    { href: `/universe/${universeId}/scenes`, label: 'Scenes', icon: '🎬' },
+    { href: `/universe/${universeId}/storyboard`, label: 'Storyboard', icon: '🖼️' },
     { href: `/universe/${universeId}/factions`, label: 'Factions', icon: '🏛️' },
     { href: `/universe/${universeId}/timeline`, label: 'Timeline', icon: '⏳' },
     { href: `/universe/${universeId}/arcs`, label: 'Arc Forge', icon: '⚔️' },
     { href: `/universe/${universeId}/lore`, label: 'Lore Memory', icon: '🔮' },
     { href: `/universe/${universeId}/stories`, label: 'Story Forge', icon: '📖' },
+    { href: `/universe/${universeId}/export`, label: 'Export', icon: '📥' },
+    { href: `/universe/${universeId}/history`, label: 'History', icon: '📜' },
   ] : [];
 
   const isActive = (href: string) => pathname === href;
@@ -39,7 +44,7 @@ export function Sidebar() {
         <Link href="/dashboard" className="block flex flex-col items-center">
           <Image
             src="/sagaarchitect-logo.png"
-            alt="Saga Architect"
+            alt="Phoenix Creator Studio"
             width={160}
             height={160}
             className="w-24 h-24 object-contain"
@@ -75,7 +80,7 @@ export function Sidebar() {
 
         {universeNav.length > 0 && (
           <div>
-            <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-2 px-2">Universe</p>
+            <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-2 px-2">Project Context</p>
             {universeNav.map(item => (
               <Link
                 key={item.href}
@@ -100,15 +105,22 @@ export function Sidebar() {
         )}
       </nav>
 
-      <div className="p-3 border-t border-[#c9a84c]/10">
-        {/* LoreEngine indicator */}
-        <div className="flex items-center gap-1.5 mb-2 px-1">
-          <span className="text-[10px] text-[#c9a84c]/40">⚡</span>
-          <span className="text-[10px] text-gray-700 tracking-wider uppercase">LoreEngine v1</span>
+      <div className="p-3 border-t border-[#c9a84c]/10 flex flex-col gap-2">
+        <button
+          onClick={() => signOut({ callbackUrl: '/login' })}
+          className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-500 hover:text-red-400 hover:bg-red-500/5 rounded transition-all cursor-pointer"
+        >
+          <span>🚪</span> Sign Out
+        </button>
+
+        <div className="flex items-center gap-1.5 px-1 justify-between">
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-[#c9a84c]/40">⚡</span>
+            <span className="text-[10px] text-gray-700 tracking-wider uppercase">LoreEngine v1</span>
+          </div>
         </div>
-        <p className="text-[9px] text-gray-600 text-center tracking-widest uppercase">Saga Architect</p>
+        <p className="text-[9px] text-gray-600 text-center tracking-widest uppercase">Phoenix Creator Studio</p>
       </div>
     </aside>
   );
 }
-

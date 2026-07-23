@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
@@ -16,6 +16,8 @@ import {
 } from '@/lib/storage';
 import { buildRainstormsSyncPayload, syncToRainstorms, pingRainstorms } from '@/lib/rainstorms';
 import type { Universe, Faction, Character, Location } from '@/lib/types';
+import { isDbMode } from '@/lib/storage-mode';
+import { dbGetProject, dbGetCharacters, dbSaveCharacter, dbGetAssets, dbUploadAsset, dbDeleteAsset, type ProjectAsset } from '@/lib/db-client';
 
 interface Section {
   id: string;
@@ -34,12 +36,14 @@ export default function CanonCorePage({ params }: CanonPageProps) {
   const { id } = use(params);
   const router = useRouter();
   const [universe, setUniverse] = useState<Universe | null>(null);
+  const [charactersList, setCharactersList] = useState<Character[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ chars: 0, factions: 0, locations: 0, events: 0, arcs: 0, lore: 0 });
   const [locations, setLocations] = useState<Location[]>([]);
   const [genLoading, setGenLoading] = useState<string | null>(null);
   const [exportCopied, setExportCopied] = useState(false);
+  const [assetsList, setAssetsList] = useState<ProjectAsset[]>([]);
 
   // Rainstorms sync state
   const [showRainstormsModal, setShowRainstormsModal] = useState(false);
@@ -48,25 +52,54 @@ export default function CanonCorePage({ params }: CanonPageProps) {
   const [syncMessage, setSyncMessage] = useState('');
   const [pingOk, setPingOk] = useState<boolean | null>(null);
 
-  useEffect(() => {
-    const u = getUniverseById(id);
-    if (!u) { router.push('/dashboard'); return; }
-    setUniverse(u);
-    const locs = getLocations(id);
-    setLocations(locs);
-    setStats({
-      chars: getCharacters(id).length,
-      factions: getFactions(id).length,
-      locations: locs.length,
-      events: getTimeline(id).length,
-      arcs: getArcs(id).length,
-      lore: getLoreRules(id).length,
-    });
-    // Restore saved Rainstorms URL
-    const saved = localStorage.getItem(RAINSTORMS_URL_KEY);
-    if (saved) setRainstormsUrl(saved);
-    setLoading(false);
+  const fetchProjectData = useCallback(async () => {
+    try {
+      const isDb = isDbMode();
+      let u: Universe | null = null;
+      let chars: Character[] = [];
+      if (isDb) {
+        u = await dbGetProject(id);
+        chars = await dbGetCharacters(id);
+        const dbAssets = await dbGetAssets(id);
+        setAssetsList(dbAssets);
+      } else {
+        u = getUniverseById(id) || null;
+        chars = getCharacters(id);
+      }
+
+      if (!u) {
+        router.push('/dashboard');
+        return;
+      }
+
+      setUniverse(u);
+      setCharactersList(chars);
+      const locs = getLocations(id);
+      setLocations(locs);
+      setStats({
+        chars: chars.length,
+        factions: getFactions(id).length,
+        locations: locs.length,
+        events: getTimeline(id).length,
+        arcs: getArcs(id).length,
+        lore: getLoreRules(id).length,
+      });
+    } catch (err) {
+      console.error(err);
+      router.push('/dashboard');
+    } finally {
+      setLoading(false);
+    }
   }, [id, router]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchProjectData();
+      const saved = localStorage.getItem(RAINSTORMS_URL_KEY);
+      if (saved) setRainstormsUrl(saved);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [id, router, fetchProjectData]);
 
   const toggleSection = (sectionId: string) => {
     setExpanded(prev => ({ ...prev, [sectionId]: !prev[sectionId] }));
@@ -78,7 +111,7 @@ export default function CanonCorePage({ params }: CanonPageProps) {
     return {
       universe,
       factions: getFactions(id),
-      characters: getCharacters(id),
+      characters: charactersList,
       locations: getLocations(id),
       timeline: getTimeline(id),
       lore_rules: getLoreRules(id),
@@ -150,7 +183,7 @@ export default function CanonCorePage({ params }: CanonPageProps) {
     const payload = buildRainstormsSyncPayload(
       universe,
       getFactions(id),
-      getCharacters(id),
+      charactersList,
       getLocations(id),
       getTimeline(id),
       getArcs(id),
@@ -308,10 +341,17 @@ export default function CanonCorePage({ params }: CanonPageProps) {
                 });
                 const data = await res.json();
                 if (data.characters) {
-                  saveCharacters(id, data.characters.map((c: Omit<Character, 'id' | 'universe_id'>) => ({
+                  const newChars = data.characters.map((c: Omit<Character, 'id' | 'universe_id'>) => ({
                     ...c, id: crypto.randomUUID(), universe_id: id,
-                  })));
-                  setStats(prev => ({ ...prev, chars: data.characters.length }));
+                  }));
+                  if (isDbMode()) {
+                    for (const char of newChars) {
+                      await dbSaveCharacter(id, char);
+                    }
+                  } else {
+                    saveCharacters(id, newChars);
+                  }
+                  await fetchProjectData();
                 }
               } finally { setGenLoading(null); }
             }}
@@ -371,6 +411,97 @@ export default function CanonCorePage({ params }: CanonPageProps) {
         </Button>
       ),
     },
+    {
+      id: 'assets',
+      icon: '📍',
+      title: `Asset Library (${isDbMode() ? assetsList.length : 'DB only'})`,
+      content: (
+        <div className="space-y-4">
+          {!isDbMode() ? (
+            <div className="bg-[#121217] border border-[#c9a84c]/20 rounded-lg p-4 text-center">
+              <p className="text-gray-400 text-sm">
+                🗄️ The Asset Library is available in **PostgreSQL Database Mode**. Switch to DB Mode on the dashboard to upload and serve reference images.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row items-center gap-3 bg-[#121217] border border-[#c9a84c]/10 rounded-lg p-4">
+                <input
+                  type="file"
+                  id="asset-upload-input"
+                  accept="image/png, image/jpeg, image/gif, image/webp"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      setGenLoading('asset-upload');
+                      await dbUploadAsset(id, file);
+                      const dbAssets = await dbGetAssets(id);
+                      setAssetsList(dbAssets);
+                    } catch (err) {
+                      const msg = err instanceof Error ? err.message : 'Failed to upload asset';
+                      alert(msg);
+                    } finally {
+                      setGenLoading(null);
+                    }
+                  }}
+                />
+                <Button
+                  variant="gold"
+                  size="sm"
+                  loading={genLoading === 'asset-upload'}
+                  onClick={() => document.getElementById('asset-upload-input')?.click()}
+                >
+                  📤 Upload Reference Image
+                </Button>
+                <span className="text-xs text-gray-500">Max size: 5MB. PNG, JPG, GIF, WEBP.</span>
+              </div>
+
+              {assetsList.length === 0 ? (
+                <p className="text-gray-500 text-sm text-center py-6">No assets uploaded to this project yet.</p>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  {assetsList.map((asset) => (
+                    <div key={asset.id} className="relative group bg-[#121217] border border-[#c9a84c]/10 hover:border-[#c9a84c]/30 rounded-lg p-2 flex flex-col justify-between overflow-hidden">
+                      <div className="aspect-video w-full relative bg-black/40 rounded overflow-hidden mb-2">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={asset.serve_url}
+                          alt={asset.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-xs font-bold text-white truncate" title={asset.name}>{asset.name}</span>
+                        <span className="text-[10px] text-gray-500">{(asset.file_size / 1024).toFixed(0)} KB</span>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          if (!confirm(`Delete asset "${asset.name}"?`)) return;
+                          try {
+                            await dbDeleteAsset(asset.id);
+                            const dbAssets = await dbGetAssets(id);
+                            setAssetsList(dbAssets);
+                          } catch (err) {
+                            const msg = err instanceof Error ? err.message : 'Failed to delete asset';
+                            alert(msg);
+                          }
+                        }}
+                        className="absolute top-2 right-2 bg-black/60 hover:bg-[#c41e3a] text-white p-1 rounded transition-colors opacity-0 group-hover:opacity-100"
+                        title="Delete Asset"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ),
+    },
   ];
 
   const inputClass = 'w-full bg-[#0a0a0f] border border-[#c9a84c]/30 text-white rounded px-3 py-2 text-sm focus:outline-none focus:border-[#c9a84c] placeholder-gray-600';
@@ -403,6 +534,16 @@ export default function CanonCorePage({ params }: CanonPageProps) {
             <Button variant="secondary" size="sm" onClick={() => router.push(`/universe/${id}/lore`)}>
               🔮 Lore Memory
             </Button>
+            {isDbMode() && (
+              <Button variant="secondary" size="sm" onClick={() => router.push(`/universe/${id}/history`)}>
+                ⏳ Version History
+              </Button>
+            )}
+            {isDbMode() && (
+              <Button variant="secondary" size="sm" onClick={() => router.push(`/universe/${id}/canon`)}>
+                🛡️ Canon Integrity
+              </Button>
+            )}
             <ShareAsArchetypeButton
               target={{ kind: 'universe', entity: universe }}
             />
