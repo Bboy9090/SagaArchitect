@@ -1,225 +1,112 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
-async function run() {
-  const pg = require('C:/Users/Bobby/pgtemp/node_modules/pg');
-  const clientUrl = 'postgresql://postgres.yfbkkjbtwpgatjlsjeab:Kai-Jax0990@aws-1-us-east-1.pooler.supabase.com:6543/postgres';
-  const client = new pg.Client({ connectionString: clientUrl, ssl: { rejectUnauthorized: false } });
-  await client.connect();
+const postgres = require('postgres');
+const { randomUUID } = require('node:crypto');
 
-  console.log('Running Authentication and Ownership Verification Suite...');
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
+const DATABASE_URL = process.env.TEST_DATABASE_URL || process.env.DATABASE_MIGRATION_URL || process.env.DATABASE_URL;
 
-  // 1. Register User A
-  console.log('Registering User A...');
-  const regARes = await fetch('http://localhost:3000/api/auth/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: 'User A', email: 'user_a@saga.com', password: 'passwordA123' })
-  });
-  const regAData = await regARes.json();
-  const userAId = regAData.data.id;
-  console.log('   User A registered:', userAId);
-
-  // 2. Register User B
-  console.log('Registering User B...');
-  const regBRes = await fetch('http://localhost:3000/api/auth/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: 'User B', email: 'user_b@saga.com', password: 'passwordB123' })
-  });
-  const regBData = await regBRes.json();
-  const userBId = regBData.data.id;
-  console.log('   User B registered:', userBId);
-
-  let passed = true;
-
-  // 3. User A creates a project
-  const projectId = '77777777-7777-4777-8777-777777777777';
-  console.log('User A creating project...');
-  const createRes = await fetch('http://localhost:3000/api/db/projects', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-test-session-user-id': userAId
-    },
-    body: JSON.stringify({ id: projectId, name: "User A's Secret Novel" })
-  });
-  console.log('   Create status:', createRes.status);
-  if (createRes.status !== 200) {
-    passed = false;
-    console.error('❌ User A failed to create project');
+function requireTestConfiguration() {
+  if (!DATABASE_URL) {
+    throw new Error('Set TEST_DATABASE_URL (preferred), DATABASE_MIGRATION_URL, or DATABASE_URL before running this verification.');
   }
-
-  // 4. Confirm User A can read it
-  console.log('User A reading project details...');
-  const readARes = await fetch(`http://localhost:3000/api/db/projects/${projectId}`, {
-    headers: { 'x-test-session-user-id': userAId }
-  });
-  console.log('   User A read status:', readARes.status);
-  if (readARes.status !== 200) {
-    passed = false;
-    console.error('❌ User A failed to read their own project');
-  }
-
-  // 5. Confirm User B cannot list User A's project
-  console.log('User B listing projects...');
-  const listBRes = await fetch('http://localhost:3000/api/db/projects', {
-    headers: { 'x-test-session-user-id': userBId }
-  });
-  const listBData = await listBRes.json();
-  const foundAInList = (listBData.data || []).some(p => p.id === projectId);
-  if (foundAInList) {
-    passed = false;
-    console.error('❌ Security breach: User B saw User A\'s project in project list');
-  } else {
-    console.log('✅ Asserted: User B cannot list User A\'s project');
-  }
-
-  // 6. Confirm User B cannot fetch User A's project directly (should get 403)
-  console.log('User B attempting to read User A\'s project...');
-  const readBRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}`, {
-    headers: { 'x-test-session-user-id': userBId }
-  });
-  console.log('   User B read status:', readBRes.status);
-  if (readBRes.status === 200) {
-    passed = false;
-    console.error('❌ Security breach: User B was able to read User A\'s project');
-  } else {
-    console.log('✅ Asserted: User B blocked from reading User A\'s project with status:', readBRes.status);
-  }
-
-  // 7. Confirm User B cannot update it
-  console.log('User B attempting to update User A\'s project...');
-  const updateBRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-test-session-user-id': userBId
-    },
-    body: JSON.stringify({ name: "Hacked!" })
-  });
-  console.log('   User B update status:', updateBRes.status);
-  if (updateBRes.status === 200) {
-    passed = false;
-    console.error('❌ Security breach: User B was able to update User A\'s project');
-  } else {
-    console.log('✅ Asserted: User B blocked from updating User A\'s project with status:', updateBRes.status);
-  }
-
-  // 8. Confirm User B cannot delete it
-  console.log('User B attempting to delete User A\'s project...');
-  const deleteBRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}`, {
-    method: 'DELETE',
-    headers: { 'x-test-session-user-id': userBId }
-  });
-  console.log('   User B delete status:', deleteBRes.status);
-  if (deleteBRes.status === 200) {
-    passed = false;
-    console.error('❌ Security breach: User B was able to delete User A\'s project');
-  } else {
-    console.log('✅ Asserted: User B blocked from deleting User A\'s project with status:', deleteBRes.status);
-  }
-
-  // 9. Confirm User B cannot access child entities under it (characters list, scenes list)
-  console.log('User B attempting characters list...');
-  const charsBRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}/characters`, {
-    headers: { 'x-test-session-user-id': userBId }
-  });
-  console.log('   User B characters list status:', charsBRes.status);
-  if (charsBRes.status === 200) {
-    passed = false;
-    console.error('❌ Security breach: User B accessed User A\'s characters list');
-  } else {
-    console.log('✅ Asserted: User B blocked from characters list with status:', charsBRes.status);
-  }
-
-  // 10. Confirm User B cannot access assets list
-  console.log('User B attempting assets list...');
-  const assetsBRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}/assets`, {
-    headers: { 'x-test-session-user-id': userBId }
-  });
-  console.log('   User B assets list status:', assetsBRes.status);
-  if (assetsBRes.status === 200) {
-    passed = false;
-    console.error('❌ Security breach: User B accessed User A\'s assets list');
-  } else {
-    console.log('✅ Asserted: User B blocked from assets list with status:', assetsBRes.status);
-  }
-
-  // 11. Confirm User B cannot access PDF export
-  console.log('User B attempting PDF export...');
-  const pdfBRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}/export/pdf`, {
-    method: 'POST',
-    headers: { 'x-test-session-user-id': userBId }
-  });
-  console.log('   User B PDF export status:', pdfBRes.status);
-  if (pdfBRes.status === 200) {
-    passed = false;
-    console.error('❌ Security breach: User B was able to export User A\'s project to PDF');
-  } else {
-    console.log('✅ Asserted: User B blocked from PDF export with status:', pdfBRes.status);
-  }
-
-  // 12. Confirm User B cannot access JSON export
-  console.log('User B attempting JSON export...');
-  const jsonBRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}/export/json`, {
-    headers: { 'x-test-session-user-id': userBId }
-  });
-  console.log('   User B JSON export status:', jsonBRes.status);
-  if (jsonBRes.status === 200) {
-    passed = false;
-    console.error('❌ Security breach: User B was able to export User A\'s project to JSON');
-  } else {
-    console.log('✅ Asserted: User B blocked from JSON export with status:', jsonBRes.status);
-  }
-
-  // 13. Confirm User B cannot access history logs
-  console.log('User B attempting history GET...');
-  const histBRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}/history`, {
-    headers: { 'x-test-session-user-id': userBId }
-  });
-  console.log('   User B history status:', histBRes.status);
-  if (histBRes.status === 200) {
-    passed = false;
-    console.error('❌ Security breach: User B accessed User A\'s history logs');
-  } else {
-    console.log('✅ Asserted: User B blocked from history logs with status:', histBRes.status);
-  }
-
-  // 14. Confirm User B cannot run canon scan
-  console.log('User B attempting canon scan...');
-  const scanBRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}/scan-canon`, {
-    headers: { 'x-test-session-user-id': userBId }
-  });
-  console.log('   User B canon scan status:', scanBRes.status);
-  if (scanBRes.status === 200) {
-    passed = false;
-    console.error('❌ Security breach: User B was able to run canon scan on User A\'s project');
-  } else {
-    console.log('✅ Asserted: User B blocked from canon scan with status:', scanBRes.status);
-  }
-
-  // 15. Confirm unauthenticated requests return 401
-  console.log('Unauthenticated request to project GET...');
-  const unauthRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}`);
-  console.log('   Unauthenticated GET status:', unauthRes.status);
-  if (unauthRes.status !== 401) {
-    passed = false;
-    console.error('❌ Expected 401 Unauthorized for missing session, got:', unauthRes.status);
-  } else {
-    console.log('✅ Asserted: Unauthenticated request returned 401 Unauthorized');
-  }
-
-  // Cleanup
-  console.log('Cleaning up users and project records...');
-  await client.query('DELETE FROM projects WHERE id = $1', [projectId]);
-  await client.query('DELETE FROM users WHERE id IN ($1, $2)', [userAId, userBId]);
-  await client.end();
-
-  if (passed) {
-    console.log('🎉 All authentication and ownership checks verified successfully!');
-  } else {
-    console.error('❌ Verification failed assertions!');
-    process.exit(1);
+  if (/\.vercel\.app$|prod|production/i.test(new URL(BASE_URL).hostname) && process.env.ALLOW_REMOTE_TESTS !== 'true') {
+    throw new Error('Refusing to run destructive verification against a remote/production-like host without ALLOW_REMOTE_TESTS=true.');
   }
 }
 
-run().catch(console.error);
+async function request(path, init = {}) {
+  return fetch(`${BASE_URL}${path}`, init);
+}
+
+function testHeaders(userId, extra = {}) {
+  return { ...extra, 'x-test-session-user-id': userId };
+}
+
+function assertStatus(actual, expected, label) {
+  if (!expected.includes(actual)) {
+    throw new Error(`${label}: expected ${expected.join(' or ')}, received ${actual}`);
+  }
+  console.log(`✅ ${label}: ${actual}`);
+}
+
+async function run() {
+  requireTestConfiguration();
+  const sql = postgres(DATABASE_URL, {
+    ssl: DATABASE_URL.includes('localhost') || DATABASE_URL.includes('127.0.0.1') ? false : 'require',
+    max: 1,
+  });
+
+  const suffix = randomUUID().slice(0, 8);
+  const emailA = `enterprise-user-a-${suffix}@example.test`;
+  const emailB = `enterprise-user-b-${suffix}@example.test`;
+  const projectId = randomUUID();
+  let userAId;
+  let userBId;
+
+  console.log(`Running authentication and ownership verification against ${BASE_URL}...`);
+
+  try {
+    const regARes = await request('/api/auth/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Enterprise User A', email: emailA, password: 'Test-Password-A-123!' }),
+    });
+    const regA = await regARes.json();
+    assertStatus(regARes.status, [201], 'User A registration');
+    userAId = regA.data.id;
+
+    const regBRes = await request('/api/auth/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Enterprise User B', email: emailB, password: 'Test-Password-B-123!' }),
+    });
+    const regB = await regBRes.json();
+    assertStatus(regBRes.status, [201], 'User B registration');
+    userBId = regB.data.id;
+
+    const createRes = await request('/api/db/projects', {
+      method: 'POST',
+      headers: testHeaders(userAId, { 'content-type': 'application/json' }),
+      body: JSON.stringify({ id: projectId, name: "User A's Isolated Project" }),
+    });
+    assertStatus(createRes.status, [201], 'User A project creation');
+
+    assertStatus((await request(`/api/db/projects/${projectId}`, { headers: testHeaders(userAId) })).status, [200], 'Owner project read');
+
+    const listBRes = await request('/api/db/projects', { headers: testHeaders(userBId) });
+    assertStatus(listBRes.status, [200], 'User B project list');
+    const listB = await listBRes.json();
+    if ((listB.data || []).some((project) => project.id === projectId)) {
+      throw new Error("Ownership isolation failed: User B's list contains User A's project.");
+    }
+    console.log('✅ User B cannot list User A project');
+
+    assertStatus((await request(`/api/db/projects/${projectId}`, { headers: testHeaders(userBId) })).status, [403], 'Non-owner project read blocked');
+    assertStatus((await request(`/api/db/projects/${projectId}`, {
+      method: 'PUT',
+      headers: testHeaders(userBId, { 'content-type': 'application/json' }),
+      body: JSON.stringify({ name: 'Unauthorized update' }),
+    })).status, [403], 'Non-owner project update blocked');
+    assertStatus((await request(`/api/db/projects/${projectId}`, { method: 'DELETE', headers: testHeaders(userBId) })).status, [403], 'Non-owner project delete blocked');
+    assertStatus((await request(`/api/db/projects/${projectId}/characters`, { headers: testHeaders(userBId) })).status, [403], 'Non-owner character access blocked');
+    assertStatus((await request(`/api/db/projects/${projectId}/scenes`, { headers: testHeaders(userBId) })).status, [403], 'Non-owner scene access blocked');
+    assertStatus((await request(`/api/db/projects/${projectId}/assets`, { headers: testHeaders(userBId) })).status, [403], 'Non-owner asset access blocked');
+    assertStatus((await request(`/api/db/projects/${projectId}/export/pdf`, { method: 'POST', headers: testHeaders(userBId) })).status, [403], 'Non-owner PDF export blocked');
+    assertStatus((await request(`/api/db/projects/${projectId}/export/json`, { headers: testHeaders(userBId) })).status, [403], 'Non-owner JSON export blocked');
+    assertStatus((await request(`/api/db/projects/${projectId}/history`, { headers: testHeaders(userBId) })).status, [403], 'Non-owner history access blocked');
+    assertStatus((await request(`/api/db/projects/${projectId}/scan-canon`, { headers: testHeaders(userBId) })).status, [403], 'Non-owner canon scan blocked');
+    assertStatus((await request(`/api/db/projects/${projectId}`)).status, [401], 'Unauthenticated project access blocked');
+
+    console.log('🎉 Authentication and ownership verification passed.');
+  } finally {
+    await sql`delete from projects where id = ${projectId}`;
+    if (userAId) await sql`delete from users where id = ${userAId}`;
+    if (userBId) await sql`delete from users where id = ${userBId}`;
+    await sql.end({ timeout: 5 });
+  }
+}
+
+run().catch((error) => {
+  console.error(error instanceof Error ? error.message : 'Authentication verification failed.');
+  process.exitCode = 1;
+});
