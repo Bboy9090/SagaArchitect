@@ -148,8 +148,8 @@ test('request context accepts safe correlation IDs and rejects malformed values'
   const accepted = createRequestContext(new Request('http://test.local/path', { headers: { [REQUEST_ID_HEADER]: 'request-12345678' } }));
   assert.equal(accepted.requestId, 'request-12345678');
 
-  const rejected = createRequestContext(new Request('http://test.local/path', { headers: { [REQUEST_ID_HEADER]: 'bad\nvalue' } }));
-  assert.notEqual(rejected.requestId, 'bad\nvalue');
+  const rejected = createRequestContext(new Request('http://test.local/path', { headers: { [REQUEST_ID_HEADER]: 'short' } }));
+  assert.notEqual(rejected.requestId, 'short');
 });
 
 test('structured logger redacts secrets and control characters', () => {
