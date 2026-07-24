@@ -222,7 +222,7 @@ export const POST = withApiContext(async (req, context) => {
         let assetId: string | null = null;
 
         if (typeof panel.image_base64 === 'string' && panel.image_base64.startsWith('data:image/')) {
-          const match = panel.image_base64.match(/^data:(image\/(?:png|jpeg|webp));base64,(.+)$/s);
+          const match = panel.image_base64.match(/^data:(image\/(?:png|jpeg|webp));base64,([\s\S]+)$/);
           if (!match) {
             warningCount += 1;
             logger.warn('migration.storyboard-sketch.rejected', { panelNumber: panel.panel_number, reason: 'unsupported-data-url' });
