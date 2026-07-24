@@ -5,6 +5,7 @@ import { db } from '@/db';
 import * as schema from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
+import { getAuthSecret } from '@/lib/env-validator';
 
 // Clean the adapter type to match NextAuthOptions expectations
 /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
@@ -18,6 +19,7 @@ const adapter = db ? DrizzleAdapter(db as any, {
 
 export const authOptions: NextAuthOptions = {
   adapter,
+  useSecureCookies: process.env.APP_ENV === 'production' || process.env.VERCEL_ENV === 'production',
   providers: [
     CredentialsProvider({
       name: 'Credentials',
@@ -27,26 +29,27 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!db) {
-          throw new Error('Database not initialized.');
+          throw new Error('Authentication service unavailable.');
         }
 
         if (!credentials?.email || !credentials?.password) {
-          throw new Error('Email and password are required.');
+          throw new Error('Invalid email or password.');
         }
 
+        const normalizedEmail = credentials.email.trim().toLowerCase();
         const [user] = await db
           .select()
           .from(schema.users)
-          .where(eq(schema.users.email, credentials.email))
+          .where(eq(schema.users.email, normalizedEmail))
           .limit(1);
 
         if (!user) {
-          throw new Error('No user found with this email.');
+          throw new Error('Invalid email or password.');
         }
 
         const isPasswordCorrect = await bcrypt.compare(credentials.password, user.passwordHash);
         if (!isPasswordCorrect) {
-          throw new Error('Invalid password.');
+          throw new Error('Invalid email or password.');
         }
 
         return {
@@ -78,5 +81,5 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: '/login',
   },
-  secret: process.env.NEXTAUTH_SECRET || 'phoenix-studio-local-development-secret-key-1234',
+  secret: getAuthSecret(),
 };
