@@ -56,6 +56,21 @@ test('production validator rejects weak secrets, local storage, and memory limit
   assert.doesNotMatch(serialized, /top-secret-value/);
 });
 
+test('test authentication bypass is rejected outside APP_ENV=test', () => {
+  const env = productionEnvironment();
+  env.ENABLE_TEST_AUTH_BYPASS = 'true';
+  const result = validateServerEnvironment(env, 'deployment');
+  assert.equal(result.ok, false);
+  assert.match(JSON.stringify(result), /ENABLE_TEST_AUTH_BYPASS/);
+
+  const isolatedTest = validateServerEnvironment({
+    APP_ENV: 'test',
+    NODE_ENV: 'test',
+    ENABLE_TEST_AUTH_BYPASS: 'true',
+  });
+  assert.equal(isolatedTest.ok, true);
+});
+
 test('redaction removes sensitive fields and credential-bearing strings', () => {
   const result = redactSensitive({
     password: 'hunter2',
