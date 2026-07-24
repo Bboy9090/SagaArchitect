@@ -1,6 +1,7 @@
 name: Repair package lockfile
 
 on:
+  pull_request:
   push:
     branches:
       - enterprise/foundation-sprint-1
