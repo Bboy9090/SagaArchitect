@@ -43,6 +43,7 @@ export const POST = withApiContext(async (req, context) => {
       });
       await logVersion(tx, {
         projectId,
+        userId,
         action: 'create',
         entityType: 'asset',
         entityId: validated.id,
