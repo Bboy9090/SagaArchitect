@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const { rmSync } = require('node:fs');
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
