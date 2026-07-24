@@ -24,6 +24,14 @@
     "src/lib/uploads/file-signatures.ts",
     "src/lib/uploads/storage-key.ts",
     "src/lib/uploads/validate-upload.ts",
+    "src/lib/security/security-headers.ts",
+    "src/lib/rate-limit/types.ts",
+    "src/lib/rate-limit/policies.ts",
+    "src/lib/rate-limit/memory-store.ts",
+    "src/lib/rate-limit/rate-limiter.ts",
+    "src/lib/storage/storage-provider.ts",
+    "src/lib/storage/local-storage-provider.ts",
+    "src/lib/storage/index.ts",
     "tests/enterprise-foundation.test.ts"
   ]
 }
