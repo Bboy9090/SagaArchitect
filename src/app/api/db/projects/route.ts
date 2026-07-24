@@ -96,6 +96,7 @@ export const POST = withApiContext(async (req, context) => {
     await tx.insert(projects).values(values);
     await logVersion(tx, {
       projectId: id,
+      userId,
       action: 'create',
       entityType: 'project',
       entityId: id,
