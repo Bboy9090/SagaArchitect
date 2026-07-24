@@ -1,111 +1,107 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
-async function run() {
-  const pg = require('C:/Users/Bobby/pgtemp/node_modules/pg');
-  const clientUrl = 'postgresql://postgres.yfbkkjbtwpgatjlsjeab:Kai-Jax0990@aws-1-us-east-1.pooler.supabase.com:6543/postgres';
-  const client = new pg.Client({ connectionString: clientUrl, ssl: { rejectUnauthorized: false } });
-  await client.connect();
+const postgres = require('postgres');
+const { randomUUID } = require('node:crypto');
 
-  console.log('Seeding project and scene for history restore verification...');
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
+const DATABASE_URL = process.env.TEST_DATABASE_URL || process.env.DATABASE_MIGRATION_URL || process.env.DATABASE_URL;
 
-  const projectId = '33333333-3333-3333-3333-333333333333';
-  const devUser = '11111111-1111-4111-8111-111111111111';
-
-  // Seed project
-  await client.query(`
-    INSERT INTO projects (id, owner_id, name, concept, version)
-    VALUES ($1, $2, 'History Restore Project', 'Reverting actions', 1)
-    ON CONFLICT (id) DO NOTHING
-  `, [projectId, devUser]);
-
-  // Create scene initially
-  const sceneId = '99999999-9999-9999-9999-999999999991';
-  console.log('1. Creating scene...');
-  const createRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}/scenes`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: sceneId, title: 'Original Scene Title', order: 1 })
-  });
-  console.log('   Create status:', createRes.status);
-
-  // Update scene to trigger an update version_history entry
-  console.log('2. Updating scene title...');
-  const updateRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}/scenes`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: sceneId, title: 'Updated Scene Title', order: 1 })
-  });
-  console.log('   Update status:', updateRes.status);
-
-  // Fetch the version history entries for the project
-  const historyRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}/history`);
-  const historyData = await historyRes.json();
-  const historyList = historyData.data || [];
-  console.log('   History count:', historyList.length);
-
-  // Find the 'update:scene' entry that represents the scene before the update.
-  // Wait! In Scenes POST: when it exists, we run tx.update and logVersion with `action: 'update'`.
-  // The logVersion changeData contains the new updated values.
-  // Let's find that update entry.
-  const updateEntry = historyList.find(h => h.action === 'update' && h.entity_type === 'scene');
-  const createEntry = historyList.find(h => h.action === 'create' && h.entity_type === 'scene');
-
-  if (!updateEntry || !createEntry) {
-    console.error('❌ Expected version history entries missing!');
-    process.exit(1);
+function requireTestConfiguration() {
+  if (!DATABASE_URL) {
+    throw new Error('Set TEST_DATABASE_URL (preferred), DATABASE_MIGRATION_URL, or DATABASE_URL before running this verification.');
   }
-
-  // To revert back to 'Original Scene Title', we can restore to the 'create' entry which contains 'Original Scene Title' in its changeData snapshot!
-  console.log('3. Restoring to the create entry (Original Title)...', createEntry.id);
-  const restoreRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}/history/restore`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ historyId: createEntry.id })
-  });
-
-  const restoreData = await restoreRes.json();
-  console.log('   Restore HTTP Status:', restoreRes.status);
-  console.log('   Restore Response:', JSON.stringify(restoreData));
-
-  // Connect to database and verify title is reverted
-  const scenes = await client.query('SELECT * FROM scenes WHERE id = $1', [sceneId]);
-  const scene = scenes.rows[0];
-  console.log('Scene in database after restore:', {
-    id: scene.id,
-    title: scene.title,
-    version: scene.version
-  });
-
-  let ok = true;
-  if (scene.title === 'Original Scene Title') {
-    console.log('✅ Asserted title successfully reverted to "Original Scene Title"!');
-  } else {
-    console.error(`❌ Expected title to be "Original Scene Title" but got "${scene.title}"!`);
-    ok = false;
-  }
-
-  // Verify project JSON export route works too!
-  console.log('4. Verifying JSON export route...');
-  const jsonExportRes = await fetch(`http://localhost:3000/api/db/projects/${projectId}/export/json`);
-  console.log('   JSON export HTTP Status:', jsonExportRes.status);
-  const exportDataset = await jsonExportRes.json();
-  if (jsonExportRes.ok && exportDataset.project) {
-    console.log('✅ JSON export verified successfully!');
-  } else {
-    console.error('❌ JSON export route failed!');
-    ok = false;
-  }
-
-  // Cleanup
-  console.log('Cleaning up test data...');
-  await client.query('DELETE FROM projects WHERE id = $1', [projectId]);
-  await client.end();
-
-  if (ok) {
-    console.log('🎉 All Phase 2G restore/export tests passed successfully!');
-  } else {
-    console.error('❌ Verification failed assertions!');
-    process.exit(1);
+  if (/\.vercel\.app$|prod|production/i.test(new URL(BASE_URL).hostname) && process.env.ALLOW_REMOTE_TESTS !== 'true') {
+    throw new Error('Refusing to run destructive verification against a remote/production-like host without ALLOW_REMOTE_TESTS=true.');
   }
 }
 
-run().catch(console.error);
+async function run() {
+  requireTestConfiguration();
+  const sql = postgres(DATABASE_URL, {
+    ssl: DATABASE_URL.includes('localhost') || DATABASE_URL.includes('127.0.0.1') ? false : 'require',
+    max: 1,
+  });
+
+  const suffix = randomUUID().slice(0, 8);
+  const email = `history-restore-${suffix}@example.test`;
+  const projectId = randomUUID();
+  const sceneId = randomUUID();
+  let userId;
+
+  const headers = () => ({
+    'content-type': 'application/json',
+    'x-test-session-user-id': userId,
+  });
+
+  try {
+    const registration = await fetch(`${BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'History Verification User', email, password: 'History-Test-Password-123!' }),
+    });
+    const registrationData = await registration.json();
+    if (registration.status !== 201) throw new Error(`Registration failed with ${registration.status}.`);
+    userId = registrationData.data.id;
+
+    const createProject = await fetch(`${BASE_URL}/api/db/projects`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ id: projectId, name: 'History Restore Project', concept: 'Reverting actions' }),
+    });
+    if (createProject.status !== 201) throw new Error(`Project creation failed with ${createProject.status}.`);
+
+    const createScene = await fetch(`${BASE_URL}/api/db/projects/${projectId}/scenes`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ id: sceneId, title: 'Original Scene Title', order: 1 }),
+    });
+    if (!createScene.ok) throw new Error(`Scene creation failed with ${createScene.status}.`);
+
+    const updateScene = await fetch(`${BASE_URL}/api/db/projects/${projectId}/scenes`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ id: sceneId, title: 'Updated Scene Title', order: 1 }),
+    });
+    if (!updateScene.ok) throw new Error(`Scene update failed with ${updateScene.status}.`);
+
+    const historyResponse = await fetch(`${BASE_URL}/api/db/projects/${projectId}/history`, {
+      headers: { 'x-test-session-user-id': userId },
+    });
+    const historyBody = await historyResponse.json();
+    if (!historyResponse.ok) throw new Error(`History request failed with ${historyResponse.status}.`);
+
+    const createEntry = (historyBody.data || []).find((entry) => entry.action === 'create' && entry.entity_type === 'scene');
+    if (!createEntry) throw new Error('Expected scene creation history entry was not found.');
+
+    const restoreResponse = await fetch(`${BASE_URL}/api/db/projects/${projectId}/history/restore`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ historyId: createEntry.id }),
+    });
+    if (!restoreResponse.ok) throw new Error(`History restore failed with ${restoreResponse.status}.`);
+
+    const [scene] = await sql`select id, title, version from scenes where id = ${sceneId}`;
+    if (!scene || scene.title !== 'Original Scene Title') {
+      throw new Error(`History restore did not restore the expected title; received ${scene?.title || '(missing)'}.`);
+    }
+    console.log('✅ Scene title restored from version history.');
+
+    const exportResponse = await fetch(`${BASE_URL}/api/db/projects/${projectId}/export/json`, {
+      headers: { 'x-test-session-user-id': userId },
+    });
+    if (!exportResponse.ok) throw new Error(`JSON export failed with ${exportResponse.status}.`);
+    const exportBody = await exportResponse.json();
+    if (!exportBody.project) throw new Error('JSON export did not contain project data.');
+    console.log('✅ JSON export verified after restore.');
+
+    console.log('🎉 History restore verification passed.');
+  } finally {
+    await sql`delete from projects where id = ${projectId}`;
+    if (userId) await sql`delete from users where id = ${userId}`;
+    await sql.end({ timeout: 5 });
+  }
+}
+
+run().catch((error) => {
+  console.error(error instanceof Error ? error.message : 'History restore verification failed.');
+  process.exitCode = 1;
+});
