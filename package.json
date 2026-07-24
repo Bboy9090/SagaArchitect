@@ -12,8 +12,9 @@
     "test:enterprise": "node verify-enterprise-foundation.js",
     "env:check": "node scripts/check-env.mjs",
     "env:check:production": "node scripts/check-env.mjs --production",
+    "secrets:check": "node scripts/check-secrets.mjs",
     "healthcheck": "bash scripts/healthcheck.sh",
-    "check": "npm run lint && npm run typecheck && npm run test:enterprise && npm run build"
+    "check": "npm run secrets:check && npm run lint && npm run typecheck && npm run test:enterprise && npm run build"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.2",
