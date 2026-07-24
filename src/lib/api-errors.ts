@@ -96,20 +96,34 @@ export class InternalServerError extends ApiError {
 
 interface StatusLikeError {
   status?: unknown;
-  message?: unknown;
 }
 
 export function normalizeApiError(error: unknown): ApiError {
-  if (error instanceof ApiError) {
-    return error;
-  }
+  if (error instanceof ApiError) return error;
 
-  const statusLike = error as StatusLikeError;
-  if (statusLike && typeof statusLike.status === 'number') {
-    if (statusLike.status === 401) return new AuthenticationError();
-    if (statusLike.status === 403) return new AuthorizationError();
-    if (statusLike.status === 404) return new NotFoundError();
-  }
+  const status = (error as StatusLikeError | null)?.status;
+  if (typeof status !== 'number') return new InternalServerError();
 
-  return new InternalServerError();
+  switch (status) {
+    case 400:
+      return new ValidationError();
+    case 401:
+      return new AuthenticationError();
+    case 403:
+      return new AuthorizationError();
+    case 404:
+      return new NotFoundError();
+    case 409:
+      return new ConflictError();
+    case 413:
+      return new PayloadTooLargeError();
+    case 415:
+      return new UnsupportedMediaTypeError();
+    case 429:
+      return new RateLimitError(60);
+    case 503:
+      return new DependencyUnavailableError();
+    default:
+      return new InternalServerError();
+  }
 }
