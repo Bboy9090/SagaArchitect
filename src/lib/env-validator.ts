@@ -44,6 +44,7 @@ export function validateServerEnvironment(
   const issues: EnvironmentIssue[] = [];
   const appEnvironment = appEnvironmentOf(input);
   const productionLike = appEnvironment === 'production' || appEnvironment === 'staging';
+  const testAuthBypassRequested = valueOf(input, 'ENABLE_TEST_AUTH_BYPASS') === 'true';
 
   const storageProvider = (valueOf(input, 'STORAGE_PROVIDER') ?? 'local') as StorageProvider;
   const rateLimitProvider = (valueOf(input, 'RATE_LIMIT_PROVIDER') ?? 'memory') as RateLimitProvider;
@@ -53,6 +54,12 @@ export function validateServerEnvironment(
   }
   if (!['memory', 'redis', 'upstash'].includes(rateLimitProvider)) {
     issues.push({ key: 'RATE_LIMIT_PROVIDER', message: 'RATE_LIMIT_PROVIDER must be memory, redis, or upstash.' });
+  }
+  if (testAuthBypassRequested && appEnvironment !== 'test') {
+    issues.push({
+      key: 'ENABLE_TEST_AUTH_BYPASS',
+      message: 'The test authentication bypass may only be enabled when APP_ENV=test.',
+    });
   }
 
   if (productionLike) {
