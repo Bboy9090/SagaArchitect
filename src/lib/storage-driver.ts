@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { getLocalStorageProvider } from './storage';
+import { getLocalStorageProvider } from './storage/index';
 
 function localProvider() {
   return getLocalStorageProvider();
