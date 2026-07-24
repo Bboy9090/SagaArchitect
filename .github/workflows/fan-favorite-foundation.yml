@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   verify:
-    name: Lint, typecheck, enterprise tests, build, and smoke
+    name: Secrets, lint, typecheck, enterprise tests, build, and smoke
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -37,6 +37,15 @@ jobs:
         run: |
           set -o pipefail
           npm ci 2>&1 | tee install.log
+
+      - name: Scan tracked files for secrets
+        id: secrets
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run secrets:check 2>&1 | tee secrets.log
 
       - name: Lint
         id: lint
@@ -100,6 +109,7 @@ jobs:
         run: |
           printf '%s\n' \
             "install_outcome=${{ steps.install.outcome }}" \
+            "secrets_outcome=${{ steps.secrets.outcome }}" \
             "lint_outcome=${{ steps.lint.outcome }}" \
             "typecheck_outcome=${{ steps.typecheck.outcome }}" \
             "envcheck_outcome=${{ steps.envcheck.outcome }}" \
@@ -115,6 +125,7 @@ jobs:
           name: phoenix-creator-studio-foundation
           path: |
             install.log
+            secrets.log
             lint.log
             typecheck.log
             envcheck.log
@@ -132,6 +143,7 @@ jobs:
         shell: bash
         run: |
           test "${{ steps.install.outcome }}" = "success"
+          test "${{ steps.secrets.outcome }}" = "success"
           test "${{ steps.lint.outcome }}" = "success"
           test "${{ steps.typecheck.outcome }}" = "success"
           test "${{ steps.envcheck.outcome }}" = "success"
