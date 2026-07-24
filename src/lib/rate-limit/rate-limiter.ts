@@ -4,6 +4,8 @@ import { RATE_LIMIT_POLICIES, type RateLimitPolicyName } from './policies';
 import { MemoryRateLimitStore } from './memory-store';
 import type { RateLimitDecision, RateLimitPolicy, RateLimitStore } from './types';
 
+type RateLimitEnvironment = Record<string, string | undefined>;
+
 export class RateLimiter {
   constructor(private readonly store: RateLimitStore) {}
 
@@ -38,7 +40,7 @@ export function buildRateLimitKey(request: Request, policyName: string, scope?: 
   return `${policyName}:${addressHash}:${scopeHash}`;
 }
 
-export function getConfiguredRateLimiter(environment: NodeJS.ProcessEnv = process.env): RateLimiter {
+export function getConfiguredRateLimiter(environment: RateLimitEnvironment = process.env): RateLimiter {
   const appEnvironment = (environment.APP_ENV || environment.VERCEL_ENV || 'development').toLowerCase();
   const provider = (environment.RATE_LIMIT_PROVIDER || 'memory').toLowerCase();
   const productionLike = appEnvironment === 'production' || appEnvironment === 'staging' || appEnvironment === 'preview';
@@ -57,7 +59,7 @@ export async function consumeRateLimit(
   request: Request,
   policyName: RateLimitPolicyName,
   scope?: string,
-  environment: NodeJS.ProcessEnv = process.env,
+  environment: RateLimitEnvironment = process.env,
 ): Promise<RateLimitDecision> {
   const policy = RATE_LIMIT_POLICIES[policyName];
   const limiter = getConfiguredRateLimiter(environment);
