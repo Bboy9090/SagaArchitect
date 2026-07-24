@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+/.tmp-enterprise-tests
 
 # next.js
 /.next/
