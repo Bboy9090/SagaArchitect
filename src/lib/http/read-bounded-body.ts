@@ -86,7 +86,8 @@ export async function readFormDataWithLimit(request: Request, options: ReadOptio
   });
 
   try {
-    const response = new Response(bytes, {
+    const body = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    const response = new Response(body, {
       headers: { 'content-type': request.headers.get('content-type') ?? '' },
     });
     return await response.formData();
