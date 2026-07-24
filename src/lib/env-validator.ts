@@ -16,7 +16,8 @@ function valueOf(input: NodeJS.ProcessEnv, key: string): string | undefined {
 }
 
 function appEnvironmentOf(input: NodeJS.ProcessEnv): AppEnvironment {
-  const candidate = (valueOf(input, 'APP_ENV') ?? valueOf(input, 'VERCEL_ENV') ?? valueOf(input, 'NODE_ENV') ?? 'development').toLowerCase();
+  const explicit = valueOf(input, 'APP_ENV') ?? valueOf(input, 'VERCEL_ENV');
+  const candidate = (explicit ?? (valueOf(input, 'NODE_ENV') === 'test' ? 'test' : 'development')).toLowerCase();
   if (candidate === 'production' || candidate === 'staging' || candidate === 'test') return candidate;
   if (candidate === 'preview') return 'staging';
   return 'development';
