@@ -1,113 +1,111 @@
-import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { projects } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { logVersion } from '@/lib/version-history';
-import { requireUser, AuthError } from '@/lib/auth-helpers';
+import { requireUser } from '@/lib/auth-helpers';
+import { apiSuccess } from '@/lib/api-response';
+import { DependencyUnavailableError, ValidationError } from '@/lib/api-errors';
+import { NORMAL_MUTATION_BODY } from '@/lib/http/body-limits';
+import { readJsonBodyWithLimit } from '@/lib/http/read-bounded-body';
+import { withApiContext } from '@/lib/with-api-context';
 
-export async function GET() {
-  if (!db) {
-    return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
-  }
-  try {
-    const userId = await requireUser();
-    const list = await db.select().from(projects).where(eq(projects.ownerId, userId));
-    const mapped = list.map((p) => ({
-      id: p.id,
-      name: p.name,
-      concept: p.concept || '',
-      genre: p.genre || '',
-      tone: p.tone || '',
-      era: p.era || '',
-      tech_level: p.techLevel || '',
-      magic_system: p.magicSystem || '',
-      world_overview: p.worldOverview || '',
-      creation_myth: p.creationMyth || '',
-      themes: p.themes || [],
-      current_conflict: p.currentConflict || '',
-      prophecy_hooks: p.prophecyHooks || [],
-      version: p.version || 1,
-      created_at: p.createdAt.toISOString(),
-      updated_at: p.updatedAt.toISOString(),
-    }));
-    return NextResponse.json({ ok: true, data: mapped });
-  } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
-    }
-    const msg = error instanceof Error ? error.message : 'Database error';
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
-  }
+interface ProjectPayload {
+  id?: unknown;
+  name?: unknown;
+  concept?: unknown;
+  genre?: unknown;
+  tone?: unknown;
+  era?: unknown;
+  tech_level?: unknown;
+  magic_system?: unknown;
+  world_overview?: unknown;
+  creation_myth?: unknown;
+  themes?: unknown;
+  current_conflict?: unknown;
+  prophecy_hooks?: unknown;
+  version?: unknown;
 }
 
-export async function POST(req: Request) {
-  if (!db) {
-    return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
-  }
-  try {
-    const userId = await requireUser();
-    const payload = await req.json();
-    const id = payload.id || crypto.randomUUID();
-    
-    const values = {
-      id,
-      ownerId: userId,
-      name: payload.name || 'Untitled Project',
-      concept: payload.concept || '',
-      genre: payload.genre || '',
-      tone: payload.tone || '',
-      era: payload.era || '',
-      techLevel: payload.tech_level || '',
-      magicSystem: payload.magic_system || '',
-      worldOverview: payload.world_overview || '',
-      creationMyth: payload.creation_myth || '',
-      themes: payload.themes || [],
-      currentConflict: payload.current_conflict || '',
-      prophecyHooks: payload.prophecy_hooks || [],
-      version: payload.version || 1,
-    };
-
-    await db.transaction(async (tx) => {
-      await tx.insert(projects).values(values);
-      await logVersion(tx, {
-        projectId: id,
-        action: 'create',
-        entityType: 'project',
-        entityId: id,
-        changeData: values,
-      });
-    });
-
-    const [inserted] = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
-    
-    return NextResponse.json({
-      ok: true,
-      data: {
-        id: inserted.id,
-        name: inserted.name,
-        concept: inserted.concept || '',
-        genre: inserted.genre || '',
-        tone: inserted.tone || '',
-        era: inserted.era || '',
-        tech_level: inserted.techLevel || '',
-        magic_system: inserted.magicSystem || '',
-        world_overview: inserted.worldOverview || '',
-        creation_myth: inserted.creationMyth || '',
-        themes: inserted.themes || [],
-        current_conflict: inserted.currentConflict || '',
-        prophecy_hooks: inserted.prophecyHooks || [],
-        version: inserted.version || 1,
-        created_at: inserted.createdAt.toISOString(),
-        updated_at: inserted.updatedAt.toISOString(),
-      }
-    });
-  } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
-    }
-    const msg = error instanceof Error ? error.message : 'Database error';
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
-  }
+function text(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
 }
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+}
+
+function mapProject(p: typeof projects.$inferSelect) {
+  return {
+    id: p.id,
+    name: p.name,
+    concept: p.concept || '',
+    genre: p.genre || '',
+    tone: p.tone || '',
+    era: p.era || '',
+    tech_level: p.techLevel || '',
+    magic_system: p.magicSystem || '',
+    world_overview: p.worldOverview || '',
+    creation_myth: p.creationMyth || '',
+    themes: p.themes || [],
+    current_conflict: p.currentConflict || '',
+    prophecy_hooks: p.prophecyHooks || [],
+    version: p.version || 1,
+    created_at: p.createdAt.toISOString(),
+    updated_at: p.updatedAt.toISOString(),
+  };
+}
+
+export const GET = withApiContext(async (_request, context) => {
+  if (!db) throw new DependencyUnavailableError('Database service is unavailable.');
+  const userId = await requireUser();
+  context.userId = userId;
+  const list = await db.select().from(projects).where(eq(projects.ownerId, userId));
+  return apiSuccess(list.map(mapProject), context.requestId);
+});
+
+export const POST = withApiContext(async (req, context) => {
+  if (!db) throw new DependencyUnavailableError('Database service is unavailable.');
+  const userId = await requireUser();
+  context.userId = userId;
+  const payload = await readJsonBodyWithLimit<ProjectPayload>(req, { policy: NORMAL_MUTATION_BODY });
+
+  const requestedId = typeof payload.id === 'string' ? payload.id : undefined;
+  const id = requestedId || crypto.randomUUID();
+  const name = text(payload.name) || 'Untitled Project';
+  if (name.length > 200) throw new ValidationError('Project name must be 200 characters or fewer.');
+
+  const values = {
+    id,
+    ownerId: userId,
+    name,
+    concept: text(payload.concept),
+    genre: text(payload.genre),
+    tone: text(payload.tone),
+    era: text(payload.era),
+    techLevel: text(payload.tech_level),
+    magicSystem: text(payload.magic_system),
+    worldOverview: text(payload.world_overview),
+    creationMyth: text(payload.creation_myth),
+    themes: stringArray(payload.themes),
+    currentConflict: text(payload.current_conflict),
+    prophecyHooks: stringArray(payload.prophecy_hooks),
+    version: typeof payload.version === 'number' && Number.isInteger(payload.version) ? payload.version : 1,
+  };
+
+  await db.transaction(async (tx) => {
+    await tx.insert(projects).values(values);
+    await logVersion(tx, {
+      projectId: id,
+      action: 'create',
+      entityType: 'project',
+      entityId: id,
+      changeData: values,
+    });
+  });
+
+  const [inserted] = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
+  if (!inserted) throw new DependencyUnavailableError('Created project could not be loaded.');
+  return apiSuccess(mapProject(inserted), context.requestId, 201);
+});
 
 export const dynamic = 'force-dynamic';
