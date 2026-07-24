@@ -13,9 +13,11 @@ const appEnv = (value('APP_ENV') || value('VERCEL_ENV') || (value('NODE_ENV') ==
 const productionLike = appEnv === 'production' || appEnv === 'staging' || appEnv === 'preview';
 const storageProvider = value('STORAGE_PROVIDER') || 'local';
 const rateLimitProvider = value('RATE_LIMIT_PROVIDER') || 'memory';
+const testAuthBypassRequested = value('ENABLE_TEST_AUTH_BYPASS') === 'true';
 
 if (!['local', 'supabase', 's3'].includes(storageProvider)) issues.push('STORAGE_PROVIDER must be local, supabase, or s3.');
 if (!['memory', 'redis', 'upstash'].includes(rateLimitProvider)) issues.push('RATE_LIMIT_PROVIDER must be memory, redis, or upstash.');
+if (testAuthBypassRequested && appEnv !== 'test') issues.push('ENABLE_TEST_AUTH_BYPASS may only be enabled when APP_ENV=test.');
 
 if (productionLike) {
   requireValue('DATABASE_URL');
@@ -48,5 +50,6 @@ console.log(JSON.stringify({
   environment: appEnv,
   storageProvider,
   rateLimitProvider,
+  testAuthBypassEnabled: testAuthBypassRequested,
   deploymentValidated: deploymentMode,
 }, null, 2));
