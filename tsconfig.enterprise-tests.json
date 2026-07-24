@@ -32,6 +32,7 @@
     "src/lib/storage/storage-provider.ts",
     "src/lib/storage/local-storage-provider.ts",
     "src/lib/storage/index.ts",
-    "tests/enterprise-foundation.test.ts"
+    "tests/enterprise-foundation.test.ts",
+    "tests/enterprise-foundation-sprint-2.test.ts"
   ]
 }
