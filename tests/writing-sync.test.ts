@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collectDocumentDescendantIds, isWritingDocumentKind, isWritingDocumentStatus } from '../src/lib/writing-sync';
+import { collectDocumentDescendantIds, hasWritingVersionConflict, isWritingDocumentKind, isWritingDocumentStatus } from '../src/lib/writing-sync';
 
 test('writing document contracts accept only supported kinds and statuses', () => {
   assert.equal(isWritingDocumentKind('screenplay'), true);
@@ -17,4 +17,10 @@ test('recursive document deletion remains inside the selected hierarchy', () => 
     { id: 'chapter-b', parentId: null },
   ];
   assert.deepEqual(new Set(collectDocumentDescendantIds(documents, 'chapter-a')), new Set(['chapter-a', 'scene-a']));
+});
+
+test('optimistic versions reject stale and unknown cloud writes', () => {
+  assert.equal(hasWritingVersionConflict(4, 4), false);
+  assert.equal(hasWritingVersionConflict(3, 4), true);
+  assert.equal(hasWritingVersionConflict(undefined, 4), true);
 });
