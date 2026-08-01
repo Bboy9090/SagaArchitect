@@ -11,12 +11,12 @@ export function documentExport(document: WritingDocument, markdown: boolean): st
   return `${heading}\n\n${document.content.trim()}\n`;
 }
 
-export function safeExportName(title: string, extension: 'txt' | 'md' | 'json'): string {
+export function safeExportName(title: string, extension: 'txt' | 'md' | 'json' | 'docx' | 'epub'): string {
   const stem = title.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'untitled';
   return `${stem}.${extension}`;
 }
 
-function orderedDocuments(documents: WritingDocument[]): WritingDocument[] {
+export function orderedWritingDocuments(documents: WritingDocument[]): WritingDocument[] {
   const sorted = [...documents].sort((a, b) => a.order - b.order);
   const byParent = new Map<string | undefined, WritingDocument[]>();
   for (const document of sorted) {
@@ -36,7 +36,7 @@ function orderedDocuments(documents: WritingDocument[]): WritingDocument[] {
 
 export function compileWritingProject(title: string, documents: WritingDocument[], markdown: boolean): string {
   const lines = [markdown ? `# ${title}` : title.toUpperCase(), ''];
-  for (const document of orderedDocuments(documents)) {
+  for (const document of orderedWritingDocuments(documents)) {
     const depth = document.parent_id ? 3 : document.kind === 'manuscript' ? 1 : 2;
     lines.push(markdown ? `${'#'.repeat(depth)} ${document.title}` : document.title.toUpperCase());
     lines.push('', document.content.trim(), '');
@@ -49,7 +49,7 @@ export function createWritingBackup(project: { id: string; name: string; product
     schema: 'phoenix_creator_studio.writing_backup.v1',
     exported_at: new Date().toISOString(),
     project,
-    documents: orderedDocuments(documents),
+    documents: orderedWritingDocuments(documents),
   };
 }
 
@@ -81,5 +81,5 @@ export function importWritingBackup(
       created_at: now, updated_at: now,
     };
   });
-  return orderedDocuments(imported).map((document, order) => ({ ...document, order }));
+  return orderedWritingDocuments(imported).map((document, order) => ({ ...document, order }));
 }
