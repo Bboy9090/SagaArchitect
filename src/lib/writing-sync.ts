@@ -25,3 +25,7 @@ export function isWritingDocumentKind(value: unknown): value is typeof WRITING_D
 export function isWritingDocumentStatus(value: unknown): value is typeof WRITING_DOCUMENT_STATUSES[number] {
   return typeof value === 'string' && (WRITING_DOCUMENT_STATUSES as readonly string[]).includes(value);
 }
+
+export function hasWritingVersionConflict(clientVersion: unknown, serverVersion: number): boolean {
+  return !Number.isInteger(clientVersion) || clientVersion !== serverVersion;
+}
