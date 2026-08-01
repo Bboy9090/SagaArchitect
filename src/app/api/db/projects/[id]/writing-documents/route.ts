@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
-import { writingDocuments } from '@/db/schema';
+import { writingDocumentRevisions, writingDocuments } from '@/db/schema';
 import { AuthError, requireOwnedProject, requireUser } from '@/lib/auth-helpers';
 import { logVersion } from '@/lib/version-history';
-import { isWritingDocumentKind, isWritingDocumentStatus } from '@/lib/writing-sync';
+import { hasWritingVersionConflict, isWritingDocumentKind, isWritingDocumentStatus } from '@/lib/writing-sync';
 const MAX_CONTENT_BYTES = 2 * 1024 * 1024;
 
 function present(document: typeof writingDocuments.$inferSelect) {
@@ -18,6 +18,7 @@ function present(document: typeof writingDocuments.$inferSelect) {
     content: document.content,
     order: document.order,
     word_target: document.wordTarget || undefined,
+    version: document.version,
     created_at: document.createdAt.toISOString(),
     updated_at: document.updatedAt.toISOString(),
   };
@@ -63,6 +64,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const [existing] = await db.select().from(writingDocuments).where(eq(writingDocuments.id, id)).limit(1);
     if (existing && existing.projectId !== projectId) return NextResponse.json({ ok: false, error: 'Document project mismatch.' }, { status: 400 });
+    if (existing && hasWritingVersionConflict(payload.version, existing.version)) {
+      return NextResponse.json({ ok: false, error: 'This document changed on another device. Reload it before saving.', code: 'VERSION_CONFLICT', server_version: existing.version }, { status: 409 });
+    }
 
     const parentId = typeof payload.parent_id === 'string' ? payload.parent_id : null;
     if (parentId) {
@@ -86,7 +90,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     };
 
     await db.transaction(async tx => {
-      if (existing) await tx.update(writingDocuments).set(values).where(eq(writingDocuments.id, id));
+      if (existing) {
+        const [latestRevision] = await tx.select().from(writingDocumentRevisions).where(eq(writingDocumentRevisions.documentId, id)).orderBy(desc(writingDocumentRevisions.createdAt)).limit(1);
+        const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+        if (!latestRevision || latestRevision.createdAt.getTime() < fiveMinutesAgo) {
+          await tx.insert(writingDocumentRevisions).values({ documentId: id, userId, version: existing.version, title: existing.title, content: existing.content, status: existing.status });
+        }
+        const [updated] = await tx.update(writingDocuments).set(values).where(and(eq(writingDocuments.id, id), eq(writingDocuments.version, existing.version))).returning({ id: writingDocuments.id });
+        if (!updated) throw new AuthError(409, 'This document changed on another device. Reload it before saving.');
+      }
       else await tx.insert(writingDocuments).values(values);
       await logVersion(tx, { projectId, userId, action: existing ? 'update' : 'create', entityType: 'writing_document', entityId: id, changeData: { ...values, content: `[${values.content.length} characters]` } });
     });

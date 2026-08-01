@@ -9,7 +9,7 @@ export async function logVersion(
   opts: {
     projectId: string;
     userId: string;
-    action: 'create' | 'update' | 'delete';
+    action: 'create' | 'update' | 'delete' | 'restore';
     entityType: string;
     entityId: string;
     changeData: Record<string, unknown>;

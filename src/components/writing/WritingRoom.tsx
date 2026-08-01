@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/Button';
 import { deleteWritingDocument, getWritingDocuments, saveWritingDocument } from '@/lib/storage';
 import { countWords, documentExport, safeExportName } from '@/lib/writing-documents';
 import { isDbMode } from '@/lib/storage-mode';
-import { dbDeleteWritingDocument, dbGetWritingDocuments, dbSaveWritingDocument } from '@/lib/db-client';
-import type { Universe, WritingDocument, WritingDocumentKind, WritingDocumentStatus } from '@/lib/types';
+import { dbDeleteWritingDocument, dbGetWritingDocumentRevisions, dbGetWritingDocuments, dbRestoreWritingDocument, dbSaveWritingDocument } from '@/lib/db-client';
+import type { Universe, WritingDocument, WritingDocumentKind, WritingDocumentRevision, WritingDocumentStatus } from '@/lib/types';
 
 const KIND_LABELS: Record<WritingDocumentKind, string> = {
   manuscript: 'Manuscript', chapter: 'Chapter', scene: 'Scene', screenplay: 'Screenplay', comic_script: 'Comic Script', notes: 'Notes',
@@ -20,8 +20,11 @@ interface WritingRoomProps { universe: Universe }
 export function WritingRoom({ universe }: WritingRoomProps) {
   const [documents, setDocuments] = useState<WritingDocument[]>([]);
   const [activeId, setActiveId] = useState<string>();
-  const [saveState, setSaveState] = useState<'saved' | 'saving' | 'offline'>('saved');
+  const [saveState, setSaveState] = useState<'saved' | 'saving' | 'offline' | 'conflict'>('saved');
+  const [revisions, setRevisions] = useState<WritingDocumentRevision[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
   const loaded = useRef(false);
+  const suppressSavedVersion = useRef<{ id: string; version?: number } | undefined>(undefined);
   const active = documents.find(item => item.id === activeId);
 
   useEffect(() => {
@@ -68,13 +71,22 @@ export function WritingRoom({ universe }: WritingRoomProps) {
 
   useEffect(() => {
     if (!loaded.current || !active) return;
+    if (suppressSavedVersion.current?.id === active.id && suppressSavedVersion.current.version === active.version) {
+      suppressSavedVersion.current = undefined;
+      return;
+    }
     setSaveState('saving');
     const timer = window.setTimeout(() => {
       const local = saveWritingDocument(active);
       if (isDbMode()) {
         void dbSaveWritingDocument(universe.id, local)
-          .then(() => setSaveState('saved'))
-          .catch(() => setSaveState('offline'));
+          .then(saved => {
+            suppressSavedVersion.current = { id: saved.id, version: saved.version };
+            saveWritingDocument(saved);
+            setDocuments(current => current.map(item => item.id === saved.id ? saved : item));
+            setSaveState('saved');
+          })
+          .catch(error => setSaveState(error instanceof Error && /changed on another device/i.test(error.message) ? 'conflict' : 'offline'));
       } else {
         setSaveState('saved');
       }
@@ -103,7 +115,13 @@ export function WritingRoom({ universe }: WritingRoomProps) {
     });
     setDocuments(current => [...current, created]);
     setActiveId(created.id);
-    if (isDbMode()) void dbSaveWritingDocument(universe.id, created).catch(() => setSaveState('offline'));
+    if (isDbMode()) void dbSaveWritingDocument(universe.id, created)
+      .then(saved => {
+        suppressSavedVersion.current = { id: saved.id, version: saved.version };
+        saveWritingDocument(saved);
+        setDocuments(current => current.map(item => item.id === saved.id ? saved : item));
+      })
+      .catch(() => setSaveState('offline'));
   };
 
   const removeActive = async () => {
@@ -116,6 +134,31 @@ export function WritingRoom({ universe }: WritingRoomProps) {
     const remaining = getWritingDocuments(universe.id);
     setDocuments(remaining);
     setActiveId(remaining[0]?.id);
+  };
+
+  const openHistory = async () => {
+    if (!active || !isDbMode()) return;
+    setShowHistory(true);
+    try { setRevisions(await dbGetWritingDocumentRevisions(active.id)); }
+    catch { setRevisions([]); }
+  };
+
+  const reloadCloudDocument = async () => {
+    const cloud = await dbGetWritingDocuments(universe.id);
+    cloud.forEach(saveWritingDocument);
+    setDocuments(cloud);
+    setActiveId(current => cloud.some(item => item.id === current) ? current : cloud[0]?.id);
+    setSaveState('saved');
+  };
+
+  const restoreRevision = async (revision: WritingDocumentRevision) => {
+    if (!active || !confirm(`Restore version ${revision.version} from ${new Date(revision.created_at).toLocaleString()}? Your current draft will be preserved.`)) return;
+    const restored = await dbRestoreWritingDocument(active.id, revision.id);
+    suppressSavedVersion.current = { id: restored.id, version: restored.version };
+    saveWritingDocument(restored);
+    setDocuments(current => current.map(item => item.id === restored.id ? restored : item));
+    setRevisions(await dbGetWritingDocumentRevisions(active.id));
+    setSaveState('saved');
   };
 
   const download = (extension: 'txt' | 'md') => {
@@ -160,9 +203,10 @@ export function WritingRoom({ universe }: WritingRoomProps) {
                 aria-label="Document title" className="w-full bg-transparent text-xl font-semibold text-white outline-none placeholder:text-gray-700" placeholder="Untitled document" />
               <div className="flex items-center gap-3 mt-2 text-xs text-gray-600">
                 <span>{activeWords.toLocaleString()} words</span><span>•</span>
-                <span className={saveState === 'saved' ? 'text-green-500' : saveState === 'offline' ? 'text-yellow-500' : 'text-[#c9a84c]'}>
-                  {saveState === 'saved' ? (isDbMode() ? 'Saved to cloud' : 'Saved locally') : saveState === 'offline' ? 'Offline copy saved' : 'Saving…'}
+                <span className={saveState === 'saved' ? 'text-green-500' : saveState === 'conflict' ? 'text-red-400' : saveState === 'offline' ? 'text-yellow-500' : 'text-[#c9a84c]'}>
+                  {saveState === 'saved' ? (isDbMode() ? `Saved to cloud · v${active.version ?? 1}` : 'Saved locally') : saveState === 'conflict' ? 'Newer cloud version found' : saveState === 'offline' ? 'Offline copy saved' : 'Saving…'}
                 </span>
+                {saveState === 'conflict' && <button onClick={() => void reloadCloudDocument()} className="text-red-300 underline">Reload cloud copy</button>}
               </div>
             </div>
             <textarea value={active.content} onChange={event => updateActive({ content: event.target.value })}
@@ -193,8 +237,13 @@ export function WritingRoom({ universe }: WritingRoomProps) {
             <div className="bg-[#0f0f1a] border border-[#c9a84c]/20 rounded-xl p-4">
               <h2 className="text-xs font-bold text-[#c9a84c] uppercase tracking-widest mb-3">Export</h2>
               <div className="grid grid-cols-2 gap-2"><Button size="sm" variant="secondary" onClick={() => download('txt')}>.TXT</Button><Button size="sm" variant="secondary" onClick={() => download('md')}>.MD</Button></div>
+              {isDbMode() && <Button className="w-full mt-3" size="sm" variant="ghost" onClick={() => void openHistory()}>Revision history</Button>}
               <button onClick={() => void removeActive()} className="mt-4 text-xs text-red-400 hover:text-red-300">Delete document</button>
             </div>
+            {showHistory && isDbMode() && <div className="bg-[#0f0f1a] border border-[#c9a84c]/20 rounded-xl p-4">
+              <div className="flex justify-between items-center mb-3"><h2 className="text-xs font-bold text-[#c9a84c] uppercase tracking-widest">Recovery points</h2><button onClick={() => setShowHistory(false)} className="text-gray-600">×</button></div>
+              {revisions.length === 0 ? <p className="text-xs text-gray-600">Recovery points appear as you continue writing.</p> : <div className="space-y-2 max-h-64 overflow-y-auto">{revisions.map(revision => <button key={revision.id} onClick={() => void restoreRevision(revision)} className="w-full text-left p-2 rounded border border-white/10 hover:border-[#c9a84c]/50"><span className="block text-xs text-white">Version {revision.version}</span><span className="text-[10px] text-gray-600">{new Date(revision.created_at).toLocaleString()} · {countWords(revision.content)} words</span></button>)}</div>}
+            </div>}
           </>}
         </aside>
       </div>

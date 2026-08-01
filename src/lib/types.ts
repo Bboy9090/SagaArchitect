@@ -179,8 +179,19 @@ export interface WritingDocument {
   content: string;
   order: number;
   word_target?: number;
+  version?: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface WritingDocumentRevision {
+  id: string;
+  document_id: string;
+  version: number;
+  title: string;
+  content: string;
+  status: WritingDocumentStatus;
+  created_at: string;
 }
 
 /**
