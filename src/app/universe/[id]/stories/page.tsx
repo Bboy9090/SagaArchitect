@@ -7,6 +7,7 @@ import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { Card } from '@/components/ui/Card';
+import { WritingRoom } from '@/components/writing/WritingRoom';
 import {
   getUniverseById, getFactions, getCharacters, getLocations,
   getTimeline, getArcs, getLoreRules,
@@ -56,6 +57,7 @@ export default function StoriesPage({ params }: StoriesPageProps) {
   const [focusPrompt, setFocusPrompt] = useState('');
   const [activeStory, setActiveStory] = useState<GeneratedStory | null>(null);
   const [canonRichness, setCanonRichness] = useState<ReturnType<typeof getCanonBlockStats> | null>(null);
+  const [workspace, setWorkspace] = useState<'writing' | 'generator'>('writing');
 
   useEffect(() => {
     void (async () => {
@@ -139,11 +141,13 @@ export default function StoriesPage({ params }: StoriesPageProps) {
   return (
     <Navigation>
       <Header
-        title="Story Forge"
-        subtitle={`Generate stories from the ${universe.name} canon — powered by LoreEngine`}
+        title={workspace === 'writing' ? 'Writing Room' : 'AI Draft Generator'}
+        subtitle={workspace === 'writing' ? `Write and organize ${universe.name}` : `Generate drafts from the ${universe.name} canon — powered by LoreEngine`}
         actions={
           <div className="flex items-center gap-2">
-            {canonRichness && (
+            <Button size="sm" variant={workspace === 'writing' ? 'gold' : 'ghost'} onClick={() => setWorkspace('writing')}>Writing Room</Button>
+            <Button size="sm" variant={workspace === 'generator' ? 'gold' : 'ghost'} onClick={() => setWorkspace('generator')}>AI Generator</Button>
+            {workspace === 'generator' && canonRichness && (
               <span className={`text-xs font-medium ${RICHNESS_LABELS[canonRichness.richness].color}`}>
                 ◆ {RICHNESS_LABELS[canonRichness.richness].label}
               </span>
@@ -152,6 +156,7 @@ export default function StoriesPage({ params }: StoriesPageProps) {
         }
       />
 
+      {workspace === 'writing' ? <WritingRoom universe={universe} /> : (
       <div className="max-w-6xl mx-auto px-6 py-8">
         {/* LoreEngine badge */}
         <div className="mb-6 flex items-start gap-4 bg-[#0f0f1a] border border-[#c9a84c]/20 rounded-lg p-4">
@@ -332,6 +337,7 @@ export default function StoriesPage({ params }: StoriesPageProps) {
           </div>
         </div>
       </div>
+      )}
     </Navigation>
   );
 }
