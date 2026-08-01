@@ -24,14 +24,48 @@ export function orderedWritingDocuments(documents: WritingDocument[]): WritingDo
     byParent.set(key, [...(byParent.get(key) || []), document]);
   }
   const result: WritingDocument[] = [];
+  const visited = new Set<string>();
+  const visiting = new Set<string>();
   const visit = (parentId?: string) => {
     for (const document of byParent.get(parentId) || []) {
+      if (visited.has(document.id) || visiting.has(document.id)) continue;
+      visiting.add(document.id);
       result.push(document);
       visit(document.id);
+      visiting.delete(document.id);
+      visited.add(document.id);
     }
   };
   visit();
+  for (const document of sorted) {
+    if (!visited.has(document.id)) {
+      result.push({ ...document, parent_id: undefined });
+      visited.add(document.id);
+    }
+  }
   return result;
+}
+
+export function moveWritingDocument(documents: WritingDocument[], documentId: string, direction: -1 | 1): WritingDocument[] {
+  const selected = documents.find(document => document.id === documentId);
+  if (!selected) return orderedWritingDocuments(documents).map((document, order) => ({ ...document, order }));
+  const siblings = documents.filter(document => document.parent_id === selected.parent_id).sort((a, b) => a.order - b.order);
+  const index = siblings.findIndex(document => document.id === documentId);
+  const target = siblings[index + direction];
+  if (!target) return orderedWritingDocuments(documents).map((document, order) => ({ ...document, order }));
+  const moved = documents.map(document => document.id === selected.id ? { ...document, order: target.order } : document.id === target.id ? { ...document, order: selected.order } : document);
+  return orderedWritingDocuments(moved).map((document, order) => ({ ...document, order }));
+}
+
+export function reparentWritingScene(documents: WritingDocument[], sceneId: string, chapterId?: string): WritingDocument[] {
+  const scene = documents.find(document => document.id === sceneId);
+  if (!scene || scene.kind !== 'scene') throw new Error('Only scenes can be assigned to chapters.');
+  if (chapterId) {
+    const chapter = documents.find(document => document.id === chapterId);
+    if (!chapter || chapter.kind !== 'chapter') throw new Error('Scenes can only be assigned to an existing chapter.');
+  }
+  const moved = documents.map(document => document.id === sceneId ? { ...document, parent_id: chapterId, order: documents.length } : document);
+  return orderedWritingDocuments(moved).map((document, order) => ({ ...document, order }));
 }
 
 export function compileWritingProject(title: string, documents: WritingDocument[], markdown: boolean): string {
