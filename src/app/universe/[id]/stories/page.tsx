@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { Card } from '@/components/ui/Card';
 import { WritingRoom } from '@/components/writing/WritingRoom';
+import { isDbMode } from '@/lib/storage-mode';
+import { dbGetProject } from '@/lib/db-client';
 import {
   getUniverseById, getFactions, getCharacters, getLocations,
   getTimeline, getArcs, getLoreRules,
@@ -61,7 +63,7 @@ export default function StoriesPage({ params }: StoriesPageProps) {
 
   useEffect(() => {
     void (async () => {
-      const u = getUniverseById(id);
+      const u = isDbMode() ? await dbGetProject(id) : getUniverseById(id);
       if (!u) { router.push('/dashboard'); return; }
       setUniverse(u);
       setStories(getStories(id));

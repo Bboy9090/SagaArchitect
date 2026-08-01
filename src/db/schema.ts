@@ -186,6 +186,21 @@ export const generatedStories = pgTable('generated_stories', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const writingDocuments = pgTable('writing_documents', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  parentId: uuid('parent_id'),
+  title: varchar('title', { length: 255 }).notNull(),
+  kind: varchar('kind', { length: 50 }).default('chapter').notNull(),
+  status: varchar('status', { length: 50 }).default('outline').notNull(),
+  content: text('content').default('').notNull(),
+  order: integer('order').default(0).notNull(),
+  wordTarget: integer('word_target'),
+  version: integer('version').default(1).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const scenes = pgTable('scenes', {
   id: uuid('id').primaryKey().defaultRandom(),
   projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),

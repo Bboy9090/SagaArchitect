@@ -15,6 +15,13 @@
       "when": 1782330544711,
       "tag": "0001_smart_warpath",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785597455933,
+      "tag": "0002_grey_vin_gonzales",
+      "breakpoints": true
     }
   ]
 }
