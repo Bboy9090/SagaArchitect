@@ -9,6 +9,7 @@ import { analyzePublishingReadiness } from '@/lib/publishing-preflight';
 import { isDbMode } from '@/lib/storage-mode';
 import { dbDeleteWritingDocument, dbGetWritingDocumentRevisions, dbGetWritingDocuments, dbReorderWritingDocuments, dbRestoreWritingDocument, dbSaveWritingDocument, dbUpdateProject } from '@/lib/db-client';
 import { EMPTY_PUBLISHING_METADATA, normalizePublishingMetadata } from '@/lib/publishing-metadata';
+import { documentsForExportProfile, EXPORT_PROFILES, getExportProfile } from '@/lib/export-profiles';
 import type { PublishingMetadata, Universe, WritingDocument, WritingDocumentKind, WritingDocumentRevision, WritingDocumentStatus } from '@/lib/types';
 
 const KIND_LABELS: Record<WritingDocumentKind, string> = {
@@ -30,6 +31,7 @@ export function WritingRoom({ universe }: WritingRoomProps) {
   const [showHistory, setShowHistory] = useState(false);
   const [metadata, setMetadata] = useState<PublishingMetadata>(() => ({ ...EMPTY_PUBLISHING_METADATA, ...normalizePublishingMetadata(universe.publishing_metadata) }));
   const [metadataState, setMetadataState] = useState<'saved' | 'saving' | 'error'>('saved');
+  const [exportProfileId, setExportProfileId] = useState('editor_submission');
   const loaded = useRef(false);
   const suppressSavedVersion = useRef<{ id: string; version?: number } | undefined>(undefined);
   const importInput = useRef<HTMLInputElement | null>(null);
@@ -261,6 +263,15 @@ export function WritingRoom({ universe }: WritingRoomProps) {
     downloadPackage(content, safeExportName(universe.name, format), type);
   };
 
+  const downloadProfile = () => {
+    const profile = getExportProfile(exportProfileId);
+    const selected = documentsForExportProfile(documents, profile);
+    if (!selected.length) { alert(`${profile.label} has no matching documents. Reader EPUB requires documents marked Final.`); return; }
+    const content = profile.format === 'docx' ? createDocxPackage(universe.name, selected, metadata, { includeNotes: profile.include_notes }) : createEpubPackage(universe.name, selected, metadata);
+    const type = profile.format === 'docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/epub+zip';
+    downloadPackage(content, safeExportName(`${universe.name}-${profile.id}`, profile.format), type);
+  };
+
   const downloadBackup = () => {
     const backup = createWritingBackup({ id: universe.id, name: universe.name, production_type: universe.production_type }, documents);
     downloadContent(`${JSON.stringify(backup, null, 2)}\n`, safeExportName(`${universe.name}-writing-backup`, 'json'), 'application/json;charset=utf-8');
@@ -375,6 +386,9 @@ export function WritingRoom({ universe }: WritingRoomProps) {
             </div>
             <div className="bg-[#0f0f1a] border border-[#c9a84c]/20 rounded-xl p-4">
               <h2 className="text-xs font-bold text-[#c9a84c] uppercase tracking-widest mb-3">Production files</h2>
+              <label className="block text-xs text-gray-500 mb-2">Export profile<select value={exportProfileId} onChange={event => setExportProfileId(event.target.value)} className="mt-1 w-full bg-[#09090f] border border-white/10 rounded px-2 py-2 text-sm text-white">{EXPORT_PROFILES.map(profile => <option key={profile.id} value={profile.id}>{profile.label}</option>)}</select></label>
+              <p className="text-[10px] text-gray-600 mb-2">{getExportProfile(exportProfileId).description}</p>
+              <Button className="w-full mb-3" size="sm" variant="secondary" disabled={!publishingReadiness.ready} onClick={downloadProfile}>Build selected package</Button>
               <p className="text-[10px] text-gray-600 uppercase tracking-wider mb-2">Entire project</p>
               <div className="grid grid-cols-2 gap-2"><Button size="sm" variant="secondary" onClick={() => downloadProject('txt')}>Full .TXT</Button><Button size="sm" variant="secondary" onClick={() => downloadProject('md')}>Full .MD</Button></div>
               <div className="grid grid-cols-2 gap-2 mt-2"><Button size="sm" variant="secondary" disabled={!publishingReadiness.ready} onClick={() => downloadPublishingPackage('docx')}>Editor .DOCX</Button><Button size="sm" variant="secondary" disabled={!publishingReadiness.ready} onClick={() => downloadPublishingPackage('epub')}>Reader .EPUB</Button></div>

@@ -6,6 +6,7 @@ import { createDocxPackage, createEpubPackage } from '../src/lib/publishing-pack
 import { OutlineValidationError, validateWritingOutlineChanges } from '../src/lib/writing-outline';
 import { analyzePublishingReadiness } from '../src/lib/publishing-preflight';
 import { isValidIsbn, normalizePublishingMetadata } from '../src/lib/publishing-metadata';
+import { documentsForExportProfile, getExportProfile } from '../src/lib/export-profiles';
 
 function storedZipEntries(archive: Uint8Array): Record<string, string> {
   const entries: Record<string, string> = {};
@@ -178,4 +179,15 @@ test('publishing packages preserve ordered front, body, and back matter', () => 
   assert.ok(manuscript.indexOf('Chapter One') < manuscript.indexOf('About the Author'));
   assert.match(manuscript, /class="front-matter"/);
   assert.match(manuscript, /class="back-matter"/);
+});
+
+test('export profiles apply stable editorial, review, and reader inclusion rules', () => {
+  const note: WritingDocument = { ...sampleDocuments[1], id: 'note', kind: 'notes', status: 'final', title: 'Private note', order: 4 };
+  const finalChapter: WritingDocument = { ...sampleDocuments[1], id: 'final', status: 'final', title: 'Final Chapter', order: 5 };
+  const project = [...sampleDocuments, note, finalChapter];
+  assert.equal(documentsForExportProfile(project, getExportProfile('editor_submission')).some(document => document.kind === 'notes'), false);
+  assert.equal(documentsForExportProfile(project, getExportProfile('review_copy')).some(document => document.kind === 'notes'), true);
+  assert.match(storedZipEntries(createDocxPackage('Review', project, {}, { includeNotes: true }))['word/document.xml'], /Private note/);
+  assert.deepEqual(documentsForExportProfile(project, getExportProfile('reader_ebook')).map(document => document.id), ['final']);
+  assert.equal(getExportProfile('unknown').id, 'editor_submission');
 });
