@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { collectDocumentDescendantIds, hasWritingVersionConflict, isWritingDocumentKind, isWritingDocumentStatus } from '../src/lib/writing-sync';
-import { compileWritingProject, importWritingBackup } from '../src/lib/writing-documents';
+import { compileWritingProject, importWritingBackup, moveWritingDocument, orderedWritingDocuments, reparentWritingScene } from '../src/lib/writing-documents';
 import { createDocxPackage, createEpubPackage } from '../src/lib/publishing-packages';
+import { OutlineValidationError, validateWritingOutlineChanges } from '../src/lib/writing-outline';
 
 function storedZipEntries(archive: Uint8Array): Record<string, string> {
   const entries: Record<string, string> = {};
@@ -86,4 +87,40 @@ test('EPUB publishing package contains navigation and escaped ordered XHTML', ()
   assert.match(navigation, /Chapter One/);
   assert.match(manuscript, /Phoenix &amp; Fire/);
   assert.ok(manuscript.indexOf('Chapter One') < manuscript.indexOf('Scene One'));
+});
+
+test('outline movement changes sibling order without breaking scene hierarchy', () => {
+  const chapterTwo: WritingDocument = { ...sampleDocuments[1], id: 'chapter-2', title: 'Chapter Two', order: 3 };
+  const moved = moveWritingDocument([...sampleDocuments, chapterTwo], 'chapter-2', -1);
+  assert.deepEqual(moved.map(document => document.id), ['chapter-2', 'chapter', 'scene']);
+  assert.equal(moved.find(document => document.id === 'scene')?.parent_id, 'chapter');
+});
+
+test('scene reassignment is bounded to chapters and normalizes production order', () => {
+  const chapterTwo: WritingDocument = { ...sampleDocuments[1], id: 'chapter-2', title: 'Chapter Two', order: 3 };
+  const reassigned = reparentWritingScene([...sampleDocuments, chapterTwo], 'scene', 'chapter-2');
+  assert.equal(reassigned.find(document => document.id === 'scene')?.parent_id, 'chapter-2');
+  assert.throws(() => reparentWritingScene(sampleDocuments, 'chapter', 'chapter'));
+  assert.throws(() => reparentWritingScene(sampleDocuments, 'scene', 'missing'));
+});
+
+test('malformed cyclic outlines remain finite and preserve every document', () => {
+  const cyclic = sampleDocuments.map(document => document.id === 'chapter' ? { ...document, parent_id: 'scene' } : document);
+  const ordered = orderedWritingDocuments(cyclic);
+  assert.equal(ordered.length, 2);
+  assert.deepEqual(new Set(ordered.map(document => document.id)), new Set(['chapter', 'scene']));
+});
+
+test('atomic cloud outline contract requires exact IDs, versions, order, and nesting', () => {
+  const existing = [{ id: 'chapter', kind: 'chapter', version: 4 }, { id: 'scene', kind: 'scene', version: 2 }];
+  assert.deepEqual(validateWritingOutlineChanges(existing, [
+    { id: 'chapter', order: 0, version: 4 },
+    { id: 'scene', parent_id: 'chapter', order: 1, version: 2 },
+  ]), [
+    { id: 'chapter', parentId: null, order: 0, version: 4 },
+    { id: 'scene', parentId: 'chapter', order: 1, version: 2 },
+  ]);
+  assert.throws(() => validateWritingOutlineChanges(existing, [{ id: 'chapter', order: 0, version: 4 }]), (error: unknown) => error instanceof OutlineValidationError && error.status === 409);
+  assert.throws(() => validateWritingOutlineChanges(existing, [{ id: 'chapter', order: 0, version: 3 }, { id: 'scene', order: 1, version: 2 }]), (error: unknown) => error instanceof OutlineValidationError && error.status === 409);
+  assert.throws(() => validateWritingOutlineChanges(existing, [{ id: 'chapter', parent_id: 'scene', order: 0, version: 4 }, { id: 'scene', order: 1, version: 2 }]), (error: unknown) => error instanceof OutlineValidationError && error.status === 400);
 });
