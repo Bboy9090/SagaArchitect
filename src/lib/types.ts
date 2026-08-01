@@ -165,6 +165,24 @@ export interface GeneratedStory {
   created_at: string;
 }
 
+export type WritingDocumentStatus = 'outline' | 'draft' | 'revision' | 'final';
+export type WritingDocumentKind = 'manuscript' | 'chapter' | 'scene' | 'screenplay' | 'comic_script' | 'notes';
+
+/** A user-authored production document. Generated stories are stored separately. */
+export interface WritingDocument {
+  id: string;
+  project_id: string;
+  parent_id?: string;
+  title: string;
+  kind: WritingDocumentKind;
+  status: WritingDocumentStatus;
+  content: string;
+  order: number;
+  word_target?: number;
+  created_at: string;
+  updated_at: string;
+}
+
 /**
  * A media project is a creative output spawned from a universe.
  * One universe can produce many projects — a book, a game, a comic, a film.
