@@ -36,14 +36,17 @@ export const POST = withApiContext(async (req, context) => {
     throw new ValidationError('Password must be between 8 and 128 characters.');
   }
 
-  const [existing] = await db.select().from(s.users).where(eq(s.users.email, email)).limit(1);
-  if (existing) throw new ConflictError('A user with this email already exists.');
-
   const passwordHash = await bcrypt.hash(password, 10);
-  const [user] = await db
-    .insert(s.users)
-    .values({ name: name || null, email, passwordHash })
-    .returning({ id: s.users.id, name: s.users.name, email: s.users.email });
+  let user: { id: string; name: string | null; email: string };
+  try {
+    const [existing] = await db.select().from(s.users).where(eq(s.users.email, email)).limit(1);
+    if (existing) throw new ConflictError('A user with this email already exists.');
+    [user] = await db.insert(s.users).values({ name: name || null, email, passwordHash }).returning({ id: s.users.id, name: s.users.name, email: s.users.email });
+  } catch (error) {
+    if (error instanceof ConflictError) throw error;
+    if ((error as { code?: unknown } | null)?.code === '23505') throw new ConflictError('A user with this email already exists.');
+    throw new DependencyUnavailableError('Account creation is temporarily unavailable. Please try again shortly.');
+  }
 
   return apiSuccess(
     { id: user.id, name: user.name, email: user.email },

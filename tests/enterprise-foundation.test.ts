@@ -9,6 +9,7 @@ import { validateUpload } from '../src/lib/uploads/validate-upload';
 import { createStorageIdentity } from '../src/lib/uploads/storage-key';
 import { createRequestContext, REQUEST_ID_HEADER } from '../src/lib/request-context';
 import { createLogger } from '../src/lib/logger';
+import { clientApiErrorMessage } from '../src/lib/client-api-error';
 
 const tinyPolicy = (maxBytes: number): BodyLimitPolicy => ({ name: 'test', maxBytes });
 
@@ -182,4 +183,10 @@ test('structured logger redacts secrets and control characters', () => {
   assert.equal(lines.length, 1);
   assert.doesNotMatch(lines[0], /private|user:pass|line\\nbreak/);
   assert.match(lines[0], /request-12345678/);
+});
+
+test('registration UI extracts structured API errors without rendering objects', () => {
+  assert.equal(clientApiErrorMessage({ error: { message: 'Account database unavailable.', requestId: 'request-12345678' } }, 'fallback'), 'Account database unavailable. Reference: request-12345678');
+  assert.equal(clientApiErrorMessage({ error: 'Legacy failure' }, 'fallback'), 'Legacy failure');
+  assert.equal(clientApiErrorMessage({ error: { code: 'INTERNAL_ERROR' } }, 'Registration failed.'), 'Registration failed.');
 });
