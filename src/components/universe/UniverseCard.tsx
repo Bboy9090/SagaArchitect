@@ -19,7 +19,7 @@ export function UniverseCard({ universe, characterCount = 0, factionCount = 0, e
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1 min-w-0">
           <Link href={`/universe/${universe.id}`}>
-            <h3 className="text-lg font-bold text-white group-hover:text-[#c9a84c] transition-colors truncate cursor-pointer">
+            <h3 className="text-lg font-bold text-white group-hover:text-blue-300 transition-colors truncate cursor-pointer">
               {universe.name}
             </h3>
           </Link>
@@ -43,27 +43,27 @@ export function UniverseCard({ universe, characterCount = 0, factionCount = 0, e
       <p className="text-gray-400 text-sm line-clamp-2 mb-3">{universe.concept}</p>
 
       <div className="text-xs text-gray-500 mb-3">
-        <span className="text-[#c9a84c]/70">Era:</span> {universe.era}
+        <span className="text-blue-300/70">Production era:</span> {universe.era}
       </div>
 
       <div className="grid grid-cols-3 gap-2 pt-3 border-t border-[#c9a84c]/10">
         <div className="text-center">
-          <div className="text-lg font-bold text-[#c9a84c]">{characterCount}</div>
+          <div className="text-lg font-bold text-blue-300">{characterCount}</div>
           <div className="text-[10px] text-gray-500 uppercase tracking-widest">Characters</div>
         </div>
         <div className="text-center">
-          <div className="text-lg font-bold text-[#c9a84c]">{factionCount}</div>
+          <div className="text-lg font-bold text-violet-300">{factionCount}</div>
           <div className="text-[10px] text-gray-500 uppercase tracking-widest">Factions</div>
         </div>
         <div className="text-center">
-          <div className="text-lg font-bold text-[#c9a84c]">{eventCount}</div>
+          <div className="text-lg font-bold text-cyan-300">{eventCount}</div>
           <div className="text-[10px] text-gray-500 uppercase tracking-widest">Events</div>
         </div>
       </div>
 
       <Link href={`/universe/${universe.id}`} className="block mt-3">
-        <div className="text-center text-xs text-[#c9a84c]/60 hover:text-[#c9a84c] transition-colors border border-[#c9a84c]/20 hover:border-[#c9a84c]/50 rounded py-1.5">
-          Open Canon Core →
+        <div className="text-center text-xs text-blue-300/70 hover:text-blue-200 transition-colors border border-blue-400/20 hover:border-blue-400/50 rounded py-2">
+          Enter Production →
         </div>
       </Link>
     </Card>
