@@ -28,8 +28,9 @@ try {
   run('Run focused enterprise foundation tests', [
     '--test',
     path.join(output, 'tests', 'enterprise-foundation.test.js'),
+    path.join(output, 'tests', 'enterprise-foundation-sprint-2.test.js'),
   ]);
-  process.stdout.write('\nEnterprise Foundation Sprint 1 focused verification passed.\n');
+  process.stdout.write('\nEnterprise Foundation Sprint 1 and Sprint 2 focused verification passed.\n');
 } finally {
   rmSync(output, { recursive: true, force: true });
 }

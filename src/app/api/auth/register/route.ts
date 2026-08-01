@@ -6,6 +6,7 @@ import { apiSuccess } from '@/lib/api-response';
 import { ConflictError, DependencyUnavailableError, ValidationError } from '@/lib/api-errors';
 import { SMALL_AUTH_BODY } from '@/lib/http/body-limits';
 import { readJsonBodyWithLimit } from '@/lib/http/read-bounded-body';
+import { consumeRateLimit } from '@/lib/rate-limit/rate-limiter';
 import { withApiContext } from '@/lib/with-api-context';
 
 interface RegistrationPayload {
@@ -15,6 +16,7 @@ interface RegistrationPayload {
 }
 
 export const POST = withApiContext(async (req, context) => {
+  await consumeRateLimit(req, 'registration');
   if (!db) throw new DependencyUnavailableError('Authentication service is unavailable.');
 
   const payload = await readJsonBodyWithLimit<RegistrationPayload>(req, {
