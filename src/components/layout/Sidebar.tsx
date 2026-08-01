@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import Image from 'next/image';
 import { useParams, usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
+import { PhoenixBrand } from '@/components/brand/PhoenixBrand';
 
 interface NavItem {
   href: string;
@@ -17,45 +17,36 @@ export function Sidebar() {
   const universeId = params?.id as string | undefined;
 
   const mainNav: NavItem[] = [
-    { href: '/dashboard', label: 'Projects', icon: '🏛️' },
-    { href: '/universe/new', label: 'New Project', icon: '✨' },
-    { href: '/shared-lore-pool', label: 'Shared Lore Pool', icon: '🌐' },
+    { href: '/dashboard', label: 'Studio Home', icon: '⌂' },
+    { href: '/universe/new', label: 'Start Production', icon: '✦' },
+    { href: '/shared-lore-pool', label: 'Creative Vault', icon: '◇' },
   ];
 
   const universeNav: NavItem[] = universeId ? [
-    { href: `/universe/${universeId}`, label: 'Canon Engine', icon: '🌍' },
+    { href: `/universe/${universeId}`, label: 'Project Bible', icon: '◎' },
     { href: `/universe/${universeId}/characters`, label: 'Characters', icon: '👤' },
     { href: `/universe/${universeId}/scenes`, label: 'Scenes', icon: '🎬' },
     { href: `/universe/${universeId}/storyboard`, label: 'Storyboard', icon: '🖼️' },
     { href: `/universe/${universeId}/factions`, label: 'Factions', icon: '🏛️' },
     { href: `/universe/${universeId}/timeline`, label: 'Timeline', icon: '⏳' },
-    { href: `/universe/${universeId}/arcs`, label: 'Arc Forge', icon: '⚔️' },
-    { href: `/universe/${universeId}/lore`, label: 'Lore Memory', icon: '🔮' },
-    { href: `/universe/${universeId}/stories`, label: 'Story Forge', icon: '📖' },
-    { href: `/universe/${universeId}/export`, label: 'Export', icon: '📥' },
-    { href: `/universe/${universeId}/history`, label: 'History', icon: '📜' },
+    { href: `/universe/${universeId}/arcs`, label: 'Story Arcs', icon: '⌁' },
+    { href: `/universe/${universeId}/lore`, label: 'World Bible', icon: '◈' },
+    { href: `/universe/${universeId}/stories`, label: 'Writing Room', icon: '✎' },
+    { href: `/universe/${universeId}/export`, label: 'Publish & Export', icon: '⇩' },
+    { href: `/universe/${universeId}/history`, label: 'Production History', icon: '↺' },
   ] : [];
 
   const isActive = (href: string) => pathname === href;
 
   return (
-    <aside className="w-64 min-h-screen bg-[#0a0a0f] border-r border-[#c9a84c]/20 flex flex-col">
-      <div className="p-4 border-b border-[#c9a84c]/20">
-        <Link href="/dashboard" className="block flex flex-col items-center">
-          <Image
-            src="/sagaarchitect-logo.png"
-            alt="Phoenix Creator Studio"
-            width={160}
-            height={160}
-            className="w-24 h-24 object-contain"
-            priority
-          />
-        </Link>
+    <aside className="w-72 min-h-screen bg-[#060a17]/95 backdrop-blur-xl border-r border-blue-400/15 flex flex-col">
+      <div className="p-5 border-b border-blue-400/15">
+        <PhoenixBrand />
       </div>
 
       <nav className="p-3 flex-1">
         <div className="mb-6">
-          <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-2 px-2">Navigation</p>
+          <p className="text-[10px] text-blue-300/40 uppercase tracking-[.22em] mb-2 px-2">Studio</p>
           {mainNav.map(item => (
             <Link
               key={item.href}
@@ -63,7 +54,7 @@ export function Sidebar() {
               className={`
                 flex items-center gap-2.5 px-3 py-2 rounded text-sm font-medium transition-all duration-150 mb-1
                 ${isActive(item.href)
-                  ? 'bg-[#c9a84c]/15 text-[#c9a84c] border border-[#c9a84c]/30'
+                  ? 'bg-blue-400/10 text-blue-300 border border-blue-400/25'
                   : 'text-gray-400 hover:text-white hover:bg-white/5'}
               `}
             >
@@ -80,7 +71,7 @@ export function Sidebar() {
 
         {universeNav.length > 0 && (
           <div>
-            <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-2 px-2">Project Context</p>
+            <p className="text-[10px] text-violet-300/40 uppercase tracking-[.22em] mb-2 px-2">Active Production</p>
             {universeNav.map(item => (
               <Link
                 key={item.href}
@@ -88,7 +79,7 @@ export function Sidebar() {
                 className={`
                   flex items-center gap-2.5 px-3 py-2 rounded text-sm font-medium transition-all duration-150 mb-1
                   ${isActive(item.href)
-                    ? 'bg-[#c9a84c]/15 text-[#c9a84c] border border-[#c9a84c]/30'
+                    ? 'bg-violet-400/10 text-violet-200 border border-violet-400/25'
                     : 'text-gray-400 hover:text-white hover:bg-white/5'}
                 `}
               >
@@ -115,11 +106,11 @@ export function Sidebar() {
 
         <div className="flex items-center gap-1.5 px-1 justify-between">
           <div className="flex items-center gap-1">
-            <span className="text-[10px] text-[#c9a84c]/40">⚡</span>
-            <span className="text-[10px] text-gray-700 tracking-wider uppercase">LoreEngine v1</span>
+            <span className="text-[10px] text-blue-300/50">●</span>
+            <span className="text-[10px] text-gray-600 tracking-wider uppercase">Studio systems online</span>
           </div>
         </div>
-        <p className="text-[9px] text-gray-600 text-center tracking-widest uppercase">Phoenix Creator Studio</p>
+        <p className="text-[9px] text-gray-700 text-center tracking-widest uppercase">A Bobby&apos;s Workshop production</p>
       </div>
     </aside>
   );
