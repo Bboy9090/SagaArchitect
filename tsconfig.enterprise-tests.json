@@ -39,6 +39,7 @@
     "src/lib/writing-documents.ts",
     "src/lib/writing-outline.ts",
     "src/lib/publishing-packages.ts",
+    "src/lib/publishing-preflight.ts",
     "tests/enterprise-foundation.test.ts",
     "tests/enterprise-foundation-sprint-2.test.ts",
     "tests/writing-sync.test.ts"
