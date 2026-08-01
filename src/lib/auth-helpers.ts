@@ -65,6 +65,14 @@ export async function requireOwnedScene(sceneId: string, userId: string) {
   return scene;
 }
 
+export async function requireOwnedWritingDocument(documentId: string, userId: string) {
+  if (!db) throw new AuthError(503, 'Database service unavailable.');
+  const [document] = await db.select().from(s.writingDocuments).where(eq(s.writingDocuments.id, documentId)).limit(1);
+  if (!document) throw new AuthError(404, 'Writing document not found.');
+  await requireOwnedProject(document.projectId, userId);
+  return document;
+}
+
 export async function requireOwnedStoryboardPanel(panelId: string, userId: string) {
   if (!db) throw new AuthError(503, 'Database service unavailable.');
   const [panel] = await db
