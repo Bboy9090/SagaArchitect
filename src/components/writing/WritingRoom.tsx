@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { deleteWritingDocument, getWritingDocuments, saveWritingDocument } from '@/lib/storage';
-import { compileWritingProject, countWords, createWritingBackup, documentExport, importWritingBackup, safeExportName } from '@/lib/writing-documents';
+import { compileWritingProject, countWords, createWritingBackup, documentExport, importWritingBackup, moveWritingDocument, orderedWritingDocuments, reparentWritingScene, safeExportName } from '@/lib/writing-documents';
 import { createDocxPackage, createEpubPackage } from '@/lib/publishing-packages';
 import { isDbMode } from '@/lib/storage-mode';
-import { dbDeleteWritingDocument, dbGetWritingDocumentRevisions, dbGetWritingDocuments, dbRestoreWritingDocument, dbSaveWritingDocument } from '@/lib/db-client';
+import { dbDeleteWritingDocument, dbGetWritingDocumentRevisions, dbGetWritingDocuments, dbReorderWritingDocuments, dbRestoreWritingDocument, dbSaveWritingDocument } from '@/lib/db-client';
 import type { Universe, WritingDocument, WritingDocumentKind, WritingDocumentRevision, WritingDocumentStatus } from '@/lib/types';
 
 const KIND_LABELS: Record<WritingDocumentKind, string> = {
@@ -103,6 +103,36 @@ export function WritingRoom({ universe }: WritingRoomProps) {
   const updateActive = (patch: Partial<WritingDocument>) => {
     if (!activeId) return;
     setDocuments(current => current.map(item => item.id === activeId ? { ...item, ...patch } : item));
+  };
+
+  const persistOutline = async (nextDocuments: WritingDocument[]) => {
+    setSaveState('saving');
+    try {
+      const changed = nextDocuments.some(document => {
+        const previous = documents.find(item => item.id === document.id);
+        return !previous || previous.order !== document.order || previous.parent_id !== document.parent_id;
+      });
+      if (!changed) { setSaveState('saved'); return; }
+      const saved = isDbMode() ? await dbReorderWritingDocuments(universe.id, nextDocuments) : nextDocuments.map(saveWritingDocument);
+      saved.forEach(saveWritingDocument);
+      const ordered = orderedWritingDocuments(saved);
+      const selected = ordered.find(document => document.id === activeId);
+      if (selected) suppressSavedVersion.current = { id: selected.id, version: selected.version };
+      setDocuments(ordered);
+      setSaveState('saved');
+    } catch (error) {
+      setSaveState(error instanceof Error && /changed on another device/i.test(error.message) ? 'conflict' : 'offline');
+    }
+  };
+
+  const moveDocument = (documentId: string, direction: -1 | 1) => {
+    void persistOutline(moveWritingDocument(documents, documentId, direction));
+  };
+
+  const assignScene = (chapterId?: string) => {
+    if (!active) return;
+    try { void persistOutline(reparentWritingScene(documents, active.id, chapterId)); }
+    catch (error) { alert(error instanceof Error ? error.message : 'The scene could not be moved.'); }
   };
 
   const addDocument = (kind: WritingDocumentKind) => {
@@ -238,13 +268,18 @@ export function WritingRoom({ universe }: WritingRoomProps) {
             <Button size="sm" variant="ghost" onClick={() => addDocument('scene')}>+ Scene</Button>
           </div>
           <div className="space-y-1">
-            {documents.map(item => (
-              <button key={item.id} onClick={() => setActiveId(item.id)}
-                className={`w-full text-left rounded-lg px-3 py-2 border transition-colors ${item.id === activeId ? 'bg-[#c9a84c]/10 border-[#c9a84c]/50 text-white' : 'border-transparent text-gray-400 hover:bg-white/5'}`}
-                style={{ paddingLeft: item.parent_id ? '2rem' : undefined }}>
-                <span className="block text-sm font-medium truncate">{item.kind === 'scene' ? '◦' : '▤'} {item.title}</span>
-                <span className="text-[10px] text-gray-600">{KIND_LABELS[item.kind]} · {countWords(item.content)} words</span>
-              </button>
+            {orderedWritingDocuments(documents).map(item => (
+              <div key={item.id} className={`group flex items-center rounded-lg border transition-colors ${item.id === activeId ? 'bg-[#c9a84c]/10 border-[#c9a84c]/50 text-white' : 'border-transparent text-gray-400 hover:bg-white/5'}`}
+                style={{ marginLeft: item.parent_id ? '1rem' : undefined }}>
+                <button onClick={() => setActiveId(item.id)} className="min-w-0 flex-1 text-left px-3 py-2">
+                  <span className="block text-sm font-medium truncate">{item.kind === 'scene' ? '◦' : '▤'} {item.title}</span>
+                  <span className="text-[10px] text-gray-600">{KIND_LABELS[item.kind]} · {countWords(item.content)} words</span>
+                </button>
+                <div className="flex pr-1 opacity-60 group-hover:opacity-100">
+                  <button aria-label={`Move ${item.title} up`} title="Move up" onClick={() => moveDocument(item.id, -1)} className="px-1.5 py-2 text-xs hover:text-[#c9a84c]">↑</button>
+                  <button aria-label={`Move ${item.title} down`} title="Move down" onClick={() => moveDocument(item.id, 1)} className="px-1.5 py-2 text-xs hover:text-[#c9a84c]">↓</button>
+                </div>
+              </div>
             ))}
           </div>
         </aside>
@@ -282,6 +317,12 @@ export function WritingRoom({ universe }: WritingRoomProps) {
                   {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
               </label>
+              {active.kind === 'scene' && <label className="block text-xs text-gray-500">Chapter
+                <select value={active.parent_id ?? ''} onChange={event => assignScene(event.target.value || undefined)} className="mt-1 w-full bg-[#09090f] border border-white/10 rounded px-2 py-2 text-sm text-white">
+                  <option value="">Unassigned scene</option>
+                  {documents.filter(document => document.kind === 'chapter').map(chapter => <option key={chapter.id} value={chapter.id}>{chapter.title}</option>)}
+                </select>
+              </label>}
               <label className="block text-xs text-gray-500">Word target
                 <input type="number" min="0" value={active.word_target ?? ''} onChange={event => updateActive({ word_target: Number(event.target.value) || undefined })} className="mt-1 w-full bg-[#09090f] border border-white/10 rounded px-2 py-2 text-sm text-white" />
               </label>
