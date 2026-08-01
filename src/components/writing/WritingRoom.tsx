@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { deleteWritingDocument, getWritingDocuments, saveWritingDocument } from '@/lib/storage';
 import { compileWritingProject, countWords, createWritingBackup, documentExport, importWritingBackup, moveWritingDocument, orderedWritingDocuments, reparentWritingScene, safeExportName } from '@/lib/writing-documents';
 import { createDocxPackage, createEpubPackage } from '@/lib/publishing-packages';
+import { analyzePublishingReadiness } from '@/lib/publishing-preflight';
 import { isDbMode } from '@/lib/storage-mode';
 import { dbDeleteWritingDocument, dbGetWritingDocumentRevisions, dbGetWritingDocuments, dbReorderWritingDocuments, dbRestoreWritingDocument, dbSaveWritingDocument } from '@/lib/db-client';
 import type { Universe, WritingDocument, WritingDocumentKind, WritingDocumentRevision, WritingDocumentStatus } from '@/lib/types';
@@ -99,6 +100,7 @@ export function WritingRoom({ universe }: WritingRoomProps) {
   const totalWords = useMemo(() => documents.reduce((sum, item) => sum + countWords(item.content), 0), [documents]);
   const activeWords = active ? countWords(active.content) : 0;
   const progress = active?.word_target ? Math.min(100, Math.round(activeWords / active.word_target * 100)) : 0;
+  const publishingReadiness = useMemo(() => analyzePublishingReadiness(universe.name, documents), [documents, universe.name]);
 
   const updateActive = (patch: Partial<WritingDocument>) => {
     if (!activeId) return;
@@ -222,6 +224,10 @@ export function WritingRoom({ universe }: WritingRoomProps) {
   };
 
   const downloadPublishingPackage = (format: 'docx' | 'epub') => {
+    if (!publishingReadiness.ready) {
+      alert(`Publishing is blocked by ${publishingReadiness.errors} preflight error${publishingReadiness.errors === 1 ? '' : 's'}. Review Publishing readiness first.`);
+      return;
+    }
     const content = format === 'docx' ? createDocxPackage(universe.name, documents) : createEpubPackage(universe.name, documents);
     const type = format === 'docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/epub+zip';
     downloadPackage(content, safeExportName(universe.name, format), type);
@@ -332,7 +338,7 @@ export function WritingRoom({ universe }: WritingRoomProps) {
               <h2 className="text-xs font-bold text-[#c9a84c] uppercase tracking-widest mb-3">Production files</h2>
               <p className="text-[10px] text-gray-600 uppercase tracking-wider mb-2">Entire project</p>
               <div className="grid grid-cols-2 gap-2"><Button size="sm" variant="secondary" onClick={() => downloadProject('txt')}>Full .TXT</Button><Button size="sm" variant="secondary" onClick={() => downloadProject('md')}>Full .MD</Button></div>
-              <div className="grid grid-cols-2 gap-2 mt-2"><Button size="sm" variant="secondary" onClick={() => downloadPublishingPackage('docx')}>Editor .DOCX</Button><Button size="sm" variant="secondary" onClick={() => downloadPublishingPackage('epub')}>Reader .EPUB</Button></div>
+              <div className="grid grid-cols-2 gap-2 mt-2"><Button size="sm" variant="secondary" disabled={!publishingReadiness.ready} onClick={() => downloadPublishingPackage('docx')}>Editor .DOCX</Button><Button size="sm" variant="secondary" disabled={!publishingReadiness.ready} onClick={() => downloadPublishingPackage('epub')}>Reader .EPUB</Button></div>
               <Button className="w-full mt-2" size="sm" variant="ghost" onClick={downloadBackup}>JSON backup</Button>
               <input ref={importInput} type="file" accept="application/json,.json" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void importBackup(file); }} />
               <Button className="w-full mt-2" size="sm" variant="ghost" onClick={() => importInput.current?.click()}>Import backup</Button>
@@ -340,6 +346,12 @@ export function WritingRoom({ universe }: WritingRoomProps) {
               <div className="grid grid-cols-2 gap-2"><Button size="sm" variant="secondary" onClick={() => downloadActive('txt')}>.TXT</Button><Button size="sm" variant="secondary" onClick={() => downloadActive('md')}>.MD</Button></div>
               {isDbMode() && <Button className="w-full mt-3" size="sm" variant="ghost" onClick={() => void openHistory()}>Revision history</Button>}
               <button onClick={() => void removeActive()} className="mt-4 text-xs text-red-400 hover:text-red-300">Delete document</button>
+            </div>
+            <div className="bg-[#0f0f1a] border border-[#c9a84c]/20 rounded-xl p-4">
+              <div className="flex items-center justify-between gap-2"><h2 className="text-xs font-bold text-[#c9a84c] uppercase tracking-widest">Publishing readiness</h2><span className={`text-[10px] font-bold uppercase ${publishingReadiness.ready ? 'text-green-500' : 'text-red-400'}`}>{publishingReadiness.ready ? 'Ready' : 'Blocked'}</span></div>
+              <p className="mt-2 text-xs text-gray-500">{publishingReadiness.total_words.toLocaleString()} words · {publishingReadiness.publishable_documents} files · {publishingReadiness.errors} errors · {publishingReadiness.warnings} warnings</p>
+              {publishingReadiness.issues.length === 0 ? <p className="mt-3 text-xs text-green-500">No structural publishing issues found.</p> : <ul className="mt-3 space-y-2 max-h-48 overflow-y-auto">{publishingReadiness.issues.slice(0, 12).map((issue, index) => <li key={`${issue.code}-${issue.document_id ?? index}`} className={`text-xs ${issue.severity === 'error' ? 'text-red-300' : 'text-yellow-400'}`}>{issue.severity === 'error' ? '●' : '△'} {issue.message}</li>)}</ul>}
+              {publishingReadiness.issues.length > 12 && <p className="mt-2 text-[10px] text-gray-600">+{publishingReadiness.issues.length - 12} additional findings</p>}
             </div>
             {showHistory && isDbMode() && <div className="bg-[#0f0f1a] border border-[#c9a84c]/20 rounded-xl p-4">
               <div className="flex justify-between items-center mb-3"><h2 className="text-xs font-bold text-[#c9a84c] uppercase tracking-widest">Recovery points</h2><button onClick={() => setShowHistory(false)} className="text-gray-600">×</button></div>
