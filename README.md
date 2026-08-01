@@ -1,4 +1,4 @@
-# Phoenix Creator Studio
+# Phoenix Creator Studios
 
 **Universe Bible + Canon Engine for Creators**
 
@@ -166,8 +166,8 @@ Includes 8 locations and 5 lore rules — ready to explore immediately.
 git clone https://github.com/Bboy9090/SagaArchitect.git
 cd SagaArchitect
 
-# Install dependencies
-npm install
+# Install the locked dependency tree
+npm ci
 
 # Start development server
 npm run dev
@@ -184,6 +184,8 @@ npm run build
 # Start production server
 npm start
 ```
+
+Production deployments require PostgreSQL, Supabase Storage, and Upstash Redis. The server rejects local filesystem storage and process-local rate limiting when `APP_ENV` is `staging` or `production`. Run `npm run env:check:production` before deploying; see [docs/deployment.md](docs/deployment.md) for the exact variables and rollout sequence.
 
 ### Database Schema & Migrations (PostgreSQL + Drizzle)
 

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { ConfigurationError, RateLimitError } from '../api-errors';
 import { RATE_LIMIT_POLICIES, type RateLimitPolicyName } from './policies';
 import { MemoryRateLimitStore } from './memory-store';
+import { UpstashRateLimitStore } from './upstash-store';
 import type { RateLimitDecision, RateLimitPolicy, RateLimitStore } from './types';
 
 type RateLimitEnvironment = Record<string, string | undefined>;
@@ -50,6 +51,13 @@ export function getConfiguredRateLimiter(environment: RateLimitEnvironment = pro
       throw new ConfigurationError('A shared rate-limit backend is required in staging and production.');
     }
     return memoryLimiter;
+  }
+
+  if (provider === 'upstash') {
+    return new RateLimiter(new UpstashRateLimitStore({
+      url: environment.RATE_LIMIT_URL || '',
+      token: environment.RATE_LIMIT_TOKEN || '',
+    }));
   }
 
   throw new ConfigurationError(`Rate-limit provider "${provider}" is configured but its shared adapter is not integrated yet.`);

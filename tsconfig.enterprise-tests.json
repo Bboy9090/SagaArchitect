@@ -28,9 +28,12 @@
     "src/lib/rate-limit/types.ts",
     "src/lib/rate-limit/policies.ts",
     "src/lib/rate-limit/memory-store.ts",
+    "src/lib/rate-limit/upstash-store.ts",
     "src/lib/rate-limit/rate-limiter.ts",
     "src/lib/storage/storage-provider.ts",
     "src/lib/storage/local-storage-provider.ts",
+    "src/lib/storage/storage-key.ts",
+    "src/lib/storage/supabase-storage-provider.ts",
     "src/lib/storage/index.ts",
     "tests/enterprise-foundation.test.ts",
     "tests/enterprise-foundation-sprint-2.test.ts"

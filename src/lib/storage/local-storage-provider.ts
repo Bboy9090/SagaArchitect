@@ -1,9 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { ValidationError } from '../api-errors';
+import { validateStorageKey } from './storage-key';
 import type { StorageProvider, StorageWriteInput, StoredObject } from './storage-provider';
-
-const SAFE_KEY = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$/;
 
 export class LocalStorageProvider implements StorageProvider {
   readonly name = 'local' as const;
@@ -14,9 +13,7 @@ export class LocalStorageProvider implements StorageProvider {
   }
 
   private resolveKey(key: string): string {
-    if (!SAFE_KEY.test(key) || key.includes('..') || key.includes('\\') || path.isAbsolute(key)) {
-      throw new ValidationError('The storage key is invalid.');
-    }
+    validateStorageKey(key);
     const resolved = path.resolve(this.root, key);
     const relative = path.relative(this.root, resolved);
     if (relative.startsWith('..') || path.isAbsolute(relative)) {

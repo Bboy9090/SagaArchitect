@@ -1,6 +1,32 @@
-# SagaArchitect — Deployment Guide
+# Phoenix Creator Studios — Deployment Guide
 
-SagaArchitect is a **Next.js 14 application** with no required backend. All universe data is stored in `localStorage` on the client. The only optional external dependency is an OpenAI API key for AI-powered generation.
+Phoenix Creator Studios is a **Next.js 16 application** with a PostgreSQL database, durable object storage, shared rate limiting, and optional OpenAI generation. Production startup fails closed when durable providers are absent.
+
+## Production provider contract
+
+Use these providers for the supported production lane:
+
+| Capability | Provider | Required variables |
+|---|---|---|
+| Database runtime | PostgreSQL pooler | `DATABASE_URL` |
+| Database migrations | PostgreSQL direct connection | `DATABASE_MIGRATION_URL` |
+| Object storage | Supabase Storage | `STORAGE_PROVIDER=supabase`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET` |
+| Shared rate limiting | Upstash Redis REST | `RATE_LIMIT_PROVIDER=upstash`, `RATE_LIMIT_URL`, `RATE_LIMIT_TOKEN` |
+| Authentication | NextAuth | `NEXTAUTH_URL`, `NEXTAUTH_SECRET` (at least 32 characters) |
+
+Keep service-role, database, rate-limit, and OpenAI secrets server-only. Never prefix them with `NEXT_PUBLIC_`.
+
+Create a private Supabase Storage bucket before deployment. Apply database migrations from a controlled release job with `npm run db:migrate`; do not run migrations in every serverless function startup.
+
+Validate the complete release configuration before deploying:
+
+```bash
+npm ci
+npm run env:check:production
+npm run check
+```
+
+The Supabase adapter uses authenticated Storage REST operations and rejects traversal keys before making a request. The Upstash adapter increments and assigns the fixed-window TTL atomically; provider failure blocks the protected request rather than falling back to memory.
 
 ---
 
@@ -24,8 +50,20 @@ In the Vercel project dashboard, go to **Settings → Environment Variables** an
 
 | Variable | Required | Description |
 |---|---|---|
-| `OPENAI_API_KEY` | Optional | Enables real AI generation. Without it, the app returns mock data so the full UI is still explorable. |
-| `RAINSTORMS_BASE_URL` | Optional | Public URL of your Rainstorms deployment, e.g. `https://your-rainstorms-app.vercel.app`. Required only if you use the **🌧 Sync to Rainstorms** feature. |
+| `APP_ENV` | Yes | Set to `production`. |
+| `DATABASE_URL` | Yes | Runtime PostgreSQL pooler URL. |
+| `DATABASE_MIGRATION_URL` | Yes | Direct PostgreSQL migration URL. |
+| `NEXTAUTH_URL` | Yes | Canonical public HTTPS URL. |
+| `NEXTAUTH_SECRET` | Yes | Random secret of at least 32 characters. |
+| `STORAGE_PROVIDER` | Yes | Set to `supabase`. |
+| `SUPABASE_URL` | Yes | Supabase project HTTPS URL. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Server-only service-role key. |
+| `SUPABASE_STORAGE_BUCKET` | Yes | Existing private bucket name. |
+| `RATE_LIMIT_PROVIDER` | Yes | Set to `upstash`. |
+| `RATE_LIMIT_URL` | Yes | Upstash Redis REST HTTPS URL. |
+| `RATE_LIMIT_TOKEN` | Yes | Upstash Redis REST token. |
+| `OPENAI_API_KEY` | Optional | Enables live AI generation. |
+| `RAINSTORMS_BASE_URL` | Optional | Allowlisted Rainstorms origin. |
 
 ### 4. Deploy
 
