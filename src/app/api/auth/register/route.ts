@@ -1,58 +1,53 @@
-import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import * as s from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
+import { apiSuccess } from '@/lib/api-response';
+import { ConflictError, DependencyUnavailableError, ValidationError } from '@/lib/api-errors';
+import { SMALL_AUTH_BODY } from '@/lib/http/body-limits';
+import { readJsonBodyWithLimit } from '@/lib/http/read-bounded-body';
+import { withApiContext } from '@/lib/with-api-context';
 
-export async function POST(req: Request) {
-  if (!db) {
-    return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
-  }
-
-  try {
-    const { name, email, password } = await req.json();
-
-    if (!email || !password) {
-      return NextResponse.json({ ok: false, error: 'Email and password are required.' }, { status: 400 });
-    }
-
-    // Check if user already exists
-    const [existing] = await db
-      .select()
-      .from(s.users)
-      .where(eq(s.users.email, email))
-      .limit(1);
-
-    if (existing) {
-      return NextResponse.json({ ok: false, error: 'A user with this email already exists.' }, { status: 409 });
-    }
-
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(password, salt);
-
-    // Create user
-    const [user] = await db
-      .insert(s.users)
-      .values({
-        name: name || null,
-        email,
-        passwordHash,
-      })
-      .returning();
-
-    return NextResponse.json({
-      ok: true,
-      data: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-      },
-    });
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : 'Registration failed.';
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
-  }
+interface RegistrationPayload {
+  name?: unknown;
+  email?: unknown;
+  password?: unknown;
 }
+
+export const POST = withApiContext(async (req, context) => {
+  if (!db) throw new DependencyUnavailableError('Authentication service is unavailable.');
+
+  const payload = await readJsonBodyWithLimit<RegistrationPayload>(req, {
+    policy: SMALL_AUTH_BODY,
+  });
+
+  if (typeof payload.email !== 'string' || typeof payload.password !== 'string') {
+    throw new ValidationError('Email and password are required.');
+  }
+
+  const email = payload.email.trim().toLowerCase();
+  const password = payload.password;
+  const name = typeof payload.name === 'string' ? payload.name.trim().slice(0, 120) : null;
+
+  if (!/^\S+@\S+\.\S+$/.test(email)) throw new ValidationError('A valid email address is required.');
+  if (password.length < 8 || password.length > 128) {
+    throw new ValidationError('Password must be between 8 and 128 characters.');
+  }
+
+  const [existing] = await db.select().from(s.users).where(eq(s.users.email, email)).limit(1);
+  if (existing) throw new ConflictError('A user with this email already exists.');
+
+  const passwordHash = await bcrypt.hash(password, 10);
+  const [user] = await db
+    .insert(s.users)
+    .values({ name: name || null, email, passwordHash })
+    .returning({ id: s.users.id, name: s.users.name, email: s.users.email });
+
+  return apiSuccess(
+    { id: user.id, name: user.name, email: user.email },
+    context.requestId,
+    201,
+  );
+});
 
 export const dynamic = 'force-dynamic';

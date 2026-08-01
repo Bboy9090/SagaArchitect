@@ -16,9 +16,37 @@ concurrency:
 
 jobs:
   verify:
-    name: Lint, typecheck, build, and smoke
+    name: Enterprise foundation and ownership regression gate
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+    env:
+      APP_ENV: test
+      ENABLE_TEST_AUTH_BYPASS: "true"
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/phoenix_creator_studio_test
+      DATABASE_MIGRATION_URL: postgresql://postgres:postgres@127.0.0.1:5432/phoenix_creator_studio_test
+      TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/phoenix_creator_studio_test
+      TEST_BASE_URL: http://127.0.0.1:3000
+      NEXTAUTH_URL: http://127.0.0.1:3000
+      NEXTAUTH_SECRET: ci-only-test-secret-not-for-production-use-123456
+      STORAGE_PROVIDER: local
+      STORAGE_PATH: storage/uploads
+      RATE_LIMIT_PROVIDER: memory
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: phoenix_creator_studio_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d phoenix_creator_studio_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Check out source
@@ -38,9 +66,27 @@ jobs:
           set -o pipefail
           npm ci 2>&1 | tee install.log
 
+      - name: Scan tracked files for secrets
+        id: secrets
+        if: always() && steps.install.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run secrets:check 2>&1 | tee secrets.log
+
+      - name: Apply schema to isolated test database
+        id: schema
+        if: always() && steps.install.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npx drizzle-kit push --force 2>&1 | tee schema.log
+
       - name: Lint
         id: lint
-        if: steps.install.outcome == 'success'
+        if: always() && steps.install.outcome == 'success'
         continue-on-error: true
         shell: bash
         run: |
@@ -49,32 +95,99 @@ jobs:
 
       - name: Typecheck
         id: typecheck
-        if: steps.install.outcome == 'success'
+        if: always() && steps.install.outcome == 'success'
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
           npm run typecheck 2>&1 | tee typecheck.log
 
-      - name: Build
-        id: build
-        if: steps.install.outcome == 'success'
+      - name: Validate test environment policy
+        id: envcheck
+        if: always() && steps.install.outcome == 'success'
         continue-on-error: true
         shell: bash
-        env:
-          NEXT_TELEMETRY_DISABLED: "1"
+        run: |
+          set -o pipefail
+          npm run env:check 2>&1 | tee envcheck.log
+
+      - name: Run focused enterprise foundation tests
+        id: enterprise
+        if: always() && steps.install.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:enterprise 2>&1 | tee enterprise.log
+
+      - name: Build
+        id: build
+        if: always() && steps.install.outcome == 'success'
+        continue-on-error: true
+        shell: bash
         run: |
           set -o pipefail
           npm run build 2>&1 | tee build.log
 
+      - name: Start isolated application server
+        id: server
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          npm run start > server.log 2>&1 &
+          echo $! > server.pid
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3000/api/health/db > health-response.json; then
+              echo "Application server is ready."
+              exit 0
+            fi
+            sleep 2
+          done
+          cat server.log
+          exit 1
+
+      - name: Verify authentication and ownership isolation
+        id: authregression
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          node verify-auth-ownership.js 2>&1 | tee auth-regression.log
+
+      - name: Verify deterministic canon scanner
+        id: canonregression
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          node verify-canon-scan.js 2>&1 | tee canon-regression.log
+
+      - name: Verify history restore and export
+        id: historyregression
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          node verify-history-restore.js 2>&1 | tee history-regression.log
+
       - name: Smoke-test repository contract
         id: smoke
-        if: steps.install.outcome == 'success'
+        if: always() && steps.install.outcome == 'success'
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
           npm run test:smoke 2>&1 | tee smoke.log
+
+      - name: Stop application server
+        if: always()
+        shell: bash
+        run: |
+          if test -f server.pid; then kill "$(cat server.pid)" 2>/dev/null || true; fi
 
       - name: Record outcomes
         if: always()
@@ -82,9 +195,17 @@ jobs:
         run: |
           printf '%s\n' \
             "install_outcome=${{ steps.install.outcome }}" \
+            "secrets_outcome=${{ steps.secrets.outcome }}" \
+            "schema_outcome=${{ steps.schema.outcome }}" \
             "lint_outcome=${{ steps.lint.outcome }}" \
             "typecheck_outcome=${{ steps.typecheck.outcome }}" \
+            "envcheck_outcome=${{ steps.envcheck.outcome }}" \
+            "enterprise_outcome=${{ steps.enterprise.outcome }}" \
             "build_outcome=${{ steps.build.outcome }}" \
+            "server_outcome=${{ steps.server.outcome }}" \
+            "auth_regression_outcome=${{ steps.authregression.outcome }}" \
+            "canon_regression_outcome=${{ steps.canonregression.outcome }}" \
+            "history_regression_outcome=${{ steps.historyregression.outcome }}" \
             "smoke_outcome=${{ steps.smoke.outcome }}" \
             > foundation-outcomes.txt
 
@@ -95,9 +216,18 @@ jobs:
           name: phoenix-creator-studio-foundation
           path: |
             install.log
+            secrets.log
+            schema.log
             lint.log
             typecheck.log
+            envcheck.log
+            enterprise.log
             build.log
+            server.log
+            health-response.json
+            auth-regression.log
+            canon-regression.log
+            history-regression.log
             smoke.log
             foundation-outcomes.txt
             .next/build-manifest.json
@@ -110,7 +240,15 @@ jobs:
         shell: bash
         run: |
           test "${{ steps.install.outcome }}" = "success"
+          test "${{ steps.secrets.outcome }}" = "success"
+          test "${{ steps.schema.outcome }}" = "success"
           test "${{ steps.lint.outcome }}" = "success"
           test "${{ steps.typecheck.outcome }}" = "success"
+          test "${{ steps.envcheck.outcome }}" = "success"
+          test "${{ steps.enterprise.outcome }}" = "success"
           test "${{ steps.build.outcome }}" = "success"
+          test "${{ steps.server.outcome }}" = "success"
+          test "${{ steps.authregression.outcome }}" = "success"
+          test "${{ steps.canonregression.outcome }}" = "success"
+          test "${{ steps.historyregression.outcome }}" = "success"
           test "${{ steps.smoke.outcome }}" = "success"

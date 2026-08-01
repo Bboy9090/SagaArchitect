@@ -1,0 +1,29 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "incremental": false,
+    "outDir": ".tmp-enterprise-tests",
+    "rootDir": ".",
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"]
+  },
+  "include": [
+    "src/lib/api-errors.ts",
+    "src/lib/env-schema.ts",
+    "src/lib/env-validator.ts",
+    "src/lib/redact-sensitive.ts",
+    "src/lib/request-context.ts",
+    "src/lib/logger.ts",
+    "src/lib/http/body-limits.ts",
+    "src/lib/http/read-bounded-body.ts",
+    "src/lib/uploads/upload-policy.ts",
+    "src/lib/uploads/file-signatures.ts",
+    "src/lib/uploads/storage-key.ts",
+    "src/lib/uploads/validate-upload.ts",
+    "tests/enterprise-foundation.test.ts"
+  ]
+}

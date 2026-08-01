@@ -1,89 +1,76 @@
-import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { assets } from '@/db/schema';
-import { saveFileLocal } from '@/lib/storage-driver';
+import { deleteFileLocal, saveFileLocal } from '@/lib/storage-driver';
 import { logVersion } from '@/lib/version-history';
-import path from 'path';
-import { requireUser, requireOwnedProject, AuthError } from '@/lib/auth-helpers';
+import { requireUser, requireOwnedProject } from '@/lib/auth-helpers';
+import { apiSuccess } from '@/lib/api-response';
+import { DependencyUnavailableError, ValidationError } from '@/lib/api-errors';
+import { ASSET_UPLOAD_BODY } from '@/lib/http/body-limits';
+import { readFormDataWithLimit } from '@/lib/http/read-bounded-body';
+import { validateUpload } from '@/lib/uploads/validate-upload';
+import { withApiContext } from '@/lib/with-api-context';
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-const ALLOWED_MIME_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'];
+export const POST = withApiContext(async (req, context) => {
+  if (!db) throw new DependencyUnavailableError('Database service is unavailable.');
 
-export async function POST(req: Request) {
-  if (!db) {
-    return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
+  const userId = await requireUser();
+  context.userId = userId;
+
+  const formData = await readFormDataWithLimit(req, { policy: ASSET_UPLOAD_BODY });
+  const rawFile = formData.get('file');
+  const projectId = formData.get('projectId');
+
+  if (!(rawFile instanceof File)) throw new ValidationError('No file was uploaded.');
+  if (typeof projectId !== 'string' || !projectId.trim()) {
+    throw new ValidationError('A project ID is required.');
   }
 
+  await requireOwnedProject(projectId, userId);
+  const validated = await validateUpload(rawFile);
+  const filePath = await saveFileLocal(validated.buffer, validated.id, validated.extension);
+
   try {
-    const userId = await requireUser();
-    const formData = await req.formData();
-    const file = formData.get('file') as File | null;
-    const projectId = formData.get('projectId') as string | null;
-
-    if (!file) {
-      return NextResponse.json({ ok: false, error: 'No file uploaded' }, { status: 400 });
-    }
-    if (!projectId) {
-      return NextResponse.json({ ok: false, error: 'No project ID provided' }, { status: 400 });
-    }
-
-    await requireOwnedProject(projectId, userId);
-
-    // Validation: Mime Type
-    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
-      return NextResponse.json({ ok: false, error: `Invalid file type: ${file.type}. Allowed types: PNG, JPG, GIF, WEBP.` }, { status: 400 });
-    }
-
-    // Validation: File Size
-    if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ ok: false, error: `File too large: ${(file.size / 1024 / 1024).toFixed(2)}MB. Limit: 5MB.` }, { status: 400 });
-    }
-
-    const fileId = crypto.randomUUID();
-    const extension = path.extname(file.name) || '.jpg';
-    
-    // Get file buffer
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-
-    // Save locally
-    const filePath = await saveFileLocal(buffer, fileId, extension);
-
-    // Insert database record and log version in a transaction
-    let fileRecord: { id: string; name: string; fileSize: number; mimeType: string };
     await db.transaction(async (tx) => {
       await tx.insert(assets).values({
-        id: fileId,
+        id: validated.id,
         ownerId: userId,
         projectId,
-        name: file.name,
+        name: validated.displayName,
         filePath,
-        fileSize: file.size,
-        mimeType: file.type,
+        fileSize: validated.size,
+        mimeType: validated.mimeType,
         storageProvider: 'local',
       });
       await logVersion(tx, {
         projectId,
+        userId,
         action: 'create',
         entityType: 'asset',
-        entityId: fileId,
-        changeData: { name: file.name, fileSize: file.size, mimeType: file.type, filePath },
+        entityId: validated.id,
+        changeData: {
+          name: validated.displayName,
+          fileSize: validated.size,
+          mimeType: validated.mimeType,
+          storageProvider: 'local',
+        },
       });
-      fileRecord = { id: fileId, name: file.name, fileSize: file.size, mimeType: file.type };
-    });
-
-    return NextResponse.json({
-      ok: true,
-      data: fileRecord!,
     });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
-    }
-    const msg = error instanceof Error ? error.message : 'Upload failed';
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+    await deleteFileLocal(filePath).catch(() => undefined);
+    throw error;
   }
-}
+
+  return apiSuccess(
+    {
+      id: validated.id,
+      name: validated.displayName,
+      fileSize: validated.size,
+      mimeType: validated.mimeType,
+    },
+    context.requestId,
+    201,
+  );
+});
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';

@@ -6,60 +6,51 @@ import { logVersion } from '@/lib/version-history';
 import { requireUser, requireOwnedProject, AuthError } from '@/lib/auth-helpers';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!db) {
-    return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
-  }
+  if (!db) return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
   try {
     const { id: projectId } = await params;
     const userId = await requireUser();
     await requireOwnedProject(projectId, userId);
-
     const list = await db.select().from(characters).where(eq(characters.projectId, projectId));
-    const mapped = list.map((c) => ({
-      id: c.id,
-      universe_id: c.projectId,
-      faction_id: c.factionId || undefined,
-      name: c.name,
-      title: c.title || '',
-      role: c.role || '',
-      motivations: c.motivations || '',
-      fears: c.fears || '',
-      powers: c.powers || '',
-      weaknesses: c.weaknesses || '',
-      relationships: c.relationships || [],
-      arc_potential: c.arcPotential || '',
-      status: c.status || 'alive',
-      canon_status: c.canonStatus || 'draft',
-      appearance: c.appearance || '',
-      speech_style: c.speechStyle || '',
-      version: c.version || 1,
-    }));
-    return NextResponse.json({ ok: true, data: mapped });
+    return NextResponse.json({
+      ok: true,
+      data: list.map((c) => ({
+        id: c.id,
+        universe_id: c.projectId,
+        faction_id: c.factionId || undefined,
+        name: c.name,
+        title: c.title || '',
+        role: c.role || '',
+        motivations: c.motivations || '',
+        fears: c.fears || '',
+        powers: c.powers || '',
+        weaknesses: c.weaknesses || '',
+        relationships: c.relationships || [],
+        arc_potential: c.arcPotential || '',
+        status: c.status || 'alive',
+        canon_status: c.canonStatus || 'draft',
+        appearance: c.appearance || '',
+        speech_style: c.speechStyle || '',
+        version: c.version || 1,
+      })),
+    });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
-    }
+    if (error instanceof AuthError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!db) {
-    return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
-  }
+  if (!db) return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
   try {
     const { id: projectId } = await params;
     const userId = await requireUser();
     await requireOwnedProject(projectId, userId);
-
     const payload = await req.json();
     const characterId = payload.id || crypto.randomUUID();
-
-    // Check if character already exists
     const [existing] = await db.select().from(characters).where(eq(characters.id, characterId)).limit(1);
 
-    // If character exists, confirm it belongs to the owned project
     if (existing && existing.projectId !== projectId) {
       return NextResponse.json({ ok: false, error: 'Character project mismatch' }, { status: 400 });
     }
@@ -84,17 +75,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       version: payload.version || 1,
       updatedAt: new Date(),
     };
-
     const action = existing ? 'update' : 'create';
 
     await db.transaction(async (tx) => {
-      if (existing) {
-        await tx.update(characters).set(values).where(eq(characters.id, characterId));
-      } else {
-        await tx.insert(characters).values(values);
-      }
+      if (existing) await tx.update(characters).set(values).where(eq(characters.id, characterId));
+      else await tx.insert(characters).values(values);
       await logVersion(tx, {
         projectId,
+        userId,
         action,
         entityType: 'character',
         entityId: characterId,
@@ -103,7 +91,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     });
 
     const [c] = await db.select().from(characters).where(eq(characters.id, characterId)).limit(1);
-
     return NextResponse.json({
       ok: true,
       data: {
@@ -124,12 +111,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         appearance: c.appearance || '',
         speech_style: c.speechStyle || '',
         version: c.version || 1,
-      }
+      },
     });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
-    }
+    if (error instanceof AuthError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }

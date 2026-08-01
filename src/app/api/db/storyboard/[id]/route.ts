@@ -6,23 +6,16 @@ import { eq } from 'drizzle-orm';
 import { requireUser, requireOwnedStoryboardPanel, AuthError } from '@/lib/auth-helpers';
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!db) {
-    return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
-  }
+  if (!db) return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
   try {
     const { id } = await params;
     const userId = await requireUser();
     await requireOwnedStoryboardPanel(id, userId);
-
     const payload = await req.json();
 
-    // Only allow safe partial updates — currently asset_id only.
-    // Explicitly handle null to allow clearing the field.
     type UpdateValues = { assetId: string | null; updatedAt: Date };
     const values: UpdateValues = { assetId: null, updatedAt: new Date() };
-    if ('asset_id' in payload) {
-      values.assetId = payload.asset_id ?? null;
-    }
+    if ('asset_id' in payload) values.assetId = payload.asset_id ?? null;
 
     await db.transaction(async (tx) => {
       await tx.update(storyboardPanels).set(values).where(eq(storyboardPanels.id, id));
@@ -32,6 +25,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         if (scene) {
           await logVersion(tx, {
             projectId: scene.projectId,
+            userId,
             action: 'update',
             entityType: 'storyboard_panel',
             entityId: id,
@@ -42,9 +36,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     });
 
     const [p] = await db.select().from(storyboardPanels).where(eq(storyboardPanels.id, id)).limit(1);
-    if (!p) {
-      return NextResponse.json({ ok: false, error: 'Panel not found' }, { status: 404 });
-    }
+    if (!p) return NextResponse.json({ ok: false, error: 'Panel not found' }, { status: 404 });
 
     return NextResponse.json({
       ok: true,
@@ -63,18 +55,14 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       },
     });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
-    }
+    if (error instanceof AuthError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!db) {
-    return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
-  }
+  if (!db) return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
   try {
     const { id } = await params;
     const userId = await requireUser();
@@ -85,6 +73,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       if (scene) {
         await logVersion(tx, {
           projectId: scene.projectId,
+          userId,
           action: 'delete',
           entityType: 'storyboard_panel',
           entityId: id,
@@ -95,9 +84,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     });
     return NextResponse.json({ ok: true });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
-    }
+    if (error instanceof AuthError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }

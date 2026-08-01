@@ -6,50 +6,43 @@ import { logVersion } from '@/lib/version-history';
 import { requireUser, requireOwnedProject, AuthError } from '@/lib/auth-helpers';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!db) {
-    return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
-  }
+  if (!db) return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
   try {
     const { id: projectId } = await params;
     const userId = await requireUser();
     await requireOwnedProject(projectId, userId);
-
     const list = await db.select().from(scenes).where(eq(scenes.projectId, projectId));
     list.sort((a, b) => a.order - b.order);
-    const mapped = list.map((s) => ({
-      id: s.id,
-      project_id: s.projectId,
-      title: s.title,
-      summary: s.summary || '',
-      order: s.order,
-      location_id: s.locationId || undefined,
-      canon_status: s.canonStatus || 'draft',
-      version: s.version || 1,
-      created_at: s.createdAt.toISOString(),
-      updated_at: s.updatedAt.toISOString(),
-    }));
-    return NextResponse.json({ ok: true, data: mapped });
+    return NextResponse.json({
+      ok: true,
+      data: list.map((scene) => ({
+        id: scene.id,
+        project_id: scene.projectId,
+        title: scene.title,
+        summary: scene.summary || '',
+        order: scene.order,
+        location_id: scene.locationId || undefined,
+        canon_status: scene.canonStatus || 'draft',
+        version: scene.version || 1,
+        created_at: scene.createdAt.toISOString(),
+        updated_at: scene.updatedAt.toISOString(),
+      })),
+    });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
-    }
+    if (error instanceof AuthError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!db) {
-    return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
-  }
+  if (!db) return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
   try {
     const { id: projectId } = await params;
     const userId = await requireUser();
     await requireOwnedProject(projectId, userId);
-
     const payload = await req.json();
     const sceneId = payload.id || crypto.randomUUID();
-
     const [existing] = await db.select().from(scenes).where(eq(scenes.id, sceneId)).limit(1);
 
     if (existing && existing.projectId !== projectId) {
@@ -67,17 +60,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       version: payload.version || 1,
       updatedAt: new Date(),
     };
-
     const action = existing ? 'update' : 'create';
 
     await db.transaction(async (tx) => {
-      if (existing) {
-        await tx.update(scenes).set(values).where(eq(scenes.id, sceneId));
-      } else {
-        await tx.insert(scenes).values(values);
-      }
+      if (existing) await tx.update(scenes).set(values).where(eq(scenes.id, sceneId));
+      else await tx.insert(scenes).values(values);
       await logVersion(tx, {
         projectId,
+        userId,
         action,
         entityType: 'scene',
         entityId: sceneId,
@@ -85,27 +75,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       });
     });
 
-    const [s] = await db.select().from(scenes).where(eq(scenes.id, sceneId)).limit(1);
-
+    const [scene] = await db.select().from(scenes).where(eq(scenes.id, sceneId)).limit(1);
     return NextResponse.json({
       ok: true,
       data: {
-        id: s.id,
-        project_id: s.projectId,
-        title: s.title,
-        summary: s.summary || '',
-        order: s.order,
-        location_id: s.locationId || undefined,
-        canon_status: s.canonStatus || 'draft',
-        version: s.version || 1,
-        created_at: s.createdAt.toISOString(),
-        updated_at: s.updatedAt.toISOString(),
-      }
+        id: scene.id,
+        project_id: scene.projectId,
+        title: scene.title,
+        summary: scene.summary || '',
+        order: scene.order,
+        location_id: scene.locationId || undefined,
+        canon_status: scene.canonStatus || 'draft',
+        version: scene.version || 1,
+        created_at: scene.createdAt.toISOString(),
+        updated_at: scene.updatedAt.toISOString(),
+      },
     });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
-    }
+    if (error instanceof AuthError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }

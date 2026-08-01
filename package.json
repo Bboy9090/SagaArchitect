@@ -9,8 +9,12 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test:smoke": "bash scripts/smoke-test.sh",
+    "test:enterprise": "node verify-enterprise-foundation.js",
+    "env:check": "node scripts/check-env.mjs",
+    "env:check:production": "node scripts/check-env.mjs --production",
+    "secrets:check": "node scripts/check-secrets.mjs",
     "healthcheck": "bash scripts/healthcheck.sh",
-    "check": "npm run lint && npm run typecheck && npm run build"
+    "check": "npm run secrets:check && npm run lint && npm run typecheck && npm run test:enterprise && npm run build"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.2",
@@ -19,7 +23,7 @@
     "dotenv": "^17.4.2",
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
-    "next": "16.1.7",
+    "next": "16.2.3",
     "next-auth": "^4.24.14",
     "openai": "^6.27.0",
     "postgres": "^3.4.9",
@@ -34,7 +38,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.1.6",
+    "eslint-config-next": "16.2.3",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

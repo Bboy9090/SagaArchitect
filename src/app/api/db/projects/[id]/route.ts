@@ -6,9 +6,7 @@ import { logVersion } from '@/lib/version-history';
 import { requireUser, requireOwnedProject, AuthError } from '@/lib/auth-helpers';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!db) {
-    return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
-  }
+  if (!db) return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
   try {
     const { id } = await params;
     const userId = await requireUser();
@@ -32,21 +30,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         version: p.version || 1,
         created_at: p.createdAt.toISOString(),
         updated_at: p.updatedAt.toISOString(),
-      }
+      },
     });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
-    }
+    if (error instanceof AuthError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!db) {
-    return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
-  }
+  if (!db) return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
   try {
     const { id } = await params;
     const userId = await requireUser();
@@ -74,6 +68,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       await tx.update(projects).set(updates).where(eq(projects.id, id));
       await logVersion(tx, {
         projectId: id,
+        userId,
         action: 'update',
         entityType: 'project',
         entityId: id,
@@ -82,7 +77,6 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     });
 
     const [p] = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
-    
     return NextResponse.json({
       ok: true,
       data: {
@@ -102,30 +96,27 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         version: p.version || 1,
         created_at: p.createdAt.toISOString(),
         updated_at: p.updatedAt.toISOString(),
-      }
+      },
     });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
-    }
+    if (error instanceof AuthError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!db) {
-    return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
-  }
+  if (!db) return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
   try {
     const { id } = await params;
     const userId = await requireUser();
     await requireOwnedProject(id, userId);
-
     const [existing] = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
+
     await db.transaction(async (tx) => {
       await logVersion(tx, {
         projectId: id,
+        userId,
         action: 'delete',
         entityType: 'project',
         entityId: id,
@@ -135,9 +126,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     });
     return NextResponse.json({ ok: true });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
-    }
+    if (error instanceof AuthError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
     const msg = error instanceof Error ? error.message : 'Database error';
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
