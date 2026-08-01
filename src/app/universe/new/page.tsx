@@ -23,15 +23,15 @@ export default function UniverseNewPage() {
   const [step, setStep] = useState<'form' | 'loading' | 'review'>('form');
   const [formData, setFormData] = useState<Partial<Universe>>({});
   const [generated, setGenerated] = useState<GeneratedUniverse | null>(null);
-  const [loadingText, setLoadingText] = useState('Forging your universe...');
+  const [loadingText, setLoadingText] = useState('Preparing your production...');
 
   const cinemaTexts = [
-    'Forging your universe...',
-    'Weaving the world fabric...',
-    'Inscribing the creation myth...',
-    'Setting the factions in motion...',
-    'Lighting the first conflict...',
-    'Opening the forbidden archive...',
+    'Preparing your production...',
+    'Building the creative foundation...',
+    'Mapping the first story beats...',
+    'Organizing characters and worlds...',
+    'Defining the production deliverables...',
+    'Opening the studio floor...',
   ];
 
   const handleFormSubmit = async (data: Omit<Universe, 'id' | 'created_at' | 'updated_at' | 'world_overview' | 'creation_myth' | 'themes' | 'prophecy_hooks'>) => {
@@ -77,6 +77,9 @@ export default function UniverseNewPage() {
     const universe: Universe = {
       id,
       name: formData.name ?? '',
+      production_type: formData.production_type ?? 'novel',
+      template_sections: formData.template_sections ?? [],
+      target_deliverables: formData.target_deliverables ?? [],
       concept: formData.concept ?? '',
       genre: formData.genre ?? '',
       tone: formData.tone ?? '',
@@ -98,15 +101,15 @@ export default function UniverseNewPage() {
   return (
     <Navigation>
       <Header
-        title="Universe Forge"
-        subtitle="Shape a new world from the void"
+        title="Start a Production"
+        subtitle="Choose a format, define the vision, and open the studio floor"
       />
       <div className="max-w-3xl mx-auto px-6 py-8">
         {step === 'form' && (
           <div>
             <div className="mb-6 p-4 bg-[#0f0f1a] border border-[#c9a84c]/20 rounded-lg">
               <p className="text-gray-400 text-sm">
-                Fill in the core details of your universe. Our AI will generate a full world overview, creation myth, themes, and prophecy hooks.
+                Choose the kind of work you are building. Phoenix Creator Studio will prepare the right foundation, starter sections, and target deliverables for that production.
               </p>
             </div>
             <UniverseForm onSubmit={handleFormSubmit} />
@@ -125,8 +128,8 @@ export default function UniverseNewPage() {
         {step === 'review' && generated && (
           <div className="space-y-6">
             <div className="p-4 bg-[#c9a84c]/5 border border-[#c9a84c]/30 rounded-lg">
-              <p className="text-[#c9a84c] text-sm font-medium mb-1">✅ Universe Generated</p>
-              <p className="text-gray-400 text-sm">Review the generated content below, then save to open your Canon Core.</p>
+              <p className="text-[#c9a84c] text-sm font-medium mb-1">Production Foundation Ready</p>
+              <p className="text-gray-400 text-sm">Review the generated foundation, then open your Project Bible.</p>
             </div>
 
             <Section title="🌍 World Overview" content={generated.world_overview} />
@@ -155,7 +158,7 @@ export default function UniverseNewPage() {
 
             <div className="flex gap-3 pt-4">
               <Button variant="gold" size="lg" onClick={handleSave}>
-                📖 Save & Open Canon Core
+                Save & Open Project Bible
               </Button>
               <Button variant="ghost" onClick={() => setStep('form')}>
                 ← Back to Form
