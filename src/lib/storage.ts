@@ -1,4 +1,4 @@
-import type { Universe, Faction, Character, Location, TimelineEvent, StoryArc, LoreRule, GeneratedStory, MediaProject, SharedLoreEntry, Scene, StoryboardPanel } from './types';
+import type { Universe, Faction, Character, Location, TimelineEvent, StoryArc, LoreRule, GeneratedStory, WritingDocument, MediaProject, SharedLoreEntry, Scene, StoryboardPanel } from './types';
 
 const KEYS = {
   universes: 'phoenix_projects',
@@ -9,6 +9,7 @@ const KEYS = {
   arcs: (uid: string) => `phoenix_arcs_${uid}`,
   lore: (uid: string) => `phoenix_lore_${uid}`,
   stories: (uid: string) => `phoenix_stories_${uid}`,
+  writingDocuments: (uid: string) => `phoenix_writing_documents_${uid}`,
   projects: (uid: string) => `phoenix_projects_${uid}`,
   sharedLorePool: 'phoenix_shared_lore_pool',
   scenes: (uid: string) => `phoenix_scenes_${uid}`,
@@ -93,6 +94,7 @@ export const deleteUniverse = (id: string): void => {
   localStorage.removeItem(KEYS.arcs(id));
   localStorage.removeItem(KEYS.lore(id));
   localStorage.removeItem(KEYS.stories(id));
+  localStorage.removeItem(KEYS.writingDocuments(id));
   localStorage.removeItem(KEYS.projects(id));
 };
 export const getUniverseById = (id: string): Universe | undefined =>
@@ -186,6 +188,36 @@ export const saveStory = (story: GeneratedStory): void => {
 };
 export const deleteStory = (universeId: string, id: string): void =>
   set(KEYS.stories(universeId), getStories(universeId).filter(s => s.id !== id));
+
+// Authored writing documents
+export const getWritingDocuments = (projectId: string): WritingDocument[] =>
+  get<WritingDocument>(KEYS.writingDocuments(projectId)).sort((a, b) => a.order - b.order);
+
+export const saveWritingDocument = (document: WritingDocument): WritingDocument => {
+  const all = getWritingDocuments(document.project_id);
+  const idx = all.findIndex(item => item.id === document.id);
+  const now = new Date().toISOString();
+  const saved = { ...document, created_at: document.created_at || now, updated_at: now };
+  if (idx >= 0) all[idx] = saved; else all.push(saved);
+  set(KEYS.writingDocuments(document.project_id), all.sort((a, b) => a.order - b.order));
+  return saved;
+};
+
+export const deleteWritingDocument = (projectId: string, id: string): void => {
+  const all = getWritingDocuments(projectId);
+  const descendants = new Set<string>([id]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    all.forEach(item => {
+      if (item.parent_id && descendants.has(item.parent_id) && !descendants.has(item.id)) {
+        descendants.add(item.id);
+        changed = true;
+      }
+    });
+  }
+  set(KEYS.writingDocuments(projectId), all.filter(item => !descendants.has(item.id)));
+};
 
 // Media Projects
 export const getMediaProjects = (universeId: string): MediaProject[] => get<MediaProject>(KEYS.projects(universeId));
