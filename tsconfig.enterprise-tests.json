@@ -36,6 +36,7 @@
     "src/lib/storage/supabase-storage-provider.ts",
     "src/lib/storage/index.ts",
     "src/lib/writing-sync.ts",
+    "src/lib/writing-documents.ts",
     "tests/enterprise-foundation.test.ts",
     "tests/enterprise-foundation-sprint-2.test.ts",
     "tests/writing-sync.test.ts"
