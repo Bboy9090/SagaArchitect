@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { deleteWritingDocument, getWritingDocuments, saveWritingDocument } from '@/lib/storage';
 import { compileWritingProject, countWords, createWritingBackup, documentExport, importWritingBackup, safeExportName } from '@/lib/writing-documents';
+import { createDocxPackage, createEpubPackage } from '@/lib/publishing-packages';
 import { isDbMode } from '@/lib/storage-mode';
 import { dbDeleteWritingDocument, dbGetWritingDocumentRevisions, dbGetWritingDocuments, dbRestoreWritingDocument, dbSaveWritingDocument } from '@/lib/db-client';
 import type { Universe, WritingDocument, WritingDocumentKind, WritingDocumentRevision, WritingDocumentStatus } from '@/lib/types';
@@ -172,12 +173,28 @@ export function WritingRoom({ universe }: WritingRoomProps) {
     URL.revokeObjectURL(url);
   };
 
+  const downloadPackage = (content: Uint8Array, filename: string, type: string) => {
+    const blob = new Blob([content as BlobPart], { type });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const downloadActive = (extension: 'txt' | 'md') => {
     if (active) downloadContent(documentExport(active, extension === 'md'), safeExportName(active.title, extension));
   };
 
   const downloadProject = (extension: 'txt' | 'md') => {
     downloadContent(compileWritingProject(universe.name, documents, extension === 'md'), safeExportName(universe.name, extension));
+  };
+
+  const downloadPublishingPackage = (format: 'docx' | 'epub') => {
+    const content = format === 'docx' ? createDocxPackage(universe.name, documents) : createEpubPackage(universe.name, documents);
+    const type = format === 'docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/epub+zip';
+    downloadPackage(content, safeExportName(universe.name, format), type);
   };
 
   const downloadBackup = () => {
@@ -274,6 +291,7 @@ export function WritingRoom({ universe }: WritingRoomProps) {
               <h2 className="text-xs font-bold text-[#c9a84c] uppercase tracking-widest mb-3">Production files</h2>
               <p className="text-[10px] text-gray-600 uppercase tracking-wider mb-2">Entire project</p>
               <div className="grid grid-cols-2 gap-2"><Button size="sm" variant="secondary" onClick={() => downloadProject('txt')}>Full .TXT</Button><Button size="sm" variant="secondary" onClick={() => downloadProject('md')}>Full .MD</Button></div>
+              <div className="grid grid-cols-2 gap-2 mt-2"><Button size="sm" variant="secondary" onClick={() => downloadPublishingPackage('docx')}>Editor .DOCX</Button><Button size="sm" variant="secondary" onClick={() => downloadPublishingPackage('epub')}>Reader .EPUB</Button></div>
               <Button className="w-full mt-2" size="sm" variant="ghost" onClick={downloadBackup}>JSON backup</Button>
               <input ref={importInput} type="file" accept="application/json,.json" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void importBackup(file); }} />
               <Button className="w-full mt-2" size="sm" variant="ghost" onClick={() => importInput.current?.click()}>Import backup</Button>
