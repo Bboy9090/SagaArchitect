@@ -5,6 +5,7 @@ import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { PhoenixBrand } from '@/components/brand/PhoenixBrand';
+import { clientApiErrorMessage } from '@/lib/client-api-error';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -37,10 +38,10 @@ export default function RegisterPage() {
           body: JSON.stringify({ name, email, password }),
         });
 
-        const regData = await regRes.json();
+        const regData: unknown = await regRes.json().catch(() => undefined);
 
         if (!regRes.ok) {
-          setError(regData.error || 'Registration failed.');
+          setError(clientApiErrorMessage(regData, `Registration failed (${regRes.status}). Please try again.`));
           return;
         }
 
@@ -52,7 +53,7 @@ export default function RegisterPage() {
         });
 
         if (res?.error) {
-          setError(res.error || 'Login failed after registration.');
+          setError('Your account was created, but automatic sign-in failed. Use Sign In with the same email and password.');
         } else {
           router.push('/dashboard');
           router.refresh();
@@ -98,6 +99,7 @@ export default function RegisterPage() {
               className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#c9a84c]/60 focus:ring-1 focus:ring-[#c9a84c]/60 transition-all text-white placeholder-gray-600"
               placeholder="Aurelia Vance"
               disabled={isPending}
+              autoComplete="name"
               required
             />
           </div>
@@ -113,6 +115,7 @@ export default function RegisterPage() {
               className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#c9a84c]/60 focus:ring-1 focus:ring-[#c9a84c]/60 transition-all text-white placeholder-gray-600"
               placeholder="creator@yourstudio.com"
               disabled={isPending}
+              autoComplete="email"
               required
             />
           </div>
@@ -128,6 +131,9 @@ export default function RegisterPage() {
               className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#c9a84c]/60 focus:ring-1 focus:ring-[#c9a84c]/60 transition-all text-white placeholder-gray-600"
               placeholder="••••••••"
               disabled={isPending}
+              minLength={8}
+              maxLength={128}
+              autoComplete="new-password"
               required
             />
           </div>
@@ -143,6 +149,9 @@ export default function RegisterPage() {
               className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#c9a84c]/60 focus:ring-1 focus:ring-[#c9a84c]/60 transition-all text-white placeholder-gray-600"
               placeholder="••••••••"
               disabled={isPending}
+              minLength={8}
+              maxLength={128}
+              autoComplete="new-password"
               required
             />
           </div>

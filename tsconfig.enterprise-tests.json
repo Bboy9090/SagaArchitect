@@ -13,6 +13,7 @@
   },
   "include": [
     "src/lib/api-errors.ts",
+    "src/lib/client-api-error.ts",
     "src/lib/env-schema.ts",
     "src/lib/env-validator.ts",
     "src/lib/redact-sensitive.ts",
