@@ -5,6 +5,7 @@ import { compileWritingProject, importWritingBackup, moveWritingDocument, ordere
 import { createDocxPackage, createEpubPackage } from '../src/lib/publishing-packages';
 import { OutlineValidationError, validateWritingOutlineChanges } from '../src/lib/writing-outline';
 import { analyzePublishingReadiness } from '../src/lib/publishing-preflight';
+import { isValidIsbn, normalizePublishingMetadata } from '../src/lib/publishing-metadata';
 
 function storedZipEntries(archive: Uint8Array): Record<string, string> {
   const entries: Record<string, string> = {};
@@ -68,7 +69,7 @@ test('backup import validates its schema and remaps document hierarchy', () => {
 });
 
 test('DOCX publishing package contains valid manuscript and package relationships', () => {
-  const files = storedZipEntries(createDocxPackage('Phoenix & Fire', sampleDocuments));
+  const files = storedZipEntries(createDocxPackage('Phoenix & Fire', sampleDocuments, { author: 'Bobby Writer', language: 'en-US', description: 'A fire saga.' }));
   assert.ok(files['[Content_Types].xml']);
   assert.ok(files['_rels/.rels']);
   assert.ok(files['word/styles.xml']);
@@ -76,10 +77,12 @@ test('DOCX publishing package contains valid manuscript and package relationship
   assert.match(document, /Phoenix &amp; Fire/);
   assert.ok(document.indexOf('Chapter One') < document.indexOf('Scene One'));
   assert.match(document, /Chapter words\.[\s\S]*Scene words\./);
+  assert.match(files['docProps/core.xml'], /Bobby Writer/);
+  assert.match(files['docProps/core.xml'], /A fire saga\./);
 });
 
 test('EPUB publishing package contains navigation and escaped ordered XHTML', () => {
-  const files = storedZipEntries(createEpubPackage('Phoenix & Fire', sampleDocuments));
+  const files = storedZipEntries(createEpubPackage('Phoenix & Fire', sampleDocuments, { author: 'Bobby Writer', publisher: 'Phoenix Press', language: 'en-US', isbn: '978-0-306-40615-7', rights: 'Copyright 2026' }));
   assert.equal(files.mimetype, 'application/epub+zip');
   assert.ok(files['META-INF/container.xml']);
   assert.ok(files['EPUB/package.opf']);
@@ -88,6 +91,18 @@ test('EPUB publishing package contains navigation and escaped ordered XHTML', ()
   assert.match(navigation, /Chapter One/);
   assert.match(manuscript, /Phoenix &amp; Fire/);
   assert.ok(manuscript.indexOf('Chapter One') < manuscript.indexOf('Scene One'));
+  assert.match(files['EPUB/package.opf'], /urn:isbn:9780306406157/);
+  assert.match(files['EPUB/package.opf'], /Phoenix Press/);
+});
+
+test('publishing metadata is bounded and ISBN validation supports ISBN-10 and ISBN-13', () => {
+  const metadata = normalizePublishingMetadata({ author: '  Bobby Writer  ', language: 'en', description: 'x'.repeat(5000), unknown: 'ignored' });
+  assert.equal(metadata.author, 'Bobby Writer');
+  assert.equal(metadata.description?.length, 4000);
+  assert.equal('unknown' in metadata, false);
+  assert.equal(isValidIsbn('0-306-40615-2'), true);
+  assert.equal(isValidIsbn('978-0-306-40615-7'), true);
+  assert.equal(isValidIsbn('978-0-306-40615-8'), false);
 });
 
 test('outline movement changes sibling order without breaking scene hierarchy', () => {
@@ -131,6 +146,9 @@ test('publishing preflight blocks structural failures and reports editorial warn
   assert.equal(report.ready, true);
   assert.equal(report.errors, 0);
   assert.ok(report.warnings >= 2);
+  const invalidIsbn = analyzePublishingReadiness('Phoenix Test', sampleDocuments, { isbn: 'not-an-isbn' });
+  assert.equal(invalidIsbn.ready, false);
+  assert.ok(invalidIsbn.issues.some(issue => issue.code === 'invalid_isbn'));
   const broken = analyzePublishingReadiness('', [
     { ...sampleDocuments[0], content: '', parent_id: 'missing' },
     { ...sampleDocuments[1], content: '' },

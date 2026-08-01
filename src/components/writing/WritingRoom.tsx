@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
-import { deleteWritingDocument, getWritingDocuments, saveWritingDocument } from '@/lib/storage';
+import { deleteWritingDocument, getWritingDocuments, saveUniverse, saveWritingDocument } from '@/lib/storage';
 import { compileWritingProject, countWords, createWritingBackup, documentExport, importWritingBackup, moveWritingDocument, orderedWritingDocuments, reparentWritingScene, safeExportName } from '@/lib/writing-documents';
 import { createDocxPackage, createEpubPackage } from '@/lib/publishing-packages';
 import { analyzePublishingReadiness } from '@/lib/publishing-preflight';
 import { isDbMode } from '@/lib/storage-mode';
-import { dbDeleteWritingDocument, dbGetWritingDocumentRevisions, dbGetWritingDocuments, dbReorderWritingDocuments, dbRestoreWritingDocument, dbSaveWritingDocument } from '@/lib/db-client';
-import type { Universe, WritingDocument, WritingDocumentKind, WritingDocumentRevision, WritingDocumentStatus } from '@/lib/types';
+import { dbDeleteWritingDocument, dbGetWritingDocumentRevisions, dbGetWritingDocuments, dbReorderWritingDocuments, dbRestoreWritingDocument, dbSaveWritingDocument, dbUpdateProject } from '@/lib/db-client';
+import { EMPTY_PUBLISHING_METADATA, normalizePublishingMetadata } from '@/lib/publishing-metadata';
+import type { PublishingMetadata, Universe, WritingDocument, WritingDocumentKind, WritingDocumentRevision, WritingDocumentStatus } from '@/lib/types';
 
 const KIND_LABELS: Record<WritingDocumentKind, string> = {
   manuscript: 'Manuscript', chapter: 'Chapter', scene: 'Scene', screenplay: 'Screenplay', comic_script: 'Comic Script', notes: 'Notes',
@@ -25,6 +26,8 @@ export function WritingRoom({ universe }: WritingRoomProps) {
   const [saveState, setSaveState] = useState<'saved' | 'saving' | 'offline' | 'conflict'>('saved');
   const [revisions, setRevisions] = useState<WritingDocumentRevision[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [metadata, setMetadata] = useState<PublishingMetadata>(() => ({ ...EMPTY_PUBLISHING_METADATA, ...normalizePublishingMetadata(universe.publishing_metadata) }));
+  const [metadataState, setMetadataState] = useState<'saved' | 'saving' | 'error'>('saved');
   const loaded = useRef(false);
   const suppressSavedVersion = useRef<{ id: string; version?: number } | undefined>(undefined);
   const importInput = useRef<HTMLInputElement | null>(null);
@@ -100,7 +103,29 @@ export function WritingRoom({ universe }: WritingRoomProps) {
   const totalWords = useMemo(() => documents.reduce((sum, item) => sum + countWords(item.content), 0), [documents]);
   const activeWords = active ? countWords(active.content) : 0;
   const progress = active?.word_target ? Math.min(100, Math.round(activeWords / active.word_target * 100)) : 0;
-  const publishingReadiness = useMemo(() => analyzePublishingReadiness(universe.name, documents), [documents, universe.name]);
+  const publishingReadiness = useMemo(() => analyzePublishingReadiness(universe.name, documents, metadata), [documents, metadata, universe.name]);
+
+  const updateMetadata = (field: keyof PublishingMetadata, value: string) => {
+    setMetadata(current => ({ ...current, [field]: value }));
+    setMetadataState('saved');
+  };
+
+  const persistMetadata = async () => {
+    setMetadataState('saving');
+    const normalized = normalizePublishingMetadata(metadata);
+    try {
+      const nextUniverse = { ...universe, publishing_metadata: normalized, updated_at: new Date().toISOString() };
+      saveUniverse(nextUniverse);
+      if (isDbMode()) {
+        const saved = await dbUpdateProject(universe.id, { publishing_metadata: normalized });
+        saveUniverse(saved);
+        setMetadata({ ...EMPTY_PUBLISHING_METADATA, ...normalizePublishingMetadata(saved.publishing_metadata) });
+      } else setMetadata({ ...EMPTY_PUBLISHING_METADATA, ...normalized });
+      setMetadataState('saved');
+    } catch {
+      setMetadataState('error');
+    }
+  };
 
   const updateActive = (patch: Partial<WritingDocument>) => {
     if (!activeId) return;
@@ -228,7 +253,7 @@ export function WritingRoom({ universe }: WritingRoomProps) {
       alert(`Publishing is blocked by ${publishingReadiness.errors} preflight error${publishingReadiness.errors === 1 ? '' : 's'}. Review Publishing readiness first.`);
       return;
     }
-    const content = format === 'docx' ? createDocxPackage(universe.name, documents) : createEpubPackage(universe.name, documents);
+    const content = format === 'docx' ? createDocxPackage(universe.name, documents, metadata) : createEpubPackage(universe.name, documents, metadata);
     const type = format === 'docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/epub+zip';
     downloadPackage(content, safeExportName(universe.name, format), type);
   };
@@ -333,6 +358,15 @@ export function WritingRoom({ universe }: WritingRoomProps) {
                 <input type="number" min="0" value={active.word_target ?? ''} onChange={event => updateActive({ word_target: Number(event.target.value) || undefined })} className="mt-1 w-full bg-[#09090f] border border-white/10 rounded px-2 py-2 text-sm text-white" />
               </label>
               {active.word_target && <div><div className="h-1.5 bg-white/5 rounded overflow-hidden"><div className="h-full bg-[#c9a84c]" style={{ width: `${progress}%` }} /></div><p className="text-[10px] text-gray-600 mt-1">{progress}% of target</p></div>}
+            </div>
+            <div className="bg-[#0f0f1a] border border-[#c9a84c]/20 rounded-xl p-4">
+              <div className="flex items-center justify-between gap-2 mb-3"><h2 className="text-xs font-bold text-[#c9a84c] uppercase tracking-widest">Publishing metadata</h2><span className={`text-[10px] uppercase ${metadataState === 'error' ? 'text-red-400' : metadataState === 'saving' ? 'text-[#c9a84c]' : 'text-gray-600'}`}>{metadataState}</span></div>
+              <div className="space-y-2">
+                {([['author', 'Author'], ['publisher', 'Publisher'], ['language', 'Language'], ['isbn', 'ISBN']] as Array<[keyof PublishingMetadata, string]>).map(([field, label]) => <label key={field} className="block text-xs text-gray-500">{label}<input value={metadata[field] ?? ''} onChange={event => updateMetadata(field, event.target.value)} maxLength={field === 'language' ? 35 : field === 'isbn' ? 32 : 255} className="mt-1 w-full bg-[#09090f] border border-white/10 rounded px-2 py-2 text-sm text-white" /></label>)}
+                <label className="block text-xs text-gray-500">Description<textarea value={metadata.description ?? ''} onChange={event => updateMetadata('description', event.target.value)} maxLength={4000} rows={3} className="mt-1 w-full resize-y bg-[#09090f] border border-white/10 rounded px-2 py-2 text-sm text-white" /></label>
+                <label className="block text-xs text-gray-500">Rights<textarea value={metadata.rights ?? ''} onChange={event => updateMetadata('rights', event.target.value)} maxLength={1000} rows={2} className="mt-1 w-full resize-y bg-[#09090f] border border-white/10 rounded px-2 py-2 text-sm text-white" /></label>
+                <Button className="w-full" size="sm" variant="secondary" disabled={metadataState === 'saving'} onClick={() => void persistMetadata()}>Save publishing metadata</Button>
+              </div>
             </div>
             <div className="bg-[#0f0f1a] border border-[#c9a84c]/20 rounded-xl p-4">
               <h2 className="text-xs font-bold text-[#c9a84c] uppercase tracking-widest mb-3">Production files</h2>
