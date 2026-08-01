@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { deleteWritingDocument, getWritingDocuments, saveWritingDocument } from '@/lib/storage';
-import { countWords, documentExport, safeExportName } from '@/lib/writing-documents';
+import { compileWritingProject, countWords, createWritingBackup, documentExport, importWritingBackup, safeExportName } from '@/lib/writing-documents';
 import { isDbMode } from '@/lib/storage-mode';
 import { dbDeleteWritingDocument, dbGetWritingDocumentRevisions, dbGetWritingDocuments, dbRestoreWritingDocument, dbSaveWritingDocument } from '@/lib/db-client';
 import type { Universe, WritingDocument, WritingDocumentKind, WritingDocumentRevision, WritingDocumentStatus } from '@/lib/types';
@@ -25,6 +25,7 @@ export function WritingRoom({ universe }: WritingRoomProps) {
   const [showHistory, setShowHistory] = useState(false);
   const loaded = useRef(false);
   const suppressSavedVersion = useRef<{ id: string; version?: number } | undefined>(undefined);
+  const importInput = useRef<HTMLInputElement | null>(null);
   const active = documents.find(item => item.id === activeId);
 
   useEffect(() => {
@@ -161,15 +162,50 @@ export function WritingRoom({ universe }: WritingRoomProps) {
     setSaveState('saved');
   };
 
-  const download = (extension: 'txt' | 'md') => {
-    if (!active) return;
-    const blob = new Blob([documentExport(active, extension === 'md')], { type: 'text/plain;charset=utf-8' });
+  const downloadContent = (content: string, filename: string, type = 'text/plain;charset=utf-8') => {
+    const blob = new Blob([content], { type });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = safeExportName(active.title, extension);
+    link.download = filename;
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  const downloadActive = (extension: 'txt' | 'md') => {
+    if (active) downloadContent(documentExport(active, extension === 'md'), safeExportName(active.title, extension));
+  };
+
+  const downloadProject = (extension: 'txt' | 'md') => {
+    downloadContent(compileWritingProject(universe.name, documents, extension === 'md'), safeExportName(universe.name, extension));
+  };
+
+  const downloadBackup = () => {
+    const backup = createWritingBackup({ id: universe.id, name: universe.name, production_type: universe.production_type }, documents);
+    downloadContent(`${JSON.stringify(backup, null, 2)}\n`, safeExportName(`${universe.name}-writing-backup`, 'json'), 'application/json;charset=utf-8');
+  };
+
+  const importBackup = async (file: File) => {
+    if (file.size > 5 * 1024 * 1024) { alert('Writing backups are limited to 5 MiB.'); return; }
+    try {
+      const parsed: unknown = JSON.parse(await file.text());
+      const imported = importWritingBackup(parsed, universe.id, () => crypto.randomUUID());
+      if (!imported.length || !confirm(`Import ${imported.length} documents into ${universe.name}? Existing work will not be replaced.`)) return;
+      const saved: WritingDocument[] = [];
+      for (const document of imported) {
+        let next = saveWritingDocument(document);
+        if (isDbMode()) next = await dbSaveWritingDocument(universe.id, next);
+        saveWritingDocument(next);
+        saved.push(next);
+      }
+      setDocuments(current => [...current, ...saved]);
+      setActiveId(saved[0]?.id);
+      setSaveState('saved');
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'The writing backup could not be imported.');
+    } finally {
+      if (importInput.current) importInput.current.value = '';
+    }
   };
 
   return (
@@ -235,8 +271,14 @@ export function WritingRoom({ universe }: WritingRoomProps) {
               {active.word_target && <div><div className="h-1.5 bg-white/5 rounded overflow-hidden"><div className="h-full bg-[#c9a84c]" style={{ width: `${progress}%` }} /></div><p className="text-[10px] text-gray-600 mt-1">{progress}% of target</p></div>}
             </div>
             <div className="bg-[#0f0f1a] border border-[#c9a84c]/20 rounded-xl p-4">
-              <h2 className="text-xs font-bold text-[#c9a84c] uppercase tracking-widest mb-3">Export</h2>
-              <div className="grid grid-cols-2 gap-2"><Button size="sm" variant="secondary" onClick={() => download('txt')}>.TXT</Button><Button size="sm" variant="secondary" onClick={() => download('md')}>.MD</Button></div>
+              <h2 className="text-xs font-bold text-[#c9a84c] uppercase tracking-widest mb-3">Production files</h2>
+              <p className="text-[10px] text-gray-600 uppercase tracking-wider mb-2">Entire project</p>
+              <div className="grid grid-cols-2 gap-2"><Button size="sm" variant="secondary" onClick={() => downloadProject('txt')}>Full .TXT</Button><Button size="sm" variant="secondary" onClick={() => downloadProject('md')}>Full .MD</Button></div>
+              <Button className="w-full mt-2" size="sm" variant="ghost" onClick={downloadBackup}>JSON backup</Button>
+              <input ref={importInput} type="file" accept="application/json,.json" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void importBackup(file); }} />
+              <Button className="w-full mt-2" size="sm" variant="ghost" onClick={() => importInput.current?.click()}>Import backup</Button>
+              <p className="text-[10px] text-gray-600 uppercase tracking-wider mt-4 mb-2">Current document</p>
+              <div className="grid grid-cols-2 gap-2"><Button size="sm" variant="secondary" onClick={() => downloadActive('txt')}>.TXT</Button><Button size="sm" variant="secondary" onClick={() => downloadActive('md')}>.MD</Button></div>
               {isDbMode() && <Button className="w-full mt-3" size="sm" variant="ghost" onClick={() => void openHistory()}>Revision history</Button>}
               <button onClick={() => void removeActive()} className="mt-4 text-xs text-red-400 hover:text-red-300">Delete document</button>
             </div>
