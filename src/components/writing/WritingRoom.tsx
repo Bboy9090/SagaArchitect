@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { deleteWritingDocument, getWritingDocuments, saveWritingDocument } from '@/lib/storage';
 import { countWords, documentExport, safeExportName } from '@/lib/writing-documents';
+import { isDbMode } from '@/lib/storage-mode';
+import { dbDeleteWritingDocument, dbGetWritingDocuments, dbSaveWritingDocument } from '@/lib/db-client';
 import type { Universe, WritingDocument, WritingDocumentKind, WritingDocumentStatus } from '@/lib/types';
 
 const KIND_LABELS: Record<WritingDocumentKind, string> = {
@@ -18,30 +20,49 @@ interface WritingRoomProps { universe: Universe }
 export function WritingRoom({ universe }: WritingRoomProps) {
   const [documents, setDocuments] = useState<WritingDocument[]>([]);
   const [activeId, setActiveId] = useState<string>();
-  const [saveState, setSaveState] = useState<'saved' | 'saving'>('saved');
+  const [saveState, setSaveState] = useState<'saved' | 'saving' | 'offline'>('saved');
   const loaded = useRef(false);
   const active = documents.find(item => item.id === activeId);
 
   useEffect(() => {
-    const initialize = () => {
-      const existing = getWritingDocuments(universe.id);
+    const initialize = async () => {
+      const localDocuments = getWritingDocuments(universe.id);
+      let existing = localDocuments;
+      if (isDbMode()) {
+        try {
+          const cloudDocuments = await dbGetWritingDocuments(universe.id);
+          if (cloudDocuments.length) {
+            existing = cloudDocuments;
+            cloudDocuments.forEach(saveWritingDocument);
+          } else if (localDocuments.length) {
+            existing = [];
+            for (const document of localDocuments) existing.push(await dbSaveWritingDocument(universe.id, document));
+          }
+        } catch {
+          setSaveState('offline');
+        }
+      }
       if (existing.length) {
         setDocuments(existing);
         setActiveId(existing[0].id);
       } else {
         const now = new Date().toISOString();
-        const first = saveWritingDocument({
+        let first = saveWritingDocument({
           id: crypto.randomUUID(), project_id: universe.id, title: universe.name,
           kind: 'manuscript', status: 'outline', content: '', order: 0,
           word_target: universe.production_type === 'film' ? 15000 : 80000,
           created_at: now, updated_at: now,
         });
+        if (isDbMode()) {
+          try { first = await dbSaveWritingDocument(universe.id, first); }
+          catch { setSaveState('offline'); }
+        }
         setDocuments([first]);
         setActiveId(first.id);
       }
       loaded.current = true;
     };
-    const timer = window.setTimeout(initialize, 0);
+    const timer = window.setTimeout(() => void initialize(), 0);
     return () => window.clearTimeout(timer);
   }, [universe.id, universe.name, universe.production_type]);
 
@@ -49,11 +70,17 @@ export function WritingRoom({ universe }: WritingRoomProps) {
     if (!loaded.current || !active) return;
     setSaveState('saving');
     const timer = window.setTimeout(() => {
-      saveWritingDocument(active);
-      setSaveState('saved');
+      const local = saveWritingDocument(active);
+      if (isDbMode()) {
+        void dbSaveWritingDocument(universe.id, local)
+          .then(() => setSaveState('saved'))
+          .catch(() => setSaveState('offline'));
+      } else {
+        setSaveState('saved');
+      }
     }, 700);
     return () => window.clearTimeout(timer);
-  }, [active]);
+  }, [active, universe.id]);
 
   const totalWords = useMemo(() => documents.reduce((sum, item) => sum + countWords(item.content), 0), [documents]);
   const activeWords = active ? countWords(active.content) : 0;
@@ -76,11 +103,16 @@ export function WritingRoom({ universe }: WritingRoomProps) {
     });
     setDocuments(current => [...current, created]);
     setActiveId(created.id);
+    if (isDbMode()) void dbSaveWritingDocument(universe.id, created).catch(() => setSaveState('offline'));
   };
 
-  const removeActive = () => {
+  const removeActive = async () => {
     if (!active || !confirm(`Delete “${active.title}” and any documents nested beneath it?`)) return;
     deleteWritingDocument(universe.id, active.id);
+    if (isDbMode()) {
+      try { await dbDeleteWritingDocument(active.id); }
+      catch { setSaveState('offline'); }
+    }
     const remaining = getWritingDocuments(universe.id);
     setDocuments(remaining);
     setActiveId(remaining[0]?.id);
@@ -128,7 +160,9 @@ export function WritingRoom({ universe }: WritingRoomProps) {
                 aria-label="Document title" className="w-full bg-transparent text-xl font-semibold text-white outline-none placeholder:text-gray-700" placeholder="Untitled document" />
               <div className="flex items-center gap-3 mt-2 text-xs text-gray-600">
                 <span>{activeWords.toLocaleString()} words</span><span>•</span>
-                <span className={saveState === 'saved' ? 'text-green-500' : 'text-[#c9a84c]'}>{saveState === 'saved' ? 'Saved locally' : 'Saving…'}</span>
+                <span className={saveState === 'saved' ? 'text-green-500' : saveState === 'offline' ? 'text-yellow-500' : 'text-[#c9a84c]'}>
+                  {saveState === 'saved' ? (isDbMode() ? 'Saved to cloud' : 'Saved locally') : saveState === 'offline' ? 'Offline copy saved' : 'Saving…'}
+                </span>
               </div>
             </div>
             <textarea value={active.content} onChange={event => updateActive({ content: event.target.value })}
@@ -159,7 +193,7 @@ export function WritingRoom({ universe }: WritingRoomProps) {
             <div className="bg-[#0f0f1a] border border-[#c9a84c]/20 rounded-xl p-4">
               <h2 className="text-xs font-bold text-[#c9a84c] uppercase tracking-widest mb-3">Export</h2>
               <div className="grid grid-cols-2 gap-2"><Button size="sm" variant="secondary" onClick={() => download('txt')}>.TXT</Button><Button size="sm" variant="secondary" onClick={() => download('md')}>.MD</Button></div>
-              <button onClick={removeActive} className="mt-4 text-xs text-red-400 hover:text-red-300">Delete document</button>
+              <button onClick={() => void removeActive()} className="mt-4 text-xs text-red-400 hover:text-red-300">Delete document</button>
             </div>
           </>}
         </aside>
