@@ -28,6 +28,8 @@ import type { WritingDocument } from '../src/lib/types';
 
 test('writing document contracts accept only supported kinds and statuses', () => {
   assert.equal(isWritingDocumentKind('screenplay'), true);
+  assert.equal(isWritingDocumentKind('title_page'), true);
+  assert.equal(isWritingDocumentKind('about_author'), true);
   assert.equal(isWritingDocumentKind('executable'), false);
   assert.equal(isWritingDocumentStatus('revision'), true);
   assert.equal(isWritingDocumentStatus('published'), false);
@@ -163,4 +165,17 @@ test('publishing packages exclude private notes while backups retain them', () =
   const note: WritingDocument = { ...sampleDocuments[1], id: 'note', kind: 'notes', title: 'Private Research', content: 'Do not publish this.', order: 4 };
   const files = storedZipEntries(createEpubPackage('Phoenix Test', [...sampleDocuments, note]));
   assert.doesNotMatch(files['EPUB/manuscript.xhtml'], /Private Research|Do not publish this/);
+});
+
+test('publishing packages preserve ordered front, body, and back matter', () => {
+  const matter: WritingDocument[] = [
+    { ...sampleDocuments[1], id: 'title-page', kind: 'title_page', title: 'Title Page', content: 'Phoenix Test', order: 0 },
+    { ...sampleDocuments[1], id: 'about', kind: 'about_author', title: 'About the Author', content: 'Bobby writes worlds.', order: 4 },
+  ];
+  const files = storedZipEntries(createEpubPackage('Phoenix Test', [...sampleDocuments, ...matter]));
+  const manuscript = files['EPUB/manuscript.xhtml'];
+  assert.ok(manuscript.indexOf('Title Page') < manuscript.indexOf('Chapter One'));
+  assert.ok(manuscript.indexOf('Chapter One') < manuscript.indexOf('About the Author'));
+  assert.match(manuscript, /class="front-matter"/);
+  assert.match(manuscript, /class="back-matter"/);
 });

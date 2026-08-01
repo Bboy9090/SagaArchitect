@@ -12,7 +12,9 @@ import { EMPTY_PUBLISHING_METADATA, normalizePublishingMetadata } from '@/lib/pu
 import type { PublishingMetadata, Universe, WritingDocument, WritingDocumentKind, WritingDocumentRevision, WritingDocumentStatus } from '@/lib/types';
 
 const KIND_LABELS: Record<WritingDocumentKind, string> = {
-  manuscript: 'Manuscript', chapter: 'Chapter', scene: 'Scene', screenplay: 'Screenplay', comic_script: 'Comic Script', notes: 'Notes',
+  title_page: 'Title Page', copyright: 'Copyright', dedication: 'Dedication', epigraph: 'Epigraph', foreword: 'Foreword', preface: 'Preface',
+  manuscript: 'Manuscript', chapter: 'Chapter', scene: 'Scene', screenplay: 'Screenplay', comic_script: 'Comic Script',
+  acknowledgements: 'Acknowledgements', about_author: 'About the Author', appendix: 'Appendix', notes: 'Notes',
 };
 const STATUS_LABELS: Record<WritingDocumentStatus, string> = {
   outline: 'Outline', draft: 'Draft', revision: 'Revision', final: 'Final',
@@ -168,7 +170,8 @@ export function WritingRoom({ universe }: WritingRoomProps) {
     const sameKind = documents.filter(item => item.kind === kind).length;
     const created = saveWritingDocument({
       id: crypto.randomUUID(), project_id: universe.id, parent_id: parent,
-      title: `${KIND_LABELS[kind]} ${sameKind + 1}`, kind, status: 'outline', content: '',
+      title: sameKind ? `${KIND_LABELS[kind]} ${sameKind + 1}` : KIND_LABELS[kind], kind, status: 'outline',
+      content: kind === 'title_page' ? universe.name : '',
       order: documents.length, word_target: kind === 'chapter' ? 3000 : kind === 'scene' ? 1000 : undefined,
       created_at: now, updated_at: now,
     });
@@ -294,9 +297,11 @@ export function WritingRoom({ universe }: WritingRoomProps) {
             <h2 className="text-xs font-bold text-[#c9a84c] uppercase tracking-widest">Production outline</h2>
             <span className="text-xs text-gray-600">{totalWords.toLocaleString()} words</span>
           </div>
-          <div className="flex gap-2 mb-4">
+          <div className="grid grid-cols-2 gap-2 mb-4">
             <Button size="sm" variant="secondary" onClick={() => addDocument('chapter')}>+ Chapter</Button>
             <Button size="sm" variant="ghost" onClick={() => addDocument('scene')}>+ Scene</Button>
+            <Button size="sm" variant="ghost" onClick={() => addDocument('title_page')}>+ Front</Button>
+            <Button size="sm" variant="ghost" onClick={() => addDocument('acknowledgements')}>+ Back</Button>
           </div>
           <div className="space-y-1">
             {orderedWritingDocuments(documents).map(item => (
