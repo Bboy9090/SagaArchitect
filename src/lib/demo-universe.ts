@@ -5,6 +5,9 @@ export const DEMO_UNIVERSE_ID = 'demo-ashen-veil-001';
 export const demoUniverse: Universe = {
   id: DEMO_UNIVERSE_ID,
   name: 'The Ashen Veil',
+  production_type: 'world_bible',
+  template_sections: ['Cosmology', 'History', 'Cultures', 'Canon Rules'],
+  target_deliverables: ['World Bible', 'Canon Ledger', 'Franchise Map'],
   concept: 'An ancient empire fell when the sky split open and released memory-eating storms across the world. Now kingdoms, outlaw guilds, relic hunters, and forgotten bloodlines battle over the shattered remains of history.',
   genre: 'Fantasy',
   tone: 'Dark',

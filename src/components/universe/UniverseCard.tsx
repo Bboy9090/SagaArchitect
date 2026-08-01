@@ -4,6 +4,7 @@ import Link from 'next/link';
 import type { Universe } from '@/lib/types';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { getProductionTemplate } from '@/lib/production-templates';
 
 interface UniverseCardProps {
   universe: Universe;
@@ -14,6 +15,7 @@ interface UniverseCardProps {
 }
 
 export function UniverseCard({ universe, characterCount = 0, factionCount = 0, eventCount = 0, onDelete }: UniverseCardProps) {
+  const production = getProductionTemplate(universe.production_type ?? 'world_bible');
   return (
     <Card className="group relative" glow>
       <div className="flex items-start justify-between mb-3">
@@ -24,6 +26,7 @@ export function UniverseCard({ universe, characterCount = 0, factionCount = 0, e
             </h3>
           </Link>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
+            <Badge variant="default">{production.icon} {production.label}</Badge>
             <Badge variant="default">{universe.genre}</Badge>
             <Badge variant="default">{universe.tone}</Badge>
           </div>

@@ -2,6 +2,7 @@ export type CanonStatus = 'canon' | 'draft' | 'alternate' | 'deprecated' | 'myst
 export type CharacterStatus = 'alive' | 'dead' | 'missing' | 'legendary' | 'unknown';
 export type ArcType = 'trilogy' | 'season' | 'hero' | 'villain' | 'redemption' | 'war' | 'prophecy' | 'empire_fall';
 export type RelationshipType = 'ally' | 'rival' | 'parent' | 'traitor' | 'mentor' | 'prophecy-linked' | 'enemy' | 'sibling';
+export type ProductionType = 'novel' | 'comic' | 'film' | 'series' | 'game' | 'world_bible';
 
 /**
  * Controls whether a lore entity can contribute to the Shared Lore Pool.
@@ -35,6 +36,9 @@ export interface Universe extends LorePoolMeta {
   id: string;
   user_id?: string;
   name: string;
+  production_type?: ProductionType;
+  template_sections?: string[];
+  target_deliverables?: string[];
   concept: string;
   genre: string;
   tone: string;
