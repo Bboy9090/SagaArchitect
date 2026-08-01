@@ -65,8 +65,8 @@ function sectionClass(document: WritingDocument): string {
   return 'body-matter';
 }
 
-export function createDocxPackage(title: string, documents: WritingDocument[], metadata: PublishingMetadata = {}): Uint8Array {
-  const body = orderedWritingDocuments(publishableWritingDocuments(documents)).flatMap(document => {
+export function createDocxPackage(title: string, documents: WritingDocument[], metadata: PublishingMetadata = {}, options: { includeNotes?: boolean } = {}): Uint8Array {
+  const body = orderedWritingDocuments(options.includeNotes ? documents : publishableWritingDocuments(documents)).flatMap(document => {
     const heading = `<w:p><w:pPr><w:pStyle w:val="Heading${headingLevel(document)}"/></w:pPr><w:r><w:t>${escapeXml(document.title)}</w:t></w:r></w:p>`;
     const content = paragraphs(document.content).map(paragraph => `<w:p><w:r><w:t xml:space="preserve">${escapeXml(paragraph)}</w:t></w:r></w:p>`);
     return [heading, ...content];
