@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import type { Universe } from '@/lib/types';
+import type { ProductionType, Universe } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
+import { getProductionTemplate, PRODUCTION_TEMPLATES } from '@/lib/production-templates';
 
 type UniverseFormData = Omit<Universe, 'id' | 'created_at' | 'updated_at' | 'world_overview' | 'creation_myth' | 'themes' | 'prophecy_hooks'>;
 
@@ -17,6 +18,9 @@ const TECH_LEVELS = ['Primitive', 'Ancient', 'Medieval', 'Renaissance', 'Industr
 
 export function UniverseForm({ onSubmit, loading = false }: UniverseFormProps) {
   const [formData, setFormData] = useState<UniverseFormData>({
+    production_type: 'novel',
+    template_sections: getProductionTemplate('novel').starterSections,
+    target_deliverables: getProductionTemplate('novel').deliverables,
     name: '',
     concept: '',
     genre: 'Fantasy',
@@ -31,6 +35,18 @@ export function UniverseForm({ onSubmit, loading = false }: UniverseFormProps) {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
+  const selectProductionType = (type: ProductionType) => {
+    const template = getProductionTemplate(type);
+    setFormData((previous) => ({
+      ...previous,
+      production_type: type,
+      genre: template.defaultGenre,
+      tone: template.defaultTone,
+      template_sections: template.starterSections,
+      target_deliverables: template.deliverables,
+    }));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit(formData);
@@ -41,8 +57,29 @@ export function UniverseForm({ onSubmit, loading = false }: UniverseFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      <fieldset>
+        <legend className="text-sm font-bold text-white mb-3">What are you creating?</legend>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {PRODUCTION_TEMPLATES.map((template) => {
+            const selected = formData.production_type === template.type;
+            return (
+              <button
+                key={template.type}
+                type="button"
+                onClick={() => selectProductionType(template.type)}
+                className={`text-left rounded-xl border p-4 transition-all ${selected ? 'border-blue-300/60 bg-blue-400/10 shadow-lg shadow-blue-500/10' : 'border-white/10 bg-[#081020] hover:border-blue-400/30'}`}
+              >
+                <span className="text-xl text-blue-300 block mb-2">{template.icon}</span>
+                <span className="text-sm font-black text-white block">{template.label}</span>
+                <span className="text-[10px] leading-relaxed text-slate-500 block mt-1">{template.description}</span>
+              </button>
+            );
+          })}
+        </div>
+      </fieldset>
+
       <div>
-        <label className={labelClass}>Universe Name *</label>
+        <label className={labelClass}>Production Title *</label>
         <input
           name="name"
           value={formData.name}
@@ -54,14 +91,14 @@ export function UniverseForm({ onSubmit, loading = false }: UniverseFormProps) {
       </div>
 
       <div>
-        <label className={labelClass}>World Concept *</label>
+        <label className={labelClass}>Creative Premise *</label>
         <textarea
           name="concept"
           value={formData.concept}
           onChange={handleChange}
           required
           rows={4}
-          placeholder="Describe the core premise and world in a few sentences..."
+          placeholder="Describe the story, audience, world, and central promise in a few sentences..."
           className={inputClass}
         />
       </div>
@@ -123,7 +160,7 @@ export function UniverseForm({ onSubmit, loading = false }: UniverseFormProps) {
       </div>
 
       <Button type="submit" variant="gold" size="lg" loading={loading} className="w-full">
-        {loading ? 'Forging Universe...' : '⚔️ Forge Universe'}
+        {loading ? 'Building Production...' : 'Start Production'}
       </Button>
     </form>
   );
