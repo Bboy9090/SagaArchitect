@@ -45,7 +45,7 @@ export function analyzePublishingReadiness(title: string, documents: WritingDocu
     } else if (document.kind === 'scene') {
       issues.push({ code: 'unassigned_scene', severity: 'warning', message: `“${document.title}” is not assigned to a chapter.`, document_id: document.id });
     }
-    if (['chapter', 'scene', 'screenplay', 'comic_script'].includes(document.kind) && countWords(document.content) === 0) {
+    if (!['manuscript', 'title_page'].includes(document.kind) && countWords(document.content) === 0) {
       issues.push({ code: 'empty_document', severity: 'error', message: `“${document.title || 'Untitled'}” has no publishable text.`, document_id: document.id });
     }
     if (document.status !== 'final') issues.push({ code: 'unfinished_document', severity: 'warning', message: `“${document.title || 'Untitled'}” is marked ${document.status}.`, document_id: document.id });

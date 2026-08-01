@@ -1,4 +1,8 @@
-export const WRITING_DOCUMENT_KINDS = ['manuscript', 'chapter', 'scene', 'screenplay', 'comic_script', 'notes'] as const;
+export const WRITING_DOCUMENT_KINDS = [
+  'title_page', 'copyright', 'dedication', 'epigraph', 'foreword', 'preface',
+  'manuscript', 'chapter', 'scene', 'screenplay', 'comic_script',
+  'acknowledgements', 'about_author', 'appendix', 'notes',
+] as const;
 export const WRITING_DOCUMENT_STATUSES = ['outline', 'draft', 'revision', 'final'] as const;
 
 export interface DocumentParentRecord { id: string; parentId?: string | null }

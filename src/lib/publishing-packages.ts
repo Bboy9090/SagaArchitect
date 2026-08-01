@@ -59,6 +59,12 @@ function headingLevel(document: WritingDocument): 1 | 2 | 3 {
   return document.parent_id ? 3 : document.kind === 'manuscript' ? 1 : 2;
 }
 
+function sectionClass(document: WritingDocument): string {
+  if (['title_page', 'copyright', 'dedication', 'epigraph', 'foreword', 'preface'].includes(document.kind)) return 'front-matter';
+  if (['acknowledgements', 'about_author', 'appendix'].includes(document.kind)) return 'back-matter';
+  return 'body-matter';
+}
+
 export function createDocxPackage(title: string, documents: WritingDocument[], metadata: PublishingMetadata = {}): Uint8Array {
   const body = orderedWritingDocuments(publishableWritingDocuments(documents)).flatMap(document => {
     const heading = `<w:p><w:pPr><w:pStyle w:val="Heading${headingLevel(document)}"/></w:pPr><w:r><w:t>${escapeXml(document.title)}</w:t></w:r></w:p>`;
@@ -78,7 +84,7 @@ export function createEpubPackage(title: string, documents: WritingDocument[], m
   const ordered = orderedWritingDocuments(publishableWritingDocuments(documents));
   const manuscript = ordered.map((document, index) => {
     const level = headingLevel(document);
-    return `<section id="document-${index + 1}"><h${level}>${escapeXml(document.title)}</h${level}>${paragraphs(document.content).map(paragraph => `<p>${escapeXml(paragraph)}</p>`).join('')}</section>`;
+    return `<section id="document-${index + 1}" class="${sectionClass(document)}"><h${level}>${escapeXml(document.title)}</h${level}>${paragraphs(document.content).map(paragraph => `<p>${escapeXml(paragraph)}</p>`).join('')}</section>`;
   }).join('');
   const nav = ordered.map((document, index) => `<li><a href="manuscript.xhtml#document-${index + 1}">${escapeXml(document.title)}</a></li>`).join('');
   return storedZip([

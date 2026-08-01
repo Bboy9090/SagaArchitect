@@ -176,7 +176,10 @@ export interface GeneratedStory {
 }
 
 export type WritingDocumentStatus = 'outline' | 'draft' | 'revision' | 'final';
-export type WritingDocumentKind = 'manuscript' | 'chapter' | 'scene' | 'screenplay' | 'comic_script' | 'notes';
+export type WritingDocumentKind =
+  | 'title_page' | 'copyright' | 'dedication' | 'epigraph' | 'foreword' | 'preface'
+  | 'manuscript' | 'chapter' | 'scene' | 'screenplay' | 'comic_script'
+  | 'acknowledgements' | 'about_author' | 'appendix' | 'notes';
 
 /** A user-authored production document. Generated stories are stored separately. */
 export interface WritingDocument {
