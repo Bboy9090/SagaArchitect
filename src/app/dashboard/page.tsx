@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Navigation } from '@/components/layout/Navigation';
 import { UniverseCard } from '@/components/universe/UniverseCard';
@@ -23,6 +22,7 @@ import {
 // Storage mode helper & client
 import { getStorageMode, setStorageMode, isDbMode } from '@/lib/storage-mode';
 import { dbGetProjects, dbCreateProject, dbDeleteProject, dbGetCharacters, dbSaveCharacter } from '@/lib/db-client';
+import { PhoenixBrand } from '@/components/brand/PhoenixBrand';
 
 type DashboardState = {
   universes: Universe[];
@@ -288,43 +288,45 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Hero Header */}
-        <div className="border-b border-[#c9a84c]/20 bg-gradient-to-r from-[#0a0a0f] via-[#0f0f1a] to-[#0a0a0f] px-8 py-10">
-          <div className="max-w-5xl mx-auto">
+        {/* Studio Command Header */}
+        <div className="border-b border-blue-400/15 bg-gradient-to-br from-[#07152e]/95 via-[#0b1024]/95 to-[#160c2f]/95 px-8 py-10 relative overflow-hidden">
+          <div className="absolute inset-0 studio-grid opacity-50" />
+          <div className="max-w-6xl mx-auto relative">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-4">
-              <div className="flex items-center gap-4">
-                <Image src="/sagaarchitect-logo.png" alt="Phoenix Creator Studio" width={64} height={64} className="flex-shrink-0" />
-                <h1 className="text-4xl font-black text-white tracking-tight">
-                  <span className="text-[#c9a84c]">Phoenix</span> Creator Studio
+              <div>
+                <div className="mb-5 md:hidden"><PhoenixBrand /></div>
+                <p className="text-[10px] font-black uppercase tracking-[.35em] text-blue-300/70 mb-3">Studio command center</p>
+                <h1 className="text-4xl md:text-5xl font-black text-white tracking-[-.04em] max-w-3xl leading-[1.02]">
+                  Turn your ideas into <span className="bg-gradient-to-r from-blue-300 via-cyan-200 to-violet-300 bg-clip-text text-transparent">living productions.</span>
                 </h1>
               </div>
 
               {/* Storage Mode Toggle Switcher */}
-              <div className="bg-[#121217] border border-[#c9a84c]/20 rounded-lg p-1 flex items-center gap-1 self-start md:self-auto">
+              <div className="bg-[#071020]/80 border border-blue-400/20 rounded-xl p-1 flex items-center gap-1 self-start md:self-auto backdrop-blur">
                 <button
                   onClick={() => handleToggleMode('local')}
                   className={`px-3 py-1.5 text-xs font-bold rounded transition-colors ${
                     currentMode === 'local'
-                      ? 'bg-[#c9a84c] text-black font-black'
+                      ? 'bg-blue-400 text-[#03111f] font-black'
                       : 'text-gray-400 hover:text-white'
                   }`}
                 >
-                  💻 Local Storage
+                  Personal Vault
                 </button>
                 <button
                   onClick={() => handleToggleMode('db')}
                   className={`px-3 py-1.5 text-xs font-bold rounded transition-colors ${
                     currentMode === 'db'
-                      ? 'bg-[#c9a84c] text-black font-black'
+                      ? 'bg-violet-400 text-white font-black'
                       : 'text-gray-400 hover:text-white'
                   }`}
                 >
-                  🗄️ PostgreSQL DB
+                  Studio Cloud
                 </button>
               </div>
             </div>
-            <p className="text-gray-400 text-lg">
-              Build your project bible. Track your canon. Generate your story boards.
+            <p className="text-blue-100/60 text-lg max-w-2xl mt-5 leading-relaxed">
+              One production floor for novels, comics, screen stories, characters, worlds, storyboards, and release-ready assets.
             </p>
             <div className="flex items-center gap-3 mt-6">
               <Button
@@ -332,7 +334,7 @@ export default function DashboardPage() {
                 size="lg"
                 onClick={() => router.push('/universe/new')}
               >
-                ✨ Create New Project
+                Start a New Production
               </Button>
               <Button
                 variant="secondary"
@@ -340,26 +342,42 @@ export default function DashboardPage() {
                 loading={loadingDemo}
                 onClick={handleLoadDemo}
               >
-                🌑 Load Demo Project: The Ashen Veil
+                Explore the Demo Studio
               </Button>
             </div>
           </div>
         </div>
 
-        <div className="px-8 py-8 max-w-5xl mx-auto">
+        <div className="px-8 py-8 max-w-6xl mx-auto">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-10">
+            {[
+              ['✎', 'Stories', 'Books & scripts'],
+              ['▤', 'Comics', 'Issues & panels'],
+              ['▷', 'Screen', 'Scenes & shots'],
+              ['◉', 'Characters', 'Cast & voices'],
+              ['◇', 'Worlds', 'Canon & lore'],
+              ['▦', 'Assets', 'Art & exports'],
+            ].map(([icon, label, detail]) => (
+              <div key={label} className="studio-panel rounded-xl p-4 hover:border-blue-300/30 transition-colors">
+                <div className="text-xl text-blue-300 mb-3">{icon}</div>
+                <div className="text-sm font-black text-white">{label}</div>
+                <div className="text-[10px] text-slate-500 mt-1">{detail}</div>
+              </div>
+            ))}
+          </div>
           {universes.length === 0 ? (
             <div className="text-center py-24">
-              <div className="text-6xl mb-6">📜</div>
-              <h2 className="text-2xl font-bold text-white mb-3">No Projects Yet</h2>
+              <div className="text-5xl mb-6 text-blue-300">✦</div>
+              <h2 className="text-2xl font-bold text-white mb-3">Your production slate is open</h2>
               <p className="text-gray-500 mb-8 max-w-md mx-auto">
-                Every great project begins with a blank page. Forge your first project — or explore the depths of the Ashen Veil.
+                Every studio begins with one brave idea. Start a production from scratch, or open the demo to tour the complete creative workflow.
               </p>
               <div className="flex items-center justify-center gap-3">
                 <Button variant="gold" size="lg" onClick={() => router.push('/universe/new')}>
-                  ✨ Forge Your First Project
+                  Start Your First Production
                 </Button>
                 <Button variant="secondary" size="lg" loading={loadingDemo} onClick={handleLoadDemo}>
-                  🌑 Load Demo Project
+                  Tour Demo Studio
                 </Button>
               </div>
             </div>
@@ -367,7 +385,7 @@ export default function DashboardPage() {
             <>
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-bold text-white">
-                  Your Projects <span className="text-[#c9a84c]">({universes.length})</span>
+                  Production Slate <span className="text-blue-300">({universes.length})</span>
                 </h2>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
