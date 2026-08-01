@@ -1,5 +1,6 @@
 import type { WritingDocument } from './types';
 import { orderedWritingDocuments } from './writing-documents';
+import { publishableWritingDocuments } from './publishing-preflight';
 
 const XML_HEADER = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const encoder = new TextEncoder();
@@ -59,7 +60,7 @@ function headingLevel(document: WritingDocument): 1 | 2 | 3 {
 }
 
 export function createDocxPackage(title: string, documents: WritingDocument[]): Uint8Array {
-  const body = orderedWritingDocuments(documents).flatMap(document => {
+  const body = orderedWritingDocuments(publishableWritingDocuments(documents)).flatMap(document => {
     const heading = `<w:p><w:pPr><w:pStyle w:val="Heading${headingLevel(document)}"/></w:pPr><w:r><w:t>${escapeXml(document.title)}</w:t></w:r></w:p>`;
     const content = paragraphs(document.content).map(paragraph => `<w:p><w:r><w:t xml:space="preserve">${escapeXml(paragraph)}</w:t></w:r></w:p>`);
     return [heading, ...content];
@@ -74,7 +75,7 @@ export function createDocxPackage(title: string, documents: WritingDocument[]): 
 }
 
 export function createEpubPackage(title: string, documents: WritingDocument[]): Uint8Array {
-  const ordered = orderedWritingDocuments(documents);
+  const ordered = orderedWritingDocuments(publishableWritingDocuments(documents));
   const manuscript = ordered.map((document, index) => {
     const level = headingLevel(document);
     return `<section id="document-${index + 1}"><h${level}>${escapeXml(document.title)}</h${level}>${paragraphs(document.content).map(paragraph => `<p>${escapeXml(paragraph)}</p>`).join('')}</section>`;
