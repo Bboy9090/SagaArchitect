@@ -4,6 +4,7 @@ import { collectDocumentDescendantIds, hasWritingVersionConflict, isWritingDocum
 import { compileWritingProject, importWritingBackup, moveWritingDocument, orderedWritingDocuments, reparentWritingScene } from '../src/lib/writing-documents';
 import { createDocxPackage, createEpubPackage } from '../src/lib/publishing-packages';
 import { OutlineValidationError, validateWritingOutlineChanges } from '../src/lib/writing-outline';
+import { analyzePublishingReadiness } from '../src/lib/publishing-preflight';
 
 function storedZipEntries(archive: Uint8Array): Record<string, string> {
   const entries: Record<string, string> = {};
@@ -123,4 +124,25 @@ test('atomic cloud outline contract requires exact IDs, versions, order, and nes
   assert.throws(() => validateWritingOutlineChanges(existing, [{ id: 'chapter', order: 0, version: 4 }]), (error: unknown) => error instanceof OutlineValidationError && error.status === 409);
   assert.throws(() => validateWritingOutlineChanges(existing, [{ id: 'chapter', order: 0, version: 3 }, { id: 'scene', order: 1, version: 2 }]), (error: unknown) => error instanceof OutlineValidationError && error.status === 409);
   assert.throws(() => validateWritingOutlineChanges(existing, [{ id: 'chapter', parent_id: 'scene', order: 0, version: 4 }, { id: 'scene', order: 1, version: 2 }]), (error: unknown) => error instanceof OutlineValidationError && error.status === 400);
+});
+
+test('publishing preflight blocks structural failures and reports editorial warnings', () => {
+  const report = analyzePublishingReadiness('Phoenix Test', sampleDocuments);
+  assert.equal(report.ready, true);
+  assert.equal(report.errors, 0);
+  assert.ok(report.warnings >= 2);
+  const broken = analyzePublishingReadiness('', [
+    { ...sampleDocuments[0], content: '', parent_id: 'missing' },
+    { ...sampleDocuments[1], content: '' },
+  ]);
+  assert.equal(broken.ready, false);
+  assert.ok(broken.issues.some(issue => issue.code === 'missing_project_title'));
+  assert.ok(broken.issues.some(issue => issue.code === 'missing_parent'));
+  assert.ok(broken.issues.some(issue => issue.code === 'empty_document'));
+});
+
+test('publishing packages exclude private notes while backups retain them', () => {
+  const note: WritingDocument = { ...sampleDocuments[1], id: 'note', kind: 'notes', title: 'Private Research', content: 'Do not publish this.', order: 4 };
+  const files = storedZipEntries(createEpubPackage('Phoenix Test', [...sampleDocuments, note]));
+  assert.doesNotMatch(files['EPUB/manuscript.xhtml'], /Private Research|Do not publish this/);
 });
