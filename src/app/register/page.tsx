@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { PhoenixBrand } from '@/components/brand/PhoenixBrand';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -63,18 +64,19 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#030303] text-gray-100 flex items-center justify-center p-4 selection:bg-[#c9a84c] selection:text-black">
+    <div className="min-h-screen text-gray-100 flex items-center justify-center p-4 selection:bg-blue-400 selection:text-black studio-grid relative overflow-hidden">
       {/* Background ambient highlights */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#c9a84c]/5 rounded-full filter blur-[120px] pointer-events-none" />
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/5 rounded-full filter blur-[120px] pointer-events-none" />
 
-      <div className="w-full max-w-md bg-[#0a0a0f]/80 backdrop-blur-md border border-white/10 p-8 rounded-2xl shadow-2xl relative">
+      <div className="w-full max-w-md studio-panel backdrop-blur-xl p-8 rounded-2xl relative">
         <div className="text-center mb-8">
+          <div className="flex justify-center text-left mb-7"><PhoenixBrand /></div>
           <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white via-gray-300 to-[#c9a84c] bg-clip-text text-transparent">
-            Create Account
+            Open Your Studio
           </h1>
           <p className="text-xs text-gray-500 mt-2 font-mono uppercase tracking-widest">
-            SagaArchitect Workspace
+            Build stories that become worlds
           </p>
         </div>
 
@@ -109,7 +111,7 @@ export default function RegisterPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#c9a84c]/60 focus:ring-1 focus:ring-[#c9a84c]/60 transition-all text-white placeholder-gray-600"
-              placeholder="writer@saga.com"
+              placeholder="creator@yourstudio.com"
               disabled={isPending}
               required
             />
@@ -150,7 +152,7 @@ export default function RegisterPage() {
             disabled={isPending}
             className="w-full bg-gradient-to-r from-[#e5c158] to-[#c9a84c] text-black font-bold py-3 px-4 rounded-xl hover:from-[#f0cd6d] hover:to-[#dbb958] transition-all text-sm shadow-lg shadow-[#c9a84c]/10 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isPending ? 'Creating Account...' : 'Begin Journey'}
+            {isPending ? 'Preparing Studio...' : 'Create Studio Account'}
           </button>
         </form>
 
