@@ -1,0 +1,1 @@
+ALTER TABLE "projects" ADD COLUMN "publishing_metadata" jsonb DEFAULT '{}'::jsonb NOT NULL;

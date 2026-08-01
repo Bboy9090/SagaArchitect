@@ -4,6 +4,15 @@ export type ArcType = 'trilogy' | 'season' | 'hero' | 'villain' | 'redemption' |
 export type RelationshipType = 'ally' | 'rival' | 'parent' | 'traitor' | 'mentor' | 'prophecy-linked' | 'enemy' | 'sibling';
 export type ProductionType = 'novel' | 'comic' | 'film' | 'series' | 'game' | 'world_bible';
 
+export interface PublishingMetadata {
+  author?: string;
+  publisher?: string;
+  language?: string;
+  isbn?: string;
+  description?: string;
+  rights?: string;
+}
+
 /**
  * Controls whether a lore entity can contribute to the Shared Lore Pool.
  *
@@ -39,6 +48,7 @@ export interface Universe extends LorePoolMeta {
   production_type?: ProductionType;
   template_sections?: string[];
   target_deliverables?: string[];
+  publishing_metadata?: PublishingMetadata;
   concept: string;
   genre: string;
   tone: string;

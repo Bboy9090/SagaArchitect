@@ -63,6 +63,7 @@ export const projects = pgTable('projects', {
   themes: text('themes').array().default(sql`ARRAY[]::text[]`).notNull(),
   currentConflict: text('current_conflict'),
   prophecyHooks: text('prophecy_hooks').array().default(sql`ARRAY[]::text[]`).notNull(),
+  publishingMetadata: jsonb('publishing_metadata').$type<import('@/lib/types').PublishingMetadata>().default(sql`'{}'::jsonb`).notNull(),
   version: integer('version').default(1).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

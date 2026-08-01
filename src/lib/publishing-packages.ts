@@ -1,4 +1,4 @@
-import type { WritingDocument } from './types';
+import type { PublishingMetadata, WritingDocument } from './types';
 import { orderedWritingDocuments } from './writing-documents';
 import { publishableWritingDocuments } from './publishing-preflight';
 
@@ -59,7 +59,7 @@ function headingLevel(document: WritingDocument): 1 | 2 | 3 {
   return document.parent_id ? 3 : document.kind === 'manuscript' ? 1 : 2;
 }
 
-export function createDocxPackage(title: string, documents: WritingDocument[]): Uint8Array {
+export function createDocxPackage(title: string, documents: WritingDocument[], metadata: PublishingMetadata = {}): Uint8Array {
   const body = orderedWritingDocuments(publishableWritingDocuments(documents)).flatMap(document => {
     const heading = `<w:p><w:pPr><w:pStyle w:val="Heading${headingLevel(document)}"/></w:pPr><w:r><w:t>${escapeXml(document.title)}</w:t></w:r></w:p>`;
     const content = paragraphs(document.content).map(paragraph => `<w:p><w:r><w:t xml:space="preserve">${escapeXml(paragraph)}</w:t></w:r></w:p>`);
@@ -68,13 +68,13 @@ export function createDocxPackage(title: string, documents: WritingDocument[]): 
   return storedZip([
     ['[Content_Types].xml', `${XML_HEADER}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>`],
     ['_rels/.rels', `${XML_HEADER}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>`],
-    ['docProps/core.xml', `${XML_HEADER}<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${escapeXml(title)}</dc:title><dc:creator>Phoenix Creator Studio</dc:creator></cp:coreProperties>`],
+    ['docProps/core.xml', `${XML_HEADER}<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${escapeXml(title)}</dc:title><dc:creator>${escapeXml(metadata.author || 'Phoenix Creator Studio')}</dc:creator>${metadata.description ? `<dc:description>${escapeXml(metadata.description)}</dc:description>` : ''}${metadata.language ? `<dc:language>${escapeXml(metadata.language)}</dc:language>` : ''}${metadata.rights ? `<dc:rights>${escapeXml(metadata.rights)}</dc:rights>` : ''}</cp:coreProperties>`],
     ['word/document.xml', `${XML_HEADER}<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr><w:r><w:t>${escapeXml(title)}</w:t></w:r></w:p>${body}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body></w:document>`],
     ['word/styles.xml', `${XML_HEADER}<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:rPr><w:sz w:val="24"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:rPr><w:b/><w:sz w:val="36"/></w:rPr></w:style>${[1, 2, 3].map(level => `<w:style w:type="paragraph" w:styleId="Heading${level}"><w:name w:val="heading ${level}"/><w:rPr><w:b/><w:sz w:val="${34 - level * 4}"/></w:rPr></w:style>`).join('')}</w:styles>`],
   ]);
 }
 
-export function createEpubPackage(title: string, documents: WritingDocument[]): Uint8Array {
+export function createEpubPackage(title: string, documents: WritingDocument[], metadata: PublishingMetadata = {}): Uint8Array {
   const ordered = orderedWritingDocuments(publishableWritingDocuments(documents));
   const manuscript = ordered.map((document, index) => {
     const level = headingLevel(document);
@@ -84,7 +84,7 @@ export function createEpubPackage(title: string, documents: WritingDocument[]): 
   return storedZip([
     ['mimetype', 'application/epub+zip'],
     ['META-INF/container.xml', `${XML_HEADER}<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="EPUB/package.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`],
-    ['EPUB/package.opf', `${XML_HEADER}<package version="3.0" unique-identifier="book-id" xmlns="http://www.idpf.org/2007/opf"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="book-id">urn:uuid:${crypto.randomUUID()}</dc:identifier><dc:title>${escapeXml(title)}</dc:title><dc:language>en</dc:language><dc:creator>Phoenix Creator Studio</dc:creator><meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')}</meta></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="manuscript" href="manuscript.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="manuscript"/></spine></package>`],
+    ['EPUB/package.opf', `${XML_HEADER}<package version="3.0" unique-identifier="book-id" xmlns="http://www.idpf.org/2007/opf"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="book-id">${escapeXml(metadata.isbn ? `urn:isbn:${metadata.isbn.replace(/[\s-]/g, '')}` : `urn:uuid:${crypto.randomUUID()}`)}</dc:identifier><dc:title>${escapeXml(title)}</dc:title><dc:language>${escapeXml(metadata.language || 'en')}</dc:language><dc:creator>${escapeXml(metadata.author || 'Phoenix Creator Studio')}</dc:creator>${metadata.publisher ? `<dc:publisher>${escapeXml(metadata.publisher)}</dc:publisher>` : ''}${metadata.description ? `<dc:description>${escapeXml(metadata.description)}</dc:description>` : ''}${metadata.rights ? `<dc:rights>${escapeXml(metadata.rights)}</dc:rights>` : ''}<meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')}</meta></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="manuscript" href="manuscript.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="manuscript"/></spine></package>`],
     ['EPUB/nav.xhtml', `${XML_HEADER}<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Contents</title></head><body><nav epub:type="toc"><h1>Contents</h1><ol>${nav}</ol></nav></body></html>`],
     ['EPUB/manuscript.xhtml', `${XML_HEADER}<html xmlns="http://www.w3.org/1999/xhtml"><head><title>${escapeXml(title)}</title><style>body{font-family:serif;line-height:1.6;margin:5%}h1,h2,h3{page-break-after:avoid}section{break-before:page}</style></head><body><h1>${escapeXml(title)}</h1>${manuscript}</body></html>`],
   ]);

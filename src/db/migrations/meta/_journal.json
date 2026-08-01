@@ -29,6 +29,13 @@
       "when": 1785600210689,
       "tag": "0003_previous_scalphunter",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785614363320,
+      "tag": "0004_fast_vulcan",
+      "breakpoints": true
     }
   ]
 }

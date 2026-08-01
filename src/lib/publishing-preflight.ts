@@ -1,5 +1,6 @@
-import type { WritingDocument } from './types';
+import type { PublishingMetadata, WritingDocument } from './types';
 import { countWords } from './writing-documents';
+import { isValidIsbn } from './publishing-metadata';
 
 export type PublishingIssueSeverity = 'error' | 'warning';
 export interface PublishingIssue { code: string; severity: PublishingIssueSeverity; message: string; document_id?: string }
@@ -16,7 +17,7 @@ export function publishableWritingDocuments(documents: WritingDocument[]): Writi
   return documents.filter(document => document.kind !== 'notes');
 }
 
-export function analyzePublishingReadiness(title: string, documents: WritingDocument[]): PublishingReadiness {
+export function analyzePublishingReadiness(title: string, documents: WritingDocument[], metadata: PublishingMetadata = {}): PublishingReadiness {
   const issues: PublishingIssue[] = [];
   const publishable = publishableWritingDocuments(documents);
   const byId = new Map<string, WritingDocument>();
@@ -26,6 +27,9 @@ export function analyzePublishingReadiness(title: string, documents: WritingDocu
     else byId.set(document.id, document);
   }
   if (!title.trim()) issues.push({ code: 'missing_project_title', severity: 'error', message: 'Add a project title before publishing.' });
+  if (!metadata.author?.trim()) issues.push({ code: 'missing_author', severity: 'warning', message: 'Add an author name to professional publishing metadata.' });
+  if (!metadata.language?.trim()) issues.push({ code: 'missing_language', severity: 'warning', message: 'Add the manuscript language to publishing metadata.' });
+  if (metadata.isbn && !isValidIsbn(metadata.isbn)) issues.push({ code: 'invalid_isbn', severity: 'error', message: 'Enter a valid ISBN-10 or ISBN-13, or leave ISBN blank.' });
   if (!publishable.length) issues.push({ code: 'no_publishable_documents', severity: 'error', message: 'Add at least one manuscript, chapter, scene, screenplay, or comic script.' });
   for (const id of duplicateIds) issues.push({ code: 'duplicate_document_id', severity: 'error', message: 'Duplicate document identity detected.', document_id: id });
 

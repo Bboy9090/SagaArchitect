@@ -8,6 +8,7 @@ import { DependencyUnavailableError, ValidationError } from '@/lib/api-errors';
 import { NORMAL_MUTATION_BODY } from '@/lib/http/body-limits';
 import { readJsonBodyWithLimit } from '@/lib/http/read-bounded-body';
 import { withApiContext } from '@/lib/with-api-context';
+import { normalizePublishingMetadata } from '@/lib/publishing-metadata';
 
 interface ProjectPayload {
   id?: unknown;
@@ -24,6 +25,7 @@ interface ProjectPayload {
   current_conflict?: unknown;
   prophecy_hooks?: unknown;
   version?: unknown;
+  publishing_metadata?: unknown;
 }
 
 function text(value: unknown): string {
@@ -49,6 +51,7 @@ function mapProject(p: typeof projects.$inferSelect) {
     themes: p.themes || [],
     current_conflict: p.currentConflict || '',
     prophecy_hooks: p.prophecyHooks || [],
+    publishing_metadata: normalizePublishingMetadata(p.publishingMetadata),
     version: p.version || 1,
     created_at: p.createdAt.toISOString(),
     updated_at: p.updatedAt.toISOString(),
@@ -89,6 +92,7 @@ export const POST = withApiContext(async (req, context) => {
     themes: stringArray(payload.themes),
     currentConflict: text(payload.current_conflict),
     prophecyHooks: stringArray(payload.prophecy_hooks),
+    publishingMetadata: normalizePublishingMetadata(payload.publishing_metadata),
     version: typeof payload.version === 'number' && Number.isInteger(payload.version) ? payload.version : 1,
   };
 
