@@ -7,6 +7,7 @@ import { OutlineValidationError, validateWritingOutlineChanges } from '../src/li
 import { analyzePublishingReadiness } from '../src/lib/publishing-preflight';
 import { isValidIsbn, normalizePublishingMetadata } from '../src/lib/publishing-metadata';
 import { documentsForExportProfile, getExportProfile } from '../src/lib/export-profiles';
+import { replaceInWritingDocuments, searchWritingDocuments } from '../src/lib/project-search';
 
 function storedZipEntries(archive: Uint8Array): Record<string, string> {
   const entries: Record<string, string> = {};
@@ -190,4 +191,17 @@ test('export profiles apply stable editorial, review, and reader inclusion rules
   assert.match(storedZipEntries(createDocxPackage('Review', project, {}, { includeNotes: true }))['word/document.xml'], /Private note/);
   assert.deepEqual(documentsForExportProfile(project, getExportProfile('reader_ebook')).map(document => document.id), ['final']);
   assert.equal(getExportProfile('unknown').id, 'editor_submission');
+});
+
+test('project search reports bounded previews and guarded document-scoped replacement', () => {
+  const documents = sampleDocuments.map(document => ({ ...document, content: `${document.content} Phoenix phoenixes PHOENIX.` }));
+  const wholeWord = searchWritingDocuments(documents, 'phoenix', { whole_word: true });
+  assert.equal(wholeWord.length, 2);
+  assert.equal(wholeWord[0].matches, 2);
+  assert.match(wholeWord[0].preview, /Phoenix/);
+  const replaced = replaceInWritingDocuments(documents, 'phoenix', 'Firebird', new Set(['chapter']), { whole_word: true });
+  assert.equal(replaced.replacements, 2);
+  assert.match(replaced.documents.find(document => document.id === 'chapter')!.content, /Firebird phoenixes Firebird/);
+  assert.match(replaced.documents.find(document => document.id === 'scene')!.content, /Phoenix phoenixes PHOENIX/);
+  assert.equal(searchWritingDocuments(documents, 'Phoenix', { whole_word: true, case_sensitive: true })[0].matches, 1);
 });
