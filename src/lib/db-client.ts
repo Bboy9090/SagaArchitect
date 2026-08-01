@@ -118,6 +118,14 @@ export async function dbSaveWritingDocument(projectId: string, document: Writing
   return handleResponse<WritingDocument>(res);
 }
 
+export async function dbReorderWritingDocuments(projectId: string, documents: WritingDocument[]): Promise<WritingDocument[]> {
+  const payload = documents.map(document => ({ id: document.id, parent_id: document.parent_id, order: document.order, version: document.version }));
+  const res = await fetch(`/api/db/projects/${projectId}/writing-documents/reorder`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  });
+  return handleResponse<WritingDocument[]>(res);
+}
+
 export async function dbDeleteWritingDocument(documentId: string): Promise<void> {
   const res = await fetch(`/api/db/writing-documents/${documentId}`, { method: 'DELETE' });
   const json = await res.json();
