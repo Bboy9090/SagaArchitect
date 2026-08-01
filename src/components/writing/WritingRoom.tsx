@@ -10,6 +10,7 @@ import { isDbMode } from '@/lib/storage-mode';
 import { dbDeleteWritingDocument, dbGetWritingDocumentRevisions, dbGetWritingDocuments, dbReorderWritingDocuments, dbRestoreWritingDocument, dbSaveWritingDocument, dbUpdateProject } from '@/lib/db-client';
 import { EMPTY_PUBLISHING_METADATA, normalizePublishingMetadata } from '@/lib/publishing-metadata';
 import { documentsForExportProfile, EXPORT_PROFILES, getExportProfile } from '@/lib/export-profiles';
+import { replaceInWritingDocuments, searchWritingDocuments } from '@/lib/project-search';
 import type { PublishingMetadata, Universe, WritingDocument, WritingDocumentKind, WritingDocumentRevision, WritingDocumentStatus } from '@/lib/types';
 
 const KIND_LABELS: Record<WritingDocumentKind, string> = {
@@ -32,6 +33,11 @@ export function WritingRoom({ universe }: WritingRoomProps) {
   const [metadata, setMetadata] = useState<PublishingMetadata>(() => ({ ...EMPTY_PUBLISHING_METADATA, ...normalizePublishingMetadata(universe.publishing_metadata) }));
   const [metadataState, setMetadataState] = useState<'saved' | 'saving' | 'error'>('saved');
   const [exportProfileId, setExportProfileId] = useState('editor_submission');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [replacement, setReplacement] = useState('');
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [wholeWord, setWholeWord] = useState(false);
+  const [selectedSearchIds, setSelectedSearchIds] = useState<Set<string>>(new Set());
   const loaded = useRef(false);
   const suppressSavedVersion = useRef<{ id: string; version?: number } | undefined>(undefined);
   const importInput = useRef<HTMLInputElement | null>(null);
@@ -108,6 +114,12 @@ export function WritingRoom({ universe }: WritingRoomProps) {
   const activeWords = active ? countWords(active.content) : 0;
   const progress = active?.word_target ? Math.min(100, Math.round(activeWords / active.word_target * 100)) : 0;
   const publishingReadiness = useMemo(() => analyzePublishingReadiness(universe.name, documents, metadata), [documents, metadata, universe.name]);
+  const searchResults = useMemo(() => searchWritingDocuments(documents, searchQuery, { case_sensitive: caseSensitive, whole_word: wholeWord }), [caseSensitive, documents, searchQuery, wholeWord]);
+  const selectedMatches = searchResults.filter(result => selectedSearchIds.has(result.document_id)).reduce((sum, result) => sum + result.matches, 0);
+
+  const selectSearchResults = (query: string, nextCaseSensitive = caseSensitive, nextWholeWord = wholeWord) => {
+    setSelectedSearchIds(new Set(searchWritingDocuments(documents, query, { case_sensitive: nextCaseSensitive, whole_word: nextWholeWord }).map(result => result.document_id)));
+  };
 
   const updateMetadata = (field: keyof PublishingMetadata, value: string) => {
     setMetadata(current => ({ ...current, [field]: value }));
@@ -128,6 +140,26 @@ export function WritingRoom({ universe }: WritingRoomProps) {
       setMetadataState('saved');
     } catch {
       setMetadataState('error');
+    }
+  };
+
+  const replaceSelectedMatches = async () => {
+    if (!selectedMatches || !confirm(`Replace ${selectedMatches} match${selectedMatches === 1 ? '' : 'es'} across ${selectedSearchIds.size} selected document${selectedSearchIds.size === 1 ? '' : 's'}?`)) return;
+    const result = replaceInWritingDocuments(documents, searchQuery, replacement, selectedSearchIds, { case_sensitive: caseSensitive, whole_word: wholeWord });
+    setSaveState('saving');
+    try {
+      const saved: WritingDocument[] = [];
+      for (const document of result.documents) {
+        const previous = documents.find(item => item.id === document.id);
+        if (previous?.content === document.content) { saved.push(document); continue; }
+        let next = saveWritingDocument(document);
+        if (isDbMode()) next = await dbSaveWritingDocument(universe.id, next);
+        saveWritingDocument(next); saved.push(next);
+      }
+      setDocuments(saved);
+      setSaveState('saved');
+    } catch (error) {
+      setSaveState(error instanceof Error && /changed on another device/i.test(error.message) ? 'conflict' : 'offline');
     }
   };
 
@@ -374,6 +406,14 @@ export function WritingRoom({ universe }: WritingRoomProps) {
                 <input type="number" min="0" value={active.word_target ?? ''} onChange={event => updateActive({ word_target: Number(event.target.value) || undefined })} className="mt-1 w-full bg-[#09090f] border border-white/10 rounded px-2 py-2 text-sm text-white" />
               </label>
               {active.word_target && <div><div className="h-1.5 bg-white/5 rounded overflow-hidden"><div className="h-full bg-[#c9a84c]" style={{ width: `${progress}%` }} /></div><p className="text-[10px] text-gray-600 mt-1">{progress}% of target</p></div>}
+            </div>
+            <div className="bg-[#0f0f1a] border border-[#c9a84c]/20 rounded-xl p-4">
+              <h2 className="text-xs font-bold text-[#c9a84c] uppercase tracking-widest mb-3">Project search</h2>
+              <input value={searchQuery} onChange={event => { setSearchQuery(event.target.value); selectSearchResults(event.target.value); }} maxLength={200} placeholder="Find in manuscript" aria-label="Project search query" className="w-full bg-[#09090f] border border-white/10 rounded px-2 py-2 text-sm text-white" />
+              <input value={replacement} onChange={event => setReplacement(event.target.value)} maxLength={5000} placeholder="Replace with" aria-label="Project replacement text" className="mt-2 w-full bg-[#09090f] border border-white/10 rounded px-2 py-2 text-sm text-white" />
+              <div className="flex gap-3 mt-2 text-[11px] text-gray-500"><label><input type="checkbox" checked={caseSensitive} onChange={event => { setCaseSensitive(event.target.checked); selectSearchResults(searchQuery, event.target.checked, wholeWord); }} /> Match case</label><label><input type="checkbox" checked={wholeWord} onChange={event => { setWholeWord(event.target.checked); selectSearchResults(searchQuery, caseSensitive, event.target.checked); }} /> Whole word</label></div>
+              {searchQuery.trim() && <div className="mt-3 space-y-2 max-h-48 overflow-y-auto">{searchResults.length ? searchResults.map(result => <label key={result.document_id} className="block p-2 rounded border border-white/10 text-xs"><span className="flex justify-between gap-2 text-white"><span><input type="checkbox" checked={selectedSearchIds.has(result.document_id)} onChange={event => setSelectedSearchIds(current => { const next = new Set(current); if (event.target.checked) next.add(result.document_id); else next.delete(result.document_id); return next; })} /> {result.title}</span><span className="text-[#c9a84c]">{result.matches}</span></span><span className="mt-1 block text-[10px] text-gray-600">{result.preview}</span></label>) : <p className="text-xs text-gray-600">No manuscript matches.</p>}</div>}
+              <Button className="w-full mt-3" size="sm" variant="secondary" disabled={!selectedMatches} onClick={() => void replaceSelectedMatches()}>Previewed replace · {selectedMatches}</Button>
             </div>
             <div className="bg-[#0f0f1a] border border-[#c9a84c]/20 rounded-xl p-4">
               <div className="flex items-center justify-between gap-2 mb-3"><h2 className="text-xs font-bold text-[#c9a84c] uppercase tracking-widest">Publishing metadata</h2><span className={`text-[10px] uppercase ${metadataState === 'error' ? 'text-red-400' : metadataState === 'saving' ? 'text-[#c9a84c]' : 'text-gray-600'}`}>{metadataState}</span></div>
