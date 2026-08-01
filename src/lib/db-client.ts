@@ -1,4 +1,4 @@
-import type { Universe as Project, Character, Scene, StoryboardPanel } from './types';
+import type { Universe as Project, Character, Scene, StoryboardPanel, WritingDocument } from './types';
 
 async function handleResponse<T>(res: Response): Promise<T> {
   const json = await res.json();
@@ -101,6 +101,27 @@ export async function dbDeleteScene(sceneId: string): Promise<void> {
   if (!res.ok || !json.ok) {
     throw new Error(json.error || 'Failed to delete scene');
   }
+}
+
+// WRITING DOCUMENTS
+export async function dbGetWritingDocuments(projectId: string): Promise<WritingDocument[]> {
+  const res = await fetch(`/api/db/projects/${projectId}/writing-documents`);
+  return handleResponse<WritingDocument[]>(res);
+}
+
+export async function dbSaveWritingDocument(projectId: string, document: WritingDocument): Promise<WritingDocument> {
+  const res = await fetch(`/api/db/projects/${projectId}/writing-documents`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(document),
+  });
+  return handleResponse<WritingDocument>(res);
+}
+
+export async function dbDeleteWritingDocument(documentId: string): Promise<void> {
+  const res = await fetch(`/api/db/writing-documents/${documentId}`, { method: 'DELETE' });
+  const json = await res.json();
+  if (!res.ok || !json.ok) throw new Error(json.error || 'Failed to delete writing document');
 }
 
 // STORYBOARD PANELS
