@@ -91,11 +91,19 @@ export function validateServerEnvironment(
       pushMissing(issues, input, 'SUPABASE_URL');
       pushMissing(issues, input, 'SUPABASE_SERVICE_ROLE_KEY');
       pushMissing(issues, input, 'SUPABASE_STORAGE_BUCKET');
+      const supabaseUrl = valueOf(input, 'SUPABASE_URL');
+      if (supabaseUrl && !isValidUrl(supabaseUrl, ['https:'])) {
+        issues.push({ key: 'SUPABASE_URL', message: 'SUPABASE_URL must be a valid HTTPS URL.' });
+      }
     }
 
     if (rateLimitProvider === 'redis' || rateLimitProvider === 'upstash') {
       pushMissing(issues, input, 'RATE_LIMIT_URL');
       pushMissing(issues, input, 'RATE_LIMIT_TOKEN');
+      const rateLimitUrl = valueOf(input, 'RATE_LIMIT_URL');
+      if (rateLimitUrl && !isValidUrl(rateLimitUrl, ['https:'])) {
+        issues.push({ key: 'RATE_LIMIT_URL', message: 'RATE_LIMIT_URL must be a valid HTTPS URL.' });
+      }
     }
   }
 

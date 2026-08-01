@@ -14,17 +14,20 @@
     "env:check:production": "node scripts/check-env.mjs --production",
     "secrets:check": "node scripts/check-secrets.mjs",
     "healthcheck": "bash scripts/healthcheck.sh",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
     "check": "npm run secrets:check && npm run lint && npm run typecheck && npm run test:enterprise && npm run build"
   },
   "dependencies": {
-    "@auth/drizzle-adapter": "^1.11.2",
+    "@auth/drizzle-adapter": "^1.11.3",
     "@vercel/analytics": "^1.6.1",
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.4.2",
-    "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
-    "next": "16.2.3",
-    "next-auth": "^4.24.14",
+    "next": "16.2.12",
+    "next-auth": "^4.24.15",
     "openai": "^6.27.0",
     "postgres": "^3.4.9",
     "puppeteer-core": "^25.1.0",
@@ -37,9 +40,14 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^9",
-    "eslint-config-next": "16.2.3",
+    "eslint-config-next": "16.2.12",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "postcss": "8.5.25",
+    "sharp": "0.35.3"
   }
 }

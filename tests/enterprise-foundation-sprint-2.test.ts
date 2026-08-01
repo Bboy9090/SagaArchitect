@@ -5,9 +5,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { buildContentSecurityPolicy, buildCorsHeaders, buildSecurityHeaders } from '../src/lib/security/security-headers';
 import { MemoryRateLimitStore } from '../src/lib/rate-limit/memory-store';
+import { UpstashRateLimitStore } from '../src/lib/rate-limit/upstash-store';
 import { RateLimiter, buildRateLimitKey, getConfiguredRateLimiter } from '../src/lib/rate-limit/rate-limiter';
 import { ConfigurationError, ValidationError } from '../src/lib/api-errors';
 import { LocalStorageProvider } from '../src/lib/storage/local-storage-provider';
+import { SupabaseStorageProvider } from '../src/lib/storage/supabase-storage-provider';
 
 test('production security headers include HSTS and strict framing without development eval', () => {
   const headers = buildSecurityHeaders({
@@ -53,16 +55,51 @@ test('memory rate limiter enforces a fixed window and resets', async () => {
   assert.equal(reset.remaining, 1);
 });
 
-test('rate limiter rejects process-local or unavailable shared stores in production', () => {
+test('rate limiter rejects process-local stores and accepts configured Upstash in production', () => {
   assert.throws(
     () => getConfiguredRateLimiter({ APP_ENV: 'production', RATE_LIMIT_PROVIDER: 'memory' }),
     ConfigurationError,
   );
-  assert.throws(
-    () => getConfiguredRateLimiter({ APP_ENV: 'production', RATE_LIMIT_PROVIDER: 'upstash' }),
-    ConfigurationError,
-  );
+  assert.doesNotThrow(() => getConfiguredRateLimiter({
+    APP_ENV: 'production',
+    RATE_LIMIT_PROVIDER: 'upstash',
+    RATE_LIMIT_URL: 'https://example.upstash.io',
+    RATE_LIMIT_TOKEN: 'test-token',
+  }));
   assert.doesNotThrow(() => getConfiguredRateLimiter({ APP_ENV: 'test', RATE_LIMIT_PROVIDER: 'memory' }));
+});
+
+test('Upstash store performs an atomic increment with a bounded TTL', async () => {
+  let request: { input: RequestInfo | URL; init?: RequestInit } | undefined;
+  const store = new UpstashRateLimitStore({
+    url: 'https://example.upstash.io',
+    token: 'secret-token',
+    fetchImpl: async (input, init) => {
+      request = { input, init };
+      return Response.json({ result: [2, 750] });
+    },
+  });
+  const result = await store.increment('registration:hashed', { name: 'registration', limit: 3, windowMs: 1000 }, 5000);
+  assert.deepEqual(result, { count: 2, resetAt: 5750 });
+  assert.equal(String(request?.input), 'https://example.upstash.io');
+  assert.equal(new Headers(request?.init?.headers).get('authorization'), 'Bearer secret-token');
+  const body = JSON.parse(String(request?.init?.body)) as string[];
+  assert.equal(body[0], 'EVAL');
+  assert.equal(body[2], '1');
+  assert.equal(body[3], 'pcs:rate-limit:registration:hashed');
+  assert.equal(body[4], '1000');
+});
+
+test('Upstash store fails closed on malformed dependency responses', async () => {
+  const store = new UpstashRateLimitStore({
+    url: 'https://example.upstash.io',
+    token: 'secret-token',
+    fetchImpl: async () => Response.json({ result: 'unexpected' }),
+  });
+  await assert.rejects(
+    () => store.increment('key', { name: 'test', limit: 1, windowMs: 1000 }, 1000),
+    /invalid response/,
+  );
 });
 
 test('rate-limit keys are stable and do not expose raw client addresses', () => {
@@ -110,4 +147,61 @@ test('local storage provider rejects traversal and absolute keys', async () => {
   } finally {
     await fs.promises.rm(root, { recursive: true, force: true });
   }
+});
+
+test('Supabase storage implements authenticated durable object operations', async () => {
+  const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+  const responses = [
+    new Response('{}', { status: 200 }),
+    new Response(new Uint8Array([7, 8, 9]), { status: 200 }),
+    new Response(new Uint8Array([7]), { status: 206 }),
+    new Response(null, { status: 200 }),
+    new Response('{}', { status: 200 }),
+  ];
+  const provider = new SupabaseStorageProvider({
+    url: 'https://project.supabase.co/',
+    serviceRoleKey: 'service-role-secret',
+    bucket: 'creator-assets',
+    fetchImpl: async (input, init) => {
+      requests.push({ input, init });
+      const response = responses.shift();
+      assert.ok(response);
+      return response;
+    },
+  });
+
+  const saved = await provider.save({
+    key: 'projects/demo/panel-one.png',
+    data: new Uint8Array([7, 8, 9]),
+    contentType: 'image/png',
+  });
+  assert.equal(saved.size, 3);
+  assert.deepEqual([...await provider.read(saved.key)], [7, 8, 9]);
+  assert.equal(await provider.exists(saved.key), true);
+  await provider.delete(saved.key);
+  assert.deepEqual(await provider.probe(), { ok: true, provider: 'supabase' });
+
+  assert.equal(
+    String(requests[0].input),
+    'https://project.supabase.co/storage/v1/object/creator-assets/projects/demo/panel-one.png',
+  );
+  assert.equal(new Headers(requests[0].init?.headers).get('authorization'), 'Bearer service-role-secret');
+  assert.equal(requests[0].init?.method, 'POST');
+  assert.equal(requests[3].init?.method, 'DELETE');
+  assert.match(String(requests[4].input), /\/storage\/v1\/bucket\/creator-assets$/);
+});
+
+test('Supabase storage rejects traversal before issuing a request', async () => {
+  let called = false;
+  const provider = new SupabaseStorageProvider({
+    url: 'https://project.supabase.co',
+    serviceRoleKey: 'service-role-secret',
+    bucket: 'creator-assets',
+    fetchImpl: async () => {
+      called = true;
+      return new Response('{}');
+    },
+  });
+  await assert.rejects(() => provider.read('../secret'), ValidationError);
+  assert.equal(called, false);
 });
