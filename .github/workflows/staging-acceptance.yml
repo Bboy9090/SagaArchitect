@@ -55,6 +55,11 @@ jobs:
       RATE_LIMIT_TOKEN: ${{ secrets.STAGING_RATE_LIMIT_TOKEN }}
       FEATURE_PROJECT_RESTORE: "true"
       ENABLE_TEST_AUTH_BYPASS: "false"
+      CREDENTIAL_ROTATION_CONFIRMED: ${{ vars.CREDENTIAL_ROTATION_CONFIRMED }}
+      HISTORY_REVIEW_CONFIRMED: ${{ vars.HISTORY_REVIEW_CONFIRMED }}
+      ROLLBACK_REHEARSAL_CONFIRMED: ${{ vars.ROLLBACK_REHEARSAL_CONFIRMED }}
+      PCS_FF_1440_VALIDATED: ${{ vars.PCS_FF_1440_VALIDATED }}
+      PCS_WK_1440_VALIDATED: ${{ vars.PCS_WK_1440_VALIDATED }}
       NEXT_TELEMETRY_DISABLED: "1"
 
     steps:
@@ -116,22 +121,21 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          node scripts/verify-live-staging-providers.mjs | tee live-provider-evidence.json
+          npm run test:staging:providers | tee live-provider-evidence.json
 
       - name: Run PCS-CHR-1440 browser acceptance
         shell: bash
         run: |
           set -o pipefail
-          node verify-staging-browser.js | tee staging-browser-evidence.log
+          npm run test:staging:browser | tee staging-browser-evidence.log
 
       - name: Run authenticated staging vertical slice and recovery drill
         shell: bash
         run: |
           set -o pipefail
-          node verify-staging-acceptance.js | tee staging-acceptance-evidence.json
+          npm run test:staging:acceptance | tee staging-acceptance-evidence.json
 
-      - name: Record staging outcome
-        if: always()
+      - name: Record staging run metadata
         shell: bash
         run: |
           cat > staging-run-summary.json <<EOF
@@ -147,6 +151,10 @@ jobs:
           }
           EOF
 
+      - name: Generate staging classification receipt
+        shell: bash
+        run: node scripts/generate-staging-receipt.mjs | tee staging-receipt.log
+
       - name: Upload staging evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -161,5 +169,7 @@ jobs:
             chromium-version.log
             artifacts/staging-browser/
             staging-run-summary.json
+            staging-evidence-receipt.json
+            staging-receipt.log
           if-no-files-found: error
           retention-days: 30
