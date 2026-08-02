@@ -84,10 +84,13 @@ jobs:
           cache: npm
 
       - name: Install locked dependencies
+        id: install
         shell: bash
         run: npm ci
 
       - name: Locate Chromium executable
+        id: chromium
+        continue-on-error: true
         shell: bash
         run: |
           executable="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
@@ -96,10 +99,15 @@ jobs:
           "$executable" --version | tee chromium-version.log
 
       - name: Validate staging deployment policy
+        id: envcheck
+        continue-on-error: true
         shell: bash
         run: npm run env:check:staging | tee staging-environment.log
 
       - name: Verify exact deployment identity
+        id: identity
+        if: steps.envcheck.outcome == 'success'
+        continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
@@ -118,24 +126,43 @@ jobs:
           NODE
 
       - name: Verify live Supabase and Upstash providers
+        id: providers
+        if: steps.identity.outcome == 'success'
+        continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
           node scripts/verify-live-staging-providers.mjs | tee live-provider.log
 
       - name: Run PCS-CHR-1440 browser acceptance
+        id: browser
+        if: steps.identity.outcome == 'success' && steps.chromium.outcome == 'success'
+        continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
           node verify-staging-browser.js | tee staging-browser-evidence.log
 
       - name: Run authenticated staging vertical slice and recovery drill
+        id: acceptance
+        if: steps.identity.outcome == 'success' && steps.providers.outcome == 'success'
+        continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
           node verify-staging-acceptance.js | tee staging-acceptance-evidence.json
 
+      - name: Enforce final staging cleanup
+        id: cleanup
+        if: always() && steps.install.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/cleanup-staging-acceptance.mjs | tee staging-cleanup.log
+
       - name: Record staging run metadata
+        if: always()
         shell: bash
         run: |
           cat > staging-run-summary.json <<EOF
@@ -152,6 +179,9 @@ jobs:
           EOF
 
       - name: Generate staging classification receipt
+        id: receipt
+        if: always()
+        continue-on-error: true
         shell: bash
         run: node scripts/generate-staging-receipt.mjs | tee staging-receipt.log
 
@@ -167,10 +197,26 @@ jobs:
             live-provider-evidence.json
             staging-browser-evidence.log
             staging-acceptance-evidence.json
+            staging-cleanup.log
+            staging-cleanup-evidence.json
             chromium-version.log
             artifacts/staging-browser/
             staging-run-summary.json
             staging-evidence-receipt.json
             staging-receipt.log
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
+
+      - name: Enforce staging acceptance gate
+        if: always()
+        shell: bash
+        run: |
+          test "${{ steps.install.outcome }}" = "success"
+          test "${{ steps.chromium.outcome }}" = "success"
+          test "${{ steps.envcheck.outcome }}" = "success"
+          test "${{ steps.identity.outcome }}" = "success"
+          test "${{ steps.providers.outcome }}" = "success"
+          test "${{ steps.browser.outcome }}" = "success"
+          test "${{ steps.acceptance.outcome }}" = "success"
+          test "${{ steps.cleanup.outcome }}" = "success"
+          test "${{ steps.receipt.outcome }}" = "success"
