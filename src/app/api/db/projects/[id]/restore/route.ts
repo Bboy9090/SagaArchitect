@@ -7,7 +7,11 @@ import { recordLifecycleEvent } from '@/lib/data-lifecycle';
 import { assertFeatureEnabled } from '@/lib/feature-flags';
 import { BACKUP_RESTORE_BODY } from '@/lib/http/body-limits';
 import { readJsonBodyWithLimit } from '@/lib/http/read-bounded-body';
-import { executeIdempotentMutation, readIdempotencyKey } from '@/lib/idempotency';
+import {
+  executeIdempotentMutation,
+  readIdempotencyKey,
+  type IdempotencyExecutionResult,
+} from '@/lib/idempotency';
 import type { ProjectBackupWithAssetsPackage } from '@/lib/project-backup-assets';
 import {
   assertRestoreConfirmation,
@@ -60,9 +64,12 @@ export async function POST(
       userId,
       expectedSourceProjectId: sourceProjectId,
     });
+    if (plan.assetObjects.length !== plan.assets.length) {
+      throw new ValidationError('Transactional restore requires recoverable bytes for every asset metadata row.');
+    }
 
     const createdStorageObjects: StoredCleanupReference[] = [];
-    let result;
+    let result: IdempotencyExecutionResult<RestoreResponseBody>;
     try {
       result = await executeIdempotentMutation<RestoreResponseBody>(db, {
         userId,
