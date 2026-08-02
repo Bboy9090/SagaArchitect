@@ -11,7 +11,7 @@ import {
   readAssetObject,
   saveAssetObject,
 } from '../src/lib/storage/asset-storage';
-import { resetStorageProviderForTests } from '../src/lib/storage';
+import { resetStorageProviderForTests } from '../src/lib/storage/index';
 
 function validStagingEnvironment(): NodeJS.ProcessEnv {
   return {
