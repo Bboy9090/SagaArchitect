@@ -1,12 +1,13 @@
 import { db } from '@/db';
 import { assets } from '@/db/schema';
-import { deleteFileLocal, saveFileLocal } from '@/lib/storage-driver';
 import { logVersion } from '@/lib/version-history';
 import { requireUser, requireOwnedProject } from '@/lib/auth-helpers';
 import { apiSuccess } from '@/lib/api-response';
 import { DependencyUnavailableError, ValidationError } from '@/lib/api-errors';
 import { ASSET_UPLOAD_BODY } from '@/lib/http/body-limits';
 import { readFormDataWithLimit } from '@/lib/http/read-bounded-body';
+import { consumeRateLimit } from '@/lib/rate-limit/rate-limiter';
+import { deleteAssetObject, saveAssetObject } from '@/lib/storage/asset-storage';
 import { validateUpload } from '@/lib/uploads/validate-upload';
 import { withApiContext } from '@/lib/with-api-context';
 
@@ -15,6 +16,7 @@ export const POST = withApiContext(async (req, context) => {
 
   const userId = await requireUser();
   context.userId = userId;
+  await consumeRateLimit(req, 'assetUpload', userId);
 
   const formData = await readFormDataWithLimit(req, { policy: ASSET_UPLOAD_BODY });
   const rawFile = formData.get('file');
@@ -27,7 +29,12 @@ export const POST = withApiContext(async (req, context) => {
 
   await requireOwnedProject(projectId, userId);
   const validated = await validateUpload(rawFile);
-  const filePath = await saveFileLocal(validated.buffer, validated.id, validated.extension);
+  const stored = await saveAssetObject({
+    assetId: validated.id,
+    extension: validated.extension,
+    data: validated.buffer,
+    contentType: validated.mimeType,
+  });
 
   try {
     await db.transaction(async (tx) => {
@@ -36,10 +43,10 @@ export const POST = withApiContext(async (req, context) => {
         ownerId: userId,
         projectId,
         name: validated.displayName,
-        filePath,
-        fileSize: validated.size,
-        mimeType: validated.mimeType,
-        storageProvider: 'local',
+        filePath: stored.storageReference,
+        fileSize: stored.size,
+        mimeType: stored.contentType,
+        storageProvider: stored.storageProvider,
       });
       await logVersion(tx, {
         projectId,
@@ -49,14 +56,14 @@ export const POST = withApiContext(async (req, context) => {
         entityId: validated.id,
         changeData: {
           name: validated.displayName,
-          fileSize: validated.size,
-          mimeType: validated.mimeType,
-          storageProvider: 'local',
+          fileSize: stored.size,
+          mimeType: stored.contentType,
+          storageProvider: stored.storageProvider,
         },
       });
     });
   } catch (error) {
-    await deleteFileLocal(filePath).catch(() => undefined);
+    await deleteAssetObject(stored.storageProvider, stored.storageReference).catch(() => undefined);
     throw error;
   }
 
@@ -64,8 +71,9 @@ export const POST = withApiContext(async (req, context) => {
     {
       id: validated.id,
       name: validated.displayName,
-      fileSize: validated.size,
-      mimeType: validated.mimeType,
+      fileSize: stored.size,
+      mimeType: stored.contentType,
+      storageProvider: stored.storageProvider,
     },
     context.requestId,
     201,
