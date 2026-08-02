@@ -5,9 +5,12 @@ import { db } from '@/db';
 import * as schema from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
+import { assertAuthDeploymentUrl, authCookiePolicy, authUsesSecureCookies } from '@/lib/auth-security';
 import { getAuthSecret } from '@/lib/env-validator';
 
-// Clean the adapter type to match NextAuthOptions expectations
+assertAuthDeploymentUrl();
+
+// The upstream Auth.js adapter types do not yet exactly match the Drizzle schema overloads.
 /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
 const adapter = db ? DrizzleAdapter(db as any, {
   usersTable: schema.users,
@@ -17,9 +20,28 @@ const adapter = db ? DrizzleAdapter(db as any, {
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
 } as any) as any : undefined;
 
+const cookiePolicy = authCookiePolicy();
+const secureCookies = authUsesSecureCookies();
+
 export const authOptions: NextAuthOptions = {
   adapter,
-  useSecureCookies: process.env.APP_ENV === 'production' || process.env.VERCEL_ENV === 'production',
+  useSecureCookies: secureCookies,
+  cookies: secureCookies
+    ? {
+        sessionToken: {
+          name: '__Secure-next-auth.session-token',
+          options: cookiePolicy,
+        },
+        callbackUrl: {
+          name: '__Secure-next-auth.callback-url',
+          options: cookiePolicy,
+        },
+        csrfToken: {
+          name: '__Host-next-auth.csrf-token',
+          options: cookiePolicy,
+        },
+      }
+    : undefined,
   providers: [
     CredentialsProvider({
       name: 'Credentials',
@@ -28,10 +50,7 @@ export const authOptions: NextAuthOptions = {
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
-        if (!db) {
-          throw new Error('Authentication service unavailable.');
-        }
-
+        if (!db) throw new Error('Authentication service unavailable.');
         if (!credentials?.email || !credentials?.password) {
           throw new Error('Invalid email or password.');
         }
@@ -43,14 +62,10 @@ export const authOptions: NextAuthOptions = {
           .where(eq(schema.users.email, normalizedEmail))
           .limit(1);
 
-        if (!user) {
-          throw new Error('Invalid email or password.');
-        }
+        if (!user) throw new Error('Invalid email or password.');
 
         const isPasswordCorrect = await bcrypt.compare(credentials.password, user.passwordHash);
-        if (!isPasswordCorrect) {
-          throw new Error('Invalid email or password.');
-        }
+        if (!isPasswordCorrect) throw new Error('Invalid email or password.');
 
         return {
           id: user.id,
@@ -65,16 +80,11 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id;
-      }
+      if (user) token.id = user.id;
       return token;
     },
     async session({ session, token }) {
-      if (token && session.user) {
-        /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-        (session.user as any).id = token.id as string;
-      }
+      if (session.user && typeof token.id === 'string') session.user.id = token.id;
       return session;
     },
   },
