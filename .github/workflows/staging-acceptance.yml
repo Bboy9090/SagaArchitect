@@ -31,7 +31,7 @@ jobs:
   accept:
     name: Live isolated staging acceptance
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     environment: staging
     env:
       APP_ENV: staging
@@ -64,6 +64,7 @@ jobs:
           test "${{ inputs.approval_phrase }}" = "RUN_ISOLATED_STAGING_ACCEPTANCE"
           test "${#DEPLOYMENT_COMMIT_SHA}" = "40"
           test "${#ROLLBACK_COMMIT_SHA}" = "40"
+          test -n "$PRODUCTION_BASE_URL"
           test "$STAGING_BASE_URL" != "$PRODUCTION_BASE_URL"
 
       - name: Check out the exact deployed commit
@@ -80,6 +81,14 @@ jobs:
       - name: Install locked dependencies
         shell: bash
         run: npm ci
+
+      - name: Locate Chromium executable
+        shell: bash
+        run: |
+          executable="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          test -n "$executable"
+          echo "BROWSER_EXECUTABLE_PATH=$executable" >> "$GITHUB_ENV"
+          "$executable" --version | tee chromium-version.log
 
       - name: Validate staging deployment policy
         shell: bash
@@ -109,6 +118,12 @@ jobs:
           set -o pipefail
           node scripts/verify-live-staging-providers.mjs | tee live-provider-evidence.json
 
+      - name: Run PCS-CHR-1440 browser acceptance
+        shell: bash
+        run: |
+          set -o pipefail
+          node verify-staging-browser.js | tee staging-browser-evidence.log
+
       - name: Run authenticated staging vertical slice and recovery drill
         shell: bash
         run: |
@@ -125,6 +140,7 @@ jobs:
             "commitSha": "${DEPLOYMENT_COMMIT_SHA}",
             "rollbackCommitSha": "${ROLLBACK_COMMIT_SHA}",
             "stagingUrl": "${STAGING_BASE_URL}",
+            "browserConfiguration": "PCS-CHR-1440",
             "runId": "${GITHUB_RUN_ID}",
             "runAttempt": "${GITHUB_RUN_ATTEMPT}",
             "completedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -140,7 +156,10 @@ jobs:
             staging-environment.log
             deployment-identity.json
             live-provider-evidence.json
+            staging-browser-evidence.log
             staging-acceptance-evidence.json
+            chromium-version.log
+            artifacts/staging-browser/
             staging-run-summary.json
           if-no-files-found: error
           retention-days: 30
