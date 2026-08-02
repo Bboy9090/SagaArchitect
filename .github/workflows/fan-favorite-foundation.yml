@@ -75,6 +75,15 @@ jobs:
           set -o pipefail
           npm run secrets:check 2>&1 | tee secrets.log
 
+      - name: Generate SBOM and enforce dependency policy
+        id: supplychain
+        if: always() && !cancelled() && steps.install.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run supply-chain:check 2>&1 | tee supply-chain.log
+
       - name: Apply schema to isolated test database
         id: schema
         if: always() && !cancelled() && steps.install.outcome == 'success'
@@ -196,6 +205,7 @@ jobs:
           printf '%s\n' \
             "install_outcome=${{ steps.install.outcome }}" \
             "secrets_outcome=${{ steps.secrets.outcome }}" \
+            "supply_chain_outcome=${{ steps.supplychain.outcome }}" \
             "schema_outcome=${{ steps.schema.outcome }}" \
             "lint_outcome=${{ steps.lint.outcome }}" \
             "typecheck_outcome=${{ steps.typecheck.outcome }}" \
@@ -217,6 +227,9 @@ jobs:
           path: |
             install.log
             secrets.log
+            supply-chain.log
+            artifacts/dependency-policy.json
+            artifacts/sbom.cdx.json
             schema.log
             lint.log
             typecheck.log
@@ -241,6 +254,7 @@ jobs:
         run: |
           test "${{ steps.install.outcome }}" = "success"
           test "${{ steps.secrets.outcome }}" = "success"
+          test "${{ steps.supplychain.outcome }}" = "success"
           test "${{ steps.schema.outcome }}" = "success"
           test "${{ steps.lint.outcome }}" = "success"
           test "${{ steps.typecheck.outcome }}" = "success"

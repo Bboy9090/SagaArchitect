@@ -60,6 +60,7 @@ export interface Universe extends LorePoolMeta {
   themes: string[];
   current_conflict: string;
   prophecy_hooks: string[];
+  version?: number;
   created_at: string;
   updated_at: string;
 }
@@ -315,4 +316,3 @@ export interface StoryboardPanel {
 }
 
 export type Project = Universe;
-

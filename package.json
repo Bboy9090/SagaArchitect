@@ -13,12 +13,16 @@
     "env:check": "node scripts/check-env.mjs",
     "env:check:production": "node scripts/check-env.mjs --production",
     "secrets:check": "node scripts/check-secrets.mjs",
+    "dependency:policy": "node scripts/check-dependency-policy.mjs",
+    "sbom:generate": "node scripts/generate-sbom.mjs",
+    "audit:ci": "npm audit --audit-level=high",
+    "supply-chain:check": "npm run dependency:policy && npm run sbom:generate && npm run audit:ci",
     "healthcheck": "bash scripts/healthcheck.sh",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "check": "npm run secrets:check && npm run lint && npm run typecheck && npm run test:enterprise && npm run build"
+    "check": "npm run secrets:check && npm run supply-chain:check && npm run lint && npm run typecheck && npm run test:enterprise && npm run build"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.3",
@@ -47,6 +51,7 @@
     "typescript": "^5"
   },
   "overrides": {
+    "js-yaml": "4.3.0",
     "postcss": "8.5.25",
     "sharp": "0.35.3"
   }

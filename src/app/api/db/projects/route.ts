@@ -5,8 +5,10 @@ import { logVersion } from '@/lib/version-history';
 import { requireUser } from '@/lib/auth-helpers';
 import { apiSuccess } from '@/lib/api-response';
 import { DependencyUnavailableError, ValidationError } from '@/lib/api-errors';
+import { assertFeatureEnabled } from '@/lib/feature-flags';
 import { NORMAL_MUTATION_BODY } from '@/lib/http/body-limits';
 import { readJsonBodyWithLimit } from '@/lib/http/read-bounded-body';
+import { executeIdempotentMutation, readIdempotencyKey } from '@/lib/idempotency';
 import { withApiContext } from '@/lib/with-api-context';
 import { normalizePublishingMetadata } from '@/lib/publishing-metadata';
 
@@ -67,6 +69,7 @@ export const GET = withApiContext(async (_request, context) => {
 });
 
 export const POST = withApiContext(async (req, context) => {
+  assertFeatureEnabled('projectCreation');
   if (!db) throw new DependencyUnavailableError('Database service is unavailable.');
   const userId = await requireUser();
   context.userId = userId;
@@ -96,8 +99,34 @@ export const POST = withApiContext(async (req, context) => {
     version: typeof payload.version === 'number' && Number.isInteger(payload.version) ? payload.version : 1,
   };
 
+  const idempotencyKey = readIdempotencyKey(req);
+  if (idempotencyKey) {
+    const result = await executeIdempotentMutation(db, {
+      userId,
+      route: '/api/db/projects',
+      key: idempotencyKey,
+      requestBody: values,
+    }, async (tx) => {
+      const [inserted] = await tx.insert(projects).values(values).returning();
+      await logVersion(tx, {
+        projectId: id,
+        userId,
+        action: 'create',
+        entityType: 'project',
+        entityId: id,
+        changeData: values,
+      });
+      return { status: 201, body: mapProject(inserted) };
+    });
+
+    const response = apiSuccess(result.body, context.requestId, result.status);
+    response.headers.set('idempotency-replayed', String(result.replayed));
+    return response;
+  }
+
+  let inserted: typeof projects.$inferSelect | undefined;
   await db.transaction(async (tx) => {
-    await tx.insert(projects).values(values);
+    [inserted] = await tx.insert(projects).values(values).returning();
     await logVersion(tx, {
       projectId: id,
       userId,
@@ -108,7 +137,6 @@ export const POST = withApiContext(async (req, context) => {
     });
   });
 
-  const [inserted] = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
   if (!inserted) throw new DependencyUnavailableError('Created project could not be loaded.');
   return apiSuccess(mapProject(inserted), context.requestId, 201);
 });
