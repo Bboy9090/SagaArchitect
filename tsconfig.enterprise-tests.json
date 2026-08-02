@@ -43,6 +43,7 @@
     "src/lib/optimistic-concurrency.ts",
     "src/lib/data-lifecycle.ts",
     "src/lib/project-backup.ts",
+    "src/lib/project-backup-assets.ts",
     "src/lib/readiness.ts",
     "src/lib/recovery-objectives.ts",
     "src/lib/writing-sync.ts",
