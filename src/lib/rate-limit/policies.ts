@@ -7,6 +7,9 @@ export const RATE_LIMIT_POLICIES = {
   migrationImport: { name: 'migration-import', limit: 5, windowMs: 60 * 60 * 1000 },
   assetUpload: { name: 'asset-upload', limit: 60, windowMs: 60 * 60 * 1000 },
   export: { name: 'export', limit: 30, windowMs: 60 * 60 * 1000 },
+  backup: { name: 'backup', limit: 10, windowMs: 60 * 60 * 1000 },
+  restorePreflight: { name: 'restore-preflight', limit: 20, windowMs: 60 * 60 * 1000 },
+  restore: { name: 'restore', limit: 5, windowMs: 60 * 60 * 1000 },
   canonScan: { name: 'canon-scan', limit: 30, windowMs: 60 * 60 * 1000 },
 } as const satisfies Record<string, RateLimitPolicy>;
 
