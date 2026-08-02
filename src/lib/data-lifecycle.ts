@@ -1,6 +1,6 @@
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import * as coreSchema from '@/db/schema';
-import { dataLifecycleEvents } from '@/db/enterprise-schema';
+import * as coreSchema from '../db/schema';
+import { dataLifecycleEvents } from '../db/enterprise-schema';
 import { ValidationError } from './api-errors';
 
 export type LifecycleOperation =
