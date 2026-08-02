@@ -7,6 +7,7 @@ export type LifecycleOperation =
   | 'project_export'
   | 'project_backup_export'
   | 'project_restore_preflight'
+  | 'project_restore'
   | 'project_delete'
   | 'account_export'
   | 'account_delete';
