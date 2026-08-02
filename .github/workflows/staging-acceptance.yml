@@ -121,19 +121,19 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          npm run test:staging:providers | tee live-provider-evidence.json
+          node scripts/verify-live-staging-providers.mjs | tee live-provider.log
 
       - name: Run PCS-CHR-1440 browser acceptance
         shell: bash
         run: |
           set -o pipefail
-          npm run test:staging:browser | tee staging-browser-evidence.log
+          node verify-staging-browser.js | tee staging-browser-evidence.log
 
       - name: Run authenticated staging vertical slice and recovery drill
         shell: bash
         run: |
           set -o pipefail
-          npm run test:staging:acceptance | tee staging-acceptance-evidence.json
+          node verify-staging-acceptance.js | tee staging-acceptance-evidence.json
 
       - name: Record staging run metadata
         shell: bash
@@ -163,6 +163,7 @@ jobs:
           path: |
             staging-environment.log
             deployment-identity.json
+            live-provider.log
             live-provider-evidence.json
             staging-browser-evidence.log
             staging-acceptance-evidence.json
