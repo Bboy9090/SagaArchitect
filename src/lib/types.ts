@@ -29,10 +29,10 @@ export type LoreVisibility = 'private' | 'shared_archetype' | 'public_template' 
  */
 export interface LorePoolMeta {
   visibility?: LoreVisibility;
-  is_locked?: boolean;           // locked entities are excluded from the shared pool
-  is_demo?: boolean;             // marks built-in demo entities
-  allow_derivatives?: boolean;   // whether derivative works from the archetype are allowed
-  shared_template_id?: string;   // id of the SharedLoreEntry this was shared as
+  is_locked?: boolean;
+  is_demo?: boolean;
+  allow_derivatives?: boolean;
+  shared_template_id?: string;
 }
 
 export interface Relationship {
@@ -60,6 +60,7 @@ export interface Universe extends LorePoolMeta {
   themes: string[];
   current_conflict: string;
   prophecy_hooks: string[];
+  version?: number;
   created_at: string;
   updated_at: string;
 }
@@ -122,7 +123,7 @@ export interface TimelineEvent extends LorePoolMeta {
   affected_factions: string[];
   affected_locations: string[];
   consequences: string;
-  hidden_truths?: string;
+  hidden_truths: string;
   canon_status: CanonStatus;
 }
 
@@ -137,8 +138,8 @@ export interface StoryArc extends LorePoolMeta {
   involved_characters: string[];
   involved_factions: string[];
   themes: string[];
-  turning_points?: string[];
-  canon_status?: CanonStatus;
+  turning_points: string[];
+  canon_status: CanonStatus;
 }
 
 export interface LoreRule extends LorePoolMeta {
@@ -151,23 +152,11 @@ export interface LoreRule extends LorePoolMeta {
   canon_status: CanonStatus;
 }
 
-export interface LoreConflictEntry {
-  id: string;
-  universe_id: string;
-  type: 'contradiction' | 'duplicate' | 'missing_link' | 'mystery';
-  title: string;
-  description: string;
-  related_entities: string[];
-  severity: 'low' | 'medium' | 'high';
-}
-
-export type StoryFormat = 'opening_chapter' | 'short_story' | 'scene' | 'book_outline' | 'children_book';
-
 export interface GeneratedStory {
   id: string;
   universe_id: string;
   title: string;
-  format: StoryFormat;
+  format: 'scene' | 'chapter' | 'episode' | 'cinematic';
   content: string;
   featured_characters: string[];
   featured_factions: string[];
@@ -175,13 +164,40 @@ export interface GeneratedStory {
   created_at: string;
 }
 
-export type WritingDocumentStatus = 'outline' | 'draft' | 'revision' | 'final';
-export type WritingDocumentKind =
-  | 'title_page' | 'copyright' | 'dedication' | 'epigraph' | 'foreword' | 'preface'
-  | 'manuscript' | 'chapter' | 'scene' | 'screenplay' | 'comic_script'
-  | 'acknowledgements' | 'about_author' | 'appendix' | 'notes';
+export interface SharedLoreEntry {
+  id: string;
+  source_universe_id: string;
+  source_entity_id: string;
+  source_entity_type: 'character' | 'faction' | 'location' | 'lore_rule' | 'story_arc';
+  archetype_name: string;
+  archetype_summary: string;
+  structural_patterns: string[];
+  tags: string[];
+  contributor_name?: string;
+  license: 'derivative_allowed' | 'attribution_required' | 'reference_only';
+  is_featured: boolean;
+  remix_count: number;
+  created_at: string;
+}
 
-/** A user-authored production document. Generated stories are stored separately. */
+export type WritingDocumentKind =
+  | 'title_page'
+  | 'copyright'
+  | 'dedication'
+  | 'epigraph'
+  | 'foreword'
+  | 'preface'
+  | 'manuscript'
+  | 'chapter'
+  | 'scene'
+  | 'screenplay'
+  | 'comic_script'
+  | 'acknowledgements'
+  | 'about_author'
+  | 'appendix'
+  | 'notes';
+export type WritingDocumentStatus = 'outline' | 'draft' | 'revision' | 'final';
+
 export interface WritingDocument {
   id: string;
   project_id: string;
@@ -207,87 +223,6 @@ export interface WritingDocumentRevision {
   created_at: string;
 }
 
-/**
- * A media project is a creative output spawned from a universe.
- * One universe can produce many projects — a book, a game, a comic, a film.
- * This is the record that ties a creative output to its source canon.
- */
-export type MediaProjectType =
-  | 'book'
-  | 'children_book'
-  | 'game'
-  | 'comic'
-  | 'film'
-  | 'short_story'
-  | 'script';
-
-export type MediaProjectStatus = 'concept' | 'in_progress' | 'complete';
-
-export interface MediaProject {
-  id: string;
-  universe_id: string;
-  type: MediaProjectType;
-  title: string;
-  summary: string;
-  status: MediaProjectStatus;
-  featured_characters: string[];
-  featured_factions: string[];
-  created_at: string;
-  updated_at: string;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Shared Lore Pool
-// ─────────────────────────────────────────────────────────────────────────────
-
-export type SharedLoreSourceType =
-  | 'character'
-  | 'faction'
-  | 'location'
-  | 'arc'           // legacy — prefer 'story_arc'
-  | 'story_arc'     // canonical name per Lore Pool Engine spec
-  | 'world_seed'
-  | 'rule_set'      // legacy — prefer 'lore_rule'
-  | 'lore_rule'     // canonical name per Lore Pool Engine spec
-  | 'story_seed'    // Rainstorms story concepts
-  | 'book_concept'; // Rainstorms children's book concepts
-
-/**
- * A single entry in the Shared Lore Pool.
- *
- * Private canon is NEVER stored here. All fields are abstracted patterns —
- * names, specific world identifiers, and locked canon links are stripped.
- * Rainstorms can consume these via GET /api/shared-lore-pool for inspiration mode.
- */
-export interface SharedLoreEntry {
-  id: string;
-  /** Which app produced this entry (sagaarch, rainstorms, …). Helps Rainstorms filter SagaARCH archetypes. */
-  source_app?: 'sagaarch' | 'rainstorms' | string;
-  source_type: SharedLoreSourceType;
-  source_id: string;             // id of the original entity (for owner reference only)
-  owner_user_id?: string;        // owner — not exposed in public responses
-  universe_id: string;           // source universe (not exposed in public responses)
-  visibility: LoreVisibility;
-  archetype_name: string;        // e.g. "fallen storm knight"
-  category: string;              // e.g. "warrior", "empire", "ancient ruin"
-  role_type?: string;            // e.g. "reluctant mythic warrior", "oracle", "trickster"
-  role_pattern?: string;         // character role pattern (longer description)
-  ideology_pattern?: string;     // faction ideology pattern
-  location_pattern?: string;     // location archetype pattern
-  conflict_pattern?: string;     // arc or event conflict pattern
-  theme_tags: string[];          // e.g. ["memory", "sacrifice", "legacy"]
-  visual_tags: string[];         // e.g. ["storm armor", "ruined kingdom"]
-  era_pattern?: string;          // e.g. "post-apocalyptic", "ancient empire decline"
-  abstraction_summary: string;   // human-readable abstract description
-  derivative_rules?: string;     // usage rules for derivatives
-  // Rainstorms filter fields (mirrors universe-level metadata)
-  genre?: string;
-  tone?: string;
-  age_band?: string;
-  created_at: string;
-  updated_at: string;
-}
-
 export interface Scene {
   id: string;
   project_id: string;
@@ -296,8 +231,9 @@ export interface Scene {
   order: number;
   location_id?: string;
   canon_status: CanonStatus;
-  created_at?: string;
-  updated_at?: string;
+  version?: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface StoryboardPanel {
@@ -306,13 +242,11 @@ export interface StoryboardPanel {
   panel_number: number;
   visual_prompt: string;
   action_description: string;
-  dialogue?: string;
-  camera_shot?: string;
+  dialogue: string;
+  camera_shot: string;
   image_base64?: string;
-  asset_id?: string;          // DB mode: references an Asset Library upload
-  created_at?: string;
-  updated_at?: string;
+  asset_id?: string;
+  version?: number;
+  created_at: string;
+  updated_at: string;
 }
-
-export type Project = Universe;
-
