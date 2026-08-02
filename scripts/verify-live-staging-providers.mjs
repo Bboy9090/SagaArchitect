@@ -1,5 +1,7 @@
+import fs from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 
+const EVIDENCE_PATH = 'live-provider-evidence.json';
 const required = (key) => {
   const value = process.env[key]?.trim();
   if (!value) throw new Error(`${key} is required.`);
@@ -169,7 +171,9 @@ try {
   }
   evidence.completedAt = new Date().toISOString();
   evidence.durationMs = Date.now() - startedAt;
-  console.log(JSON.stringify(evidence, null, 2));
+  const serialized = `${JSON.stringify(evidence, null, 2)}\n`;
+  fs.writeFileSync(EVIDENCE_PATH, serialized, 'utf8');
+  console.log(serialized.trimEnd());
 }
 
 if (!evidence.ok) process.exitCode = 1;
