@@ -11,6 +11,7 @@
     "test:smoke": "bash scripts/smoke-test.sh",
     "test:enterprise": "node verify-enterprise-foundation.js",
     "env:check": "node scripts/check-env.mjs",
+    "env:check:staging": "node scripts/check-env.mjs --staging",
     "env:check:production": "node scripts/check-env.mjs --production",
     "secrets:check": "node scripts/check-secrets.mjs",
     "dependency:policy": "node scripts/check-dependency-policy.mjs",
