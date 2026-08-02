@@ -2,22 +2,32 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import * as s from '@/db/schema';
-import { deleteFileLocal, saveFileLocal } from '@/lib/storage-driver';
 import { requireUser } from '@/lib/auth-helpers';
 import { DependencyUnavailableError, UnsupportedMediaTypeError } from '@/lib/api-errors';
+import { assertFeatureEnabled } from '@/lib/feature-flags';
 import { LARGE_MIGRATION_BODY, STORYBOARD_BASE64_BODY } from '@/lib/http/body-limits';
 import { readBase64PayloadWithLimit, readJsonBodyWithLimit } from '@/lib/http/read-bounded-body';
-import { detectImageMime } from '@/lib/uploads/file-signatures';
 import { createLogger } from '@/lib/logger';
+import { consumeRateLimit } from '@/lib/rate-limit/rate-limiter';
+import { deleteAssetObject, saveAssetObject } from '@/lib/storage/asset-storage';
+import type { StorageProviderName } from '@/lib/storage/storage-provider';
+import { detectImageMime } from '@/lib/uploads/file-signatures';
 import { withApiContext } from '@/lib/with-api-context';
 
 type MigrationPayload = Record<string, any>;
 
+interface CreatedStorageObject {
+  provider: StorageProviderName;
+  reference: string;
+}
+
 export const POST = withApiContext(async (req, context) => {
+  assertFeatureEnabled('migrationImport');
   if (!db) throw new DependencyUnavailableError('Database service is unavailable.');
 
   const userId = await requireUser();
   context.userId = userId;
+  await consumeRateLimit(req, 'migrationImport', userId);
   const logger = createLogger(context);
   const payload = await readJsonBodyWithLimit<MigrationPayload>(req, {
     policy: LARGE_MIGRATION_BODY,
@@ -51,7 +61,7 @@ export const POST = withApiContext(async (req, context) => {
   const remapArray = (values: string[] | undefined | null, map: Map<string, string>) =>
     (values || []).map((oldId) => map.get(oldId)).filter((id): id is string => typeof id === 'string');
 
-  const createdFilePaths: string[] = [];
+  const createdStorageObjects: CreatedStorageObject[] = [];
   let warningCount = 0;
 
   try {
@@ -225,7 +235,10 @@ export const POST = withApiContext(async (req, context) => {
           const match = panel.image_base64.match(/^data:(image\/(?:png|jpeg|webp));base64,([\s\S]+)$/);
           if (!match) {
             warningCount += 1;
-            logger.warn('migration.storyboard-sketch.rejected', { panelNumber: panel.panel_number, reason: 'unsupported-data-url' });
+            logger.warn('migration.storyboard-sketch.rejected', {
+              panelNumber: panel.panel_number,
+              reason: 'unsupported-data-url',
+            });
           } else {
             const declaredMime = match[1];
             try {
@@ -244,25 +257,39 @@ export const POST = withApiContext(async (req, context) => {
 
               if (!newProjectId) {
                 warningCount += 1;
-                logger.warn('migration.storyboard-sketch.skipped', { panelNumber: panel.panel_number, reason: 'missing-parent-project' });
+                logger.warn('migration.storyboard-sketch.skipped', {
+                  panelNumber: panel.panel_number,
+                  reason: 'missing-parent-project',
+                });
               } else {
-                const filePath = await saveFileLocal(buffer, fileId, extension);
-                createdFilePaths.push(filePath);
+                const stored = await saveAssetObject({
+                  assetId: fileId,
+                  extension,
+                  data: buffer,
+                  contentType: detectedMime,
+                });
+                createdStorageObjects.push({
+                  provider: stored.storageProvider,
+                  reference: stored.storageReference,
+                });
                 await tx.insert(s.assets).values({
                   id: fileId,
                   ownerId: userId,
                   projectId: newProjectId,
                   name: `Sketch Panel ${panel.panel_number}${extension}`,
-                  filePath,
-                  fileSize: buffer.byteLength,
-                  mimeType: detectedMime,
-                  storageProvider: 'local',
+                  filePath: stored.storageReference,
+                  fileSize: stored.size,
+                  mimeType: stored.contentType,
+                  storageProvider: stored.storageProvider,
                 });
                 assetId = fileId;
               }
             } catch (error) {
               warningCount += 1;
-              logger.warn('migration.storyboard-sketch.skipped', { panelNumber: panel.panel_number, error });
+              logger.warn('migration.storyboard-sketch.skipped', {
+                panelNumber: panel.panel_number,
+                error,
+              });
             }
           }
         }
@@ -299,7 +326,9 @@ export const POST = withApiContext(async (req, context) => {
 
     return NextResponse.json({ ok: true, report });
   } catch (error) {
-    await Promise.allSettled(createdFilePaths.map((filePath) => deleteFileLocal(filePath)));
+    await Promise.allSettled(
+      createdStorageObjects.map((object) => deleteAssetObject(object.provider, object.reference)),
+    );
     throw error;
   }
 });
