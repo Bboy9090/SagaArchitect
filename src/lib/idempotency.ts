@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { and, eq, lte } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import * as coreSchema from '@/db/schema';
-import { idempotencyKeys } from '@/db/enterprise-schema';
-import { ConflictError, ValidationError } from '@/lib/api-errors';
+import * as coreSchema from '../db/schema';
+import { idempotencyKeys } from '../db/enterprise-schema';
+import { ConflictError, ValidationError } from './api-errors';
 
 export const IDEMPOTENCY_KEY_HEADER = 'idempotency-key';
 export const DEFAULT_IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
