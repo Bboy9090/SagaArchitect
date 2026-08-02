@@ -1,8 +1,12 @@
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 
-function readJson(path) {
-  return JSON.parse(fs.readFileSync(path, 'utf8'));
+function readJson(path, fallback = {}) {
+  try {
+    return JSON.parse(fs.readFileSync(path, 'utf8'));
+  } catch {
+    return fallback;
+  }
 }
 
 function booleanEnvironment(key) {
@@ -10,14 +14,25 @@ function booleanEnvironment(key) {
 }
 
 function hashFile(path) {
-  return createHash('sha256').update(fs.readFileSync(path)).digest('hex');
+  try {
+    return createHash('sha256').update(fs.readFileSync(path)).digest('hex');
+  } catch {
+    return null;
+  }
 }
 
 const deployment = readJson('deployment-identity.json');
 const providers = readJson('live-provider-evidence.json');
 const browser = readJson('artifacts/staging-browser/PCS-CHR-1440.json');
 const acceptance = readJson('staging-acceptance-evidence.json');
-const runSummary = readJson('staging-run-summary.json');
+const cleanup = readJson('staging-cleanup-evidence.json');
+const runSummary = readJson('staging-run-summary.json', {
+  repository: 'Bboy9090/SagaArchitect',
+  rollbackCommitSha: process.env.ROLLBACK_COMMIT_SHA || null,
+  stagingUrl: process.env.STAGING_BASE_URL || null,
+  runId: process.env.GITHUB_RUN_ID || null,
+  runAttempt: process.env.GITHUB_RUN_ATTEMPT || null,
+});
 
 const expectedCommit = process.env.DEPLOYMENT_COMMIT_SHA?.toLowerCase() || null;
 const stagingPassed = Boolean(
@@ -38,6 +53,8 @@ const stagingPassed = Boolean(
   && acceptance.cleanup?.user === true
   && Number(acceptance.cleanup?.projects || 0) >= 2
   && Number(acceptance.cleanup?.assets || 0) >= 2
+  && cleanup.ok === true
+  && cleanup.remainingUsers === 0
 );
 
 const credentialRotationConfirmed = booleanEnvironment('CREDENTIAL_ROTATION_CONFIRMED');
@@ -53,6 +70,14 @@ const releaseCandidateEligible = Boolean(
   && firefoxValidated
   && webkitValidated
 );
+
+const missingEvidence = [
+  ['deploymentIdentity', deployment.ok !== undefined],
+  ['liveProviders', providers.ok !== undefined],
+  ['chromium', browser.ok !== undefined],
+  ['acceptance', acceptance.ok !== undefined],
+  ['cleanup', cleanup.ok !== undefined],
+].filter(([, present]) => !present).map(([name]) => name);
 
 const receipt = {
   format: 'phoenix-creator-studio.staging-evidence',
@@ -92,16 +117,19 @@ const receipt = {
     testAuthBypassDisabled: deployment.data?.testAuthBypassEnabled === false,
   },
   recovery: {
-    backupSha256: acceptance.backupSha256,
-    lifecycleReceiptId: acceptance.lifecycleReceiptId,
-    restoredProjectId: acceptance.restoredProjectId,
-    cleanup: acceptance.cleanup,
+    backupSha256: acceptance.backupSha256 || null,
+    lifecycleReceiptId: acceptance.lifecycleReceiptId || null,
+    restoredProjectId: acceptance.restoredProjectId || null,
+    inRunCleanup: acceptance.cleanup || null,
+    finalCleanup: cleanup.ok === undefined ? null : cleanup,
   },
+  missingEvidence,
   evidenceDigests: {
     deploymentIdentity: hashFile('deployment-identity.json'),
     liveProviders: hashFile('live-provider-evidence.json'),
     chromium: hashFile('artifacts/staging-browser/PCS-CHR-1440.json'),
     acceptance: hashFile('staging-acceptance-evidence.json'),
+    cleanup: hashFile('staging-cleanup-evidence.json'),
   },
   decision: stagingPassed ? 'STAGING_PASS' : 'STAGING_FAIL',
   releaseDecision: releaseCandidateEligible ? 'RC_ELIGIBLE' : 'RC_BLOCKED',
