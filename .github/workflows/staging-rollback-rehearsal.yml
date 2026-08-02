@@ -1,0 +1,199 @@
+name: Phoenix Creator Studio Staging Rollback Rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      staging_alias_url:
+        description: Stable isolated staging alias URL
+        required: true
+        type: string
+      current_deployment_url:
+        description: Current staging deployment URL to restore after rehearsal
+        required: true
+        type: string
+      rollback_deployment_url:
+        description: Previously verified deployment URL to rehearse
+        required: true
+        type: string
+      current_commit_sha:
+        description: Commit expected after undoing the rehearsal
+        required: true
+        type: string
+      rollback_commit_sha:
+        description: Commit expected during rollback
+        required: true
+        type: string
+      approval_phrase:
+        description: Type RUN_STAGING_ROLLBACK_REHEARSAL
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phoenix-creator-studio-live-staging
+  cancel-in-progress: false
+
+jobs:
+  rehearse:
+    name: Reversible isolated staging rollback
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+    env:
+      APP_ENV: staging
+      NODE_ENV: production
+      STAGING_CONFIRM_ISOLATED: "true"
+      ALLOW_REMOTE_TESTS: "true"
+      STAGING_ALIAS_URL: ${{ inputs.staging_alias_url }}
+      CURRENT_DEPLOYMENT_URL: ${{ inputs.current_deployment_url }}
+      ROLLBACK_DEPLOYMENT_URL: ${{ inputs.rollback_deployment_url }}
+      CURRENT_COMMIT_SHA: ${{ inputs.current_commit_sha }}
+      ROLLBACK_COMMIT_SHA: ${{ inputs.rollback_commit_sha }}
+      PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - name: Enforce explicit rollback approval and isolation
+        shell: bash
+        run: |
+          test "${{ inputs.approval_phrase }}" = "RUN_STAGING_ROLLBACK_REHEARSAL"
+          test "${#CURRENT_COMMIT_SHA}" = "40"
+          test "${#ROLLBACK_COMMIT_SHA}" = "40"
+          test -n "$PRODUCTION_BASE_URL"
+          test "$STAGING_ALIAS_URL" != "$PRODUCTION_BASE_URL"
+          test "$CURRENT_DEPLOYMENT_URL" != "$ROLLBACK_DEPLOYMENT_URL"
+          test -n "$VERCEL_TOKEN"
+          test -n "$VERCEL_ORG_ID"
+          test -n "$VERCEL_PROJECT_ID"
+
+      - name: Check out current repository tooling
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Link Vercel project non-interactively
+        shell: bash
+        run: |
+          mkdir -p .vercel
+          printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > .vercel/project.json
+
+      - name: Verify both immutable deployments before alias change
+        shell: bash
+        run: |
+          node - <<'NODE'
+          async function verify(url, expected, label) {
+            const response = await fetch(new URL('/api/health/deployment', url));
+            if (!response.ok) throw new Error(`${label} identity returned ${response.status}.`);
+            const body = await response.json();
+            if (body.data?.environment !== 'staging') throw new Error(`${label} is not a staging deployment.`);
+            if (body.data?.commitSha !== expected.toLowerCase()) {
+              throw new Error(`${label} commit mismatch: ${body.data?.commitSha}`);
+            }
+          }
+          await verify(process.env.CURRENT_DEPLOYMENT_URL, process.env.CURRENT_COMMIT_SHA, 'Current deployment');
+          await verify(process.env.ROLLBACK_DEPLOYMENT_URL, process.env.ROLLBACK_COMMIT_SHA, 'Rollback deployment');
+          NODE
+
+      - name: Point staging alias to rollback deployment
+        id: rollback
+        continue-on-error: true
+        shell: bash
+        run: |
+          alias_host="$(node -e "console.log(new URL(process.env.STAGING_ALIAS_URL).hostname)")"
+          npx --yes vercel@58.0.0 alias set "$ROLLBACK_DEPLOYMENT_URL" "$alias_host" \
+            --token "$VERCEL_TOKEN"
+          node - <<'NODE'
+          const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          for (let attempt = 1; attempt <= 30; attempt += 1) {
+            try {
+              const response = await fetch(new URL('/api/health/deployment', process.env.STAGING_ALIAS_URL), { cache: 'no-store' });
+              const body = await response.json();
+              if (response.ok && body.data?.commitSha === process.env.ROLLBACK_COMMIT_SHA.toLowerCase()) {
+                console.log(JSON.stringify(body, null, 2));
+                process.exit(0);
+              }
+            } catch {}
+            await delay(2000);
+          }
+          throw new Error('Staging alias did not converge to the rollback deployment.');
+          NODE
+          curl --fail --silent --show-error "$STAGING_ALIAS_URL/api/health/ready" \
+            | tee rollback-readiness.json
+
+      - name: Restore staging alias to current deployment
+        id: undo
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          alias_host="$(node -e "console.log(new URL(process.env.STAGING_ALIAS_URL).hostname)")"
+          npx --yes vercel@58.0.0 alias set "$CURRENT_DEPLOYMENT_URL" "$alias_host" \
+            --token "$VERCEL_TOKEN"
+          node - <<'NODE'
+          const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          for (let attempt = 1; attempt <= 30; attempt += 1) {
+            try {
+              const response = await fetch(new URL('/api/health/deployment', process.env.STAGING_ALIAS_URL), { cache: 'no-store' });
+              const body = await response.json();
+              if (response.ok && body.data?.commitSha === process.env.CURRENT_COMMIT_SHA.toLowerCase()) {
+                console.log(JSON.stringify(body, null, 2));
+                process.exit(0);
+              }
+            } catch {}
+            await delay(2000);
+          }
+          throw new Error('Staging alias did not return to the current deployment.');
+          NODE
+          curl --fail --silent --show-error "$STAGING_ALIAS_URL/api/health/ready" \
+            | tee restored-readiness.json
+
+      - name: Record rollback rehearsal receipt
+        if: always()
+        shell: bash
+        run: |
+          cat > staging-rollback-receipt.json <<EOF
+          {
+            "format": "phoenix-creator-studio.staging-rollback",
+            "version": 1,
+            "stagingAlias": "${STAGING_ALIAS_URL}",
+            "currentDeployment": "${CURRENT_DEPLOYMENT_URL}",
+            "rollbackDeployment": "${ROLLBACK_DEPLOYMENT_URL}",
+            "currentCommitSha": "${CURRENT_COMMIT_SHA}",
+            "rollbackCommitSha": "${ROLLBACK_COMMIT_SHA}",
+            "rollbackOutcome": "${{ steps.rollback.outcome }}",
+            "undoOutcome": "${{ steps.undo.outcome }}",
+            "workflowRunId": "${GITHUB_RUN_ID}",
+            "completedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
+      - name: Upload rollback evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phoenix-creator-studio-staging-rollback
+          path: |
+            rollback-readiness.json
+            restored-readiness.json
+            staging-rollback-receipt.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Enforce rollback and undo gate
+        if: always()
+        shell: bash
+        run: |
+          test "${{ steps.rollback.outcome }}" = "success"
+          test "${{ steps.undo.outcome }}" = "success"
