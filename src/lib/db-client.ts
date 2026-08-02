@@ -16,10 +16,10 @@ export async function dbGetProjects(): Promise<Project[]> {
   return (json.data || []) as Project[];
 }
 
-export async function dbCreateProject(data: Partial<Project>): Promise<Project> {
+export async function dbCreateProject(data: Partial<Project>, idempotencyKey = crypto.randomUUID()): Promise<Project> {
   const res = await fetch('/api/db/projects', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify(data),
   });
   return handleResponse<Project>(res);
@@ -31,10 +31,11 @@ export async function dbGetProject(id: string): Promise<Project> {
 }
 
 export async function dbUpdateProject(id: string, data: Partial<Project>): Promise<Project> {
+  const expectedVersion = typeof data.version === 'number' ? data.version : (await dbGetProject(id)).version;
   const res = await fetch(`/api/db/projects/${id}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
+    headers: { 'Content-Type': 'application/json', 'If-Match': `"${expectedVersion}"` },
+    body: JSON.stringify({ ...data, expected_version: expectedVersion }),
   });
   return handleResponse<Project>(res);
 }
@@ -42,6 +43,7 @@ export async function dbUpdateProject(id: string, data: Partial<Project>): Promi
 export async function dbDeleteProject(id: string): Promise<void> {
   const res = await fetch(`/api/db/projects/${id}`, {
     method: 'DELETE',
+    headers: { 'X-Confirm-Project-Id': id },
   });
   const json = await res.json();
   if (!res.ok || !json.ok) {
@@ -243,13 +245,12 @@ export async function dbExportProjectPdf(projectId: string): Promise<Blob> {
     method: 'POST',
   });
   if (!res.ok) {
-    // Try to extract a JSON error message; if the body isn't JSON, fall back
     let errMsg = 'PDF export failed';
     try {
       const json = await res.json();
       errMsg = json.error || errMsg;
     } catch {
-      // non-JSON body — keep generic message
+      // Non-JSON body — keep generic message.
     }
     throw new Error(errMsg);
   }
