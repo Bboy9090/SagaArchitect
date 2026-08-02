@@ -13,6 +13,8 @@
     "test:staging:providers": "node scripts/verify-live-staging-providers.mjs",
     "test:staging:browser": "node verify-staging-browser.js",
     "test:staging:acceptance": "node verify-staging-acceptance.js",
+    "test:staging:cleanup": "node scripts/cleanup-staging-acceptance.mjs",
+    "test:staging:receipt": "node scripts/generate-staging-receipt.mjs",
     "env:check": "node scripts/check-env.mjs",
     "env:check:staging": "node scripts/check-env.mjs --staging",
     "env:check:production": "node scripts/check-env.mjs --production",
