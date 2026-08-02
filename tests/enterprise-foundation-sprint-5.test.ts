@@ -5,6 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { validateServerEnvironment } from '../src/lib/env-validator';
 import {
+  createProjectBackupWithAssets,
+  validateProjectBackupWithAssets,
+} from '../src/lib/project-backup-assets';
+import {
   assetObjectExists,
   createAssetStorageKey,
   deleteAssetObject,
@@ -109,4 +113,44 @@ test('provider-neutral asset operations preserve private bytes through the local
     else process.env.STORAGE_PROVIDER = previousProvider;
     await fs.promises.rm(root, { recursive: true, force: true });
   }
+});
+
+test('asset-byte backup packages validate deterministic payload and file integrity', () => {
+  const assetId = '77777777-7777-4777-8777-777777777777';
+  const payload = {
+    project: { id: '11111111-1111-4111-8111-111111111111', name: 'Backup Project' },
+    collections: {
+      assets: [{ id: assetId, name: 'panel.png', mimeType: 'image/png', fileSize: 4 }],
+      characters: [],
+    },
+  };
+  const backup = createProjectBackupWithAssets(
+    payload,
+    [{ id: assetId, name: 'panel.png', mimeType: 'image/png', bytes: new Uint8Array([1, 2, 3, 4]) }],
+    new Date('2026-08-02T17:00:00.000Z'),
+  );
+  const validation = validateProjectBackupWithAssets(backup, {
+    expectedProjectId: '11111111-1111-4111-8111-111111111111',
+  });
+  assert.equal(validation.valid, true);
+  assert.equal(validation.assetCount, 1);
+  assert.equal(validation.totalAssetBytes, 4);
+  assert.equal(backup.manifest.assetBytesIncluded, true);
+});
+
+test('asset-byte backup validation rejects tampered bytes', () => {
+  const assetId = '77777777-7777-4777-8777-777777777777';
+  const backup = createProjectBackupWithAssets(
+    {
+      project: { id: '11111111-1111-4111-8111-111111111111' },
+      collections: {
+        assets: [{ id: assetId, name: 'panel.png', mimeType: 'image/png', fileSize: 4 }],
+      },
+    },
+    [{ id: assetId, name: 'panel.png', mimeType: 'image/png', bytes: new Uint8Array([1, 2, 3, 4]) }],
+  );
+  backup.assets[0].contentBase64 = Buffer.from([9, 9, 9, 9]).toString('base64');
+  const validation = validateProjectBackupWithAssets(backup);
+  assert.equal(validation.valid, false);
+  assert.match(validation.errors.join('\n'), /integrity hash does not match/);
 });
