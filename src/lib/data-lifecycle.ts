@@ -5,6 +5,8 @@ import { ValidationError } from './api-errors';
 
 export type LifecycleOperation =
   | 'project_export'
+  | 'project_backup_export'
+  | 'project_restore_preflight'
   | 'project_delete'
   | 'account_export'
   | 'account_delete';
