@@ -1,67 +1,104 @@
-import { NextResponse } from 'next/server';
 import { db } from '@/db';
-import { storyboardPanels, scenes } from '@/db/schema';
+import { storyboardPanels } from '@/db/schema';
 import { logVersion } from '@/lib/version-history';
 import { eq } from 'drizzle-orm';
-import { requireUser, requireOwnedScene, AuthError } from '@/lib/auth-helpers';
+import { requireUser, requireOwnedAsset, requireOwnedScene } from '@/lib/auth-helpers';
+import { DependencyUnavailableError, ValidationError } from '@/lib/api-errors';
+import { apiSuccess } from '@/lib/api-response';
+import { NORMAL_MUTATION_BODY } from '@/lib/http/body-limits';
+import { readJsonBodyWithLimit } from '@/lib/http/read-bounded-body';
+import { withApiContext } from '@/lib/with-api-context';
 
-export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!db) return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
-  try {
-    const { id: sceneId } = await params;
-    const userId = await requireUser();
-    await requireOwnedScene(sceneId, userId);
-    const list = await db.select().from(storyboardPanels).where(eq(storyboardPanels.sceneId, sceneId));
-    list.sort((a, b) => a.panelNumber - b.panelNumber);
-    return NextResponse.json({
-      ok: true,
-      data: list.map((p) => ({
-        id: p.id,
-        scene_id: p.sceneId,
-        panel_number: p.panelNumber,
-        visual_prompt: p.visualPrompt,
-        action_description: p.actionDescription,
-        dialogue: p.dialogue || '',
-        camera_shot: p.cameraShot,
-        asset_id: p.assetId || undefined,
-        version: p.version || 1,
-        created_at: p.createdAt.toISOString(),
-        updated_at: p.updatedAt.toISOString(),
-      })),
-    });
-  } catch (error) {
-    if (error instanceof AuthError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
-    const msg = error instanceof Error ? error.message : 'Database error';
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
-  }
+interface StoryboardPayload {
+  id?: unknown;
+  panel_number?: unknown;
+  visual_prompt?: unknown;
+  action_description?: unknown;
+  dialogue?: unknown;
+  camera_shot?: unknown;
+  asset_id?: unknown;
+  version?: unknown;
 }
 
-export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!db) return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 500 });
-  try {
+function mapPanel(panel: typeof storyboardPanels.$inferSelect) {
+  return {
+    id: panel.id,
+    scene_id: panel.sceneId,
+    panel_number: panel.panelNumber,
+    visual_prompt: panel.visualPrompt,
+    action_description: panel.actionDescription,
+    dialogue: panel.dialogue || '',
+    camera_shot: panel.cameraShot,
+    asset_id: panel.assetId || undefined,
+    version: panel.version || 1,
+    created_at: panel.createdAt.toISOString(),
+    updated_at: panel.updatedAt.toISOString(),
+  };
+}
+
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<Response> {
+  return withApiContext(async (_req, context) => {
+    if (!db) throw new DependencyUnavailableError('Database service is unavailable.');
     const { id: sceneId } = await params;
     const userId = await requireUser();
+    context.userId = userId;
     await requireOwnedScene(sceneId, userId);
-    const payload = await req.json();
-    const panelId = payload.id || crypto.randomUUID();
+    const list = await db.select().from(storyboardPanels).where(eq(storyboardPanels.sceneId, sceneId));
+    list.sort((left, right) => left.panelNumber - right.panelNumber);
+    return apiSuccess(list.map(mapPanel), context.requestId);
+  })(request);
+}
+
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<Response> {
+  return withApiContext(async (req, context) => {
+    if (!db) throw new DependencyUnavailableError('Database service is unavailable.');
+    const { id: sceneId } = await params;
+    const userId = await requireUser();
+    context.userId = userId;
+    const scene = await requireOwnedScene(sceneId, userId);
+    const payload = await readJsonBodyWithLimit<StoryboardPayload>(req, { policy: NORMAL_MUTATION_BODY });
+    const panelId = typeof payload.id === 'string' && payload.id ? payload.id : crypto.randomUUID();
     const [existing] = await db.select().from(storyboardPanels).where(eq(storyboardPanels.id, panelId)).limit(1);
 
     if (existing && existing.sceneId !== sceneId) {
-      return NextResponse.json({ ok: false, error: 'Storyboard panel scene mismatch' }, { status: 400 });
+      throw new ValidationError('Storyboard panel scene mismatch.');
     }
 
-    const [scene] = await db.select().from(scenes).where(eq(scenes.id, sceneId)).limit(1);
-    const projectId = scene?.projectId;
+    let assetId: string | null = null;
+    if (payload.asset_id !== undefined && payload.asset_id !== null && payload.asset_id !== '') {
+      if (typeof payload.asset_id !== 'string') throw new ValidationError('asset_id must be a UUID string.');
+      const asset = await requireOwnedAsset(payload.asset_id, userId);
+      if (asset.projectId !== scene.projectId) {
+        throw new ValidationError('Storyboard assets must belong to the same project as the scene.');
+      }
+      assetId = asset.id;
+    }
+
+    const panelNumber = typeof payload.panel_number === 'number' && Number.isSafeInteger(payload.panel_number)
+      ? payload.panel_number
+      : 1;
+    if (panelNumber < 1) throw new ValidationError('panel_number must be a positive integer.');
+
     const values = {
       id: panelId,
       sceneId,
-      panelNumber: typeof payload.panel_number === 'number' ? payload.panel_number : 1,
-      visualPrompt: payload.visual_prompt || '',
-      actionDescription: payload.action_description || '',
-      dialogue: payload.dialogue || '',
-      cameraShot: payload.camera_shot || 'Medium Shot',
-      assetId: payload.asset_id || null,
-      version: payload.version || 1,
+      panelNumber,
+      visualPrompt: typeof payload.visual_prompt === 'string' ? payload.visual_prompt : '',
+      actionDescription: typeof payload.action_description === 'string' ? payload.action_description : '',
+      dialogue: typeof payload.dialogue === 'string' ? payload.dialogue : '',
+      cameraShot: typeof payload.camera_shot === 'string' && payload.camera_shot.trim()
+        ? payload.camera_shot.trim()
+        : 'Medium Shot',
+      assetId,
+      version: typeof payload.version === 'number' && Number.isSafeInteger(payload.version) && payload.version > 0
+        ? payload.version
+        : 1,
       updatedAt: new Date(),
     };
     const action = existing ? 'update' : 'create';
@@ -69,40 +106,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     await db.transaction(async (tx) => {
       if (existing) await tx.update(storyboardPanels).set(values).where(eq(storyboardPanels.id, panelId));
       else await tx.insert(storyboardPanels).values(values);
-      if (projectId) {
-        await logVersion(tx, {
-          projectId,
-          userId,
-          action,
-          entityType: 'storyboard_panel',
-          entityId: panelId,
-          changeData: values,
-        });
-      }
+      await logVersion(tx, {
+        projectId: scene.projectId,
+        userId,
+        action,
+        entityType: 'storyboard_panel',
+        entityId: panelId,
+        changeData: values,
+      });
     });
 
-    const [p] = await db.select().from(storyboardPanels).where(eq(storyboardPanels.id, panelId)).limit(1);
-    return NextResponse.json({
-      ok: true,
-      data: {
-        id: p.id,
-        scene_id: p.sceneId,
-        panel_number: p.panelNumber,
-        visual_prompt: p.visualPrompt,
-        action_description: p.actionDescription,
-        dialogue: p.dialogue || '',
-        camera_shot: p.cameraShot,
-        asset_id: p.assetId || undefined,
-        version: p.version || 1,
-        created_at: p.createdAt.toISOString(),
-        updated_at: p.updatedAt.toISOString(),
-      },
-    });
-  } catch (error) {
-    if (error instanceof AuthError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
-    const msg = error instanceof Error ? error.message : 'Database error';
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
-  }
+    const [panel] = await db.select().from(storyboardPanels).where(eq(storyboardPanels.id, panelId)).limit(1);
+    if (!panel) throw new DependencyUnavailableError('Storyboard panel could not be loaded after persistence.');
+    return apiSuccess(mapPanel(panel), context.requestId, existing ? 200 : 201);
+  })(request);
 }
 
 export const dynamic = 'force-dynamic';
