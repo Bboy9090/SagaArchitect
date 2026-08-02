@@ -36,9 +36,8 @@ export async function requireUser(): Promise<string> {
   }
 
   const session = await getServerSession(authOptions);
-  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  const userId = (session?.user as any)?.id;
-  if (!userId || typeof userId !== 'string' || !UUID_RE.test(userId)) {
+  const userId = session?.user?.id;
+  if (!userId || !UUID_RE.test(userId)) {
     throw new AuthError(401, 'Unauthorized: Session missing or expired.');
   }
   return userId;
