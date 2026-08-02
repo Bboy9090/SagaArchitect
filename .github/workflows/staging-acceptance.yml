@@ -1,0 +1,146 @@
+name: Phoenix Creator Studio Staging Acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      staging_base_url:
+        description: Exact isolated staging deployment URL
+        required: true
+        type: string
+      expected_commit_sha:
+        description: Exact 40-character commit deployed to staging
+        required: true
+        type: string
+      rollback_commit_sha:
+        description: Last verified rollback commit
+        required: true
+        type: string
+      approval_phrase:
+        description: Type RUN_ISOLATED_STAGING_ACCEPTANCE
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phoenix-creator-studio-live-staging
+  cancel-in-progress: false
+
+jobs:
+  accept:
+    name: Live isolated staging acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: staging
+    env:
+      APP_ENV: staging
+      NODE_ENV: production
+      STAGING_CONFIRM_ISOLATED: "true"
+      ALLOW_REMOTE_TESTS: "true"
+      STAGING_BASE_URL: ${{ inputs.staging_base_url }}
+      NEXTAUTH_URL: ${{ inputs.staging_base_url }}
+      DEPLOYMENT_COMMIT_SHA: ${{ inputs.expected_commit_sha }}
+      ROLLBACK_COMMIT_SHA: ${{ inputs.rollback_commit_sha }}
+      PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
+      DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+      DATABASE_MIGRATION_URL: ${{ secrets.STAGING_DATABASE_MIGRATION_URL }}
+      NEXTAUTH_SECRET: ${{ secrets.STAGING_NEXTAUTH_SECRET }}
+      STORAGE_PROVIDER: supabase
+      SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_STORAGE_BUCKET: ${{ vars.STAGING_SUPABASE_STORAGE_BUCKET }}
+      RATE_LIMIT_PROVIDER: upstash
+      RATE_LIMIT_URL: ${{ secrets.STAGING_RATE_LIMIT_URL }}
+      RATE_LIMIT_TOKEN: ${{ secrets.STAGING_RATE_LIMIT_TOKEN }}
+      FEATURE_PROJECT_RESTORE: "true"
+      ENABLE_TEST_AUTH_BYPASS: "false"
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - name: Enforce explicit staging approval
+        shell: bash
+        run: |
+          test "${{ inputs.approval_phrase }}" = "RUN_ISOLATED_STAGING_ACCEPTANCE"
+          test "${#DEPLOYMENT_COMMIT_SHA}" = "40"
+          test "${#ROLLBACK_COMMIT_SHA}" = "40"
+          test "$STAGING_BASE_URL" != "$PRODUCTION_BASE_URL"
+
+      - name: Check out the exact deployed commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_commit_sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install locked dependencies
+        shell: bash
+        run: npm ci
+
+      - name: Validate staging deployment policy
+        shell: bash
+        run: npm run env:check:staging | tee staging-environment.log
+
+      - name: Verify exact deployment identity
+        shell: bash
+        run: |
+          set -o pipefail
+          curl --fail --silent --show-error "$STAGING_BASE_URL/api/health/deployment" \
+            | tee deployment-identity.json
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const body = JSON.parse(fs.readFileSync('deployment-identity.json', 'utf8'));
+          const expected = process.env.DEPLOYMENT_COMMIT_SHA.toLowerCase();
+          if (!body.ok || body.data?.environment !== 'staging') throw new Error('Deployment identity is not staging.');
+          if (body.data?.commitSha !== expected) throw new Error(`Deployment commit mismatch: ${body.data?.commitSha}`);
+          if (body.data?.storageProvider !== 'supabase') throw new Error('Supabase storage is not active.');
+          if (body.data?.rateLimitProvider !== 'upstash') throw new Error('Upstash rate limiting is not active.');
+          if (!body.data?.projectRestoreEnabled) throw new Error('Project restore feature is not enabled for the drill.');
+          if (body.data?.testAuthBypassEnabled) throw new Error('Test auth bypass is active in staging.');
+          NODE
+
+      - name: Verify live Supabase and Upstash providers
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/verify-live-staging-providers.mjs | tee live-provider-evidence.json
+
+      - name: Run authenticated staging vertical slice and recovery drill
+        shell: bash
+        run: |
+          set -o pipefail
+          node verify-staging-acceptance.js | tee staging-acceptance-evidence.json
+
+      - name: Record staging outcome
+        if: always()
+        shell: bash
+        run: |
+          cat > staging-run-summary.json <<EOF
+          {
+            "repository": "Bboy9090/SagaArchitect",
+            "commitSha": "${DEPLOYMENT_COMMIT_SHA}",
+            "rollbackCommitSha": "${ROLLBACK_COMMIT_SHA}",
+            "stagingUrl": "${STAGING_BASE_URL}",
+            "runId": "${GITHUB_RUN_ID}",
+            "runAttempt": "${GITHUB_RUN_ATTEMPT}",
+            "completedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
+      - name: Upload staging evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phoenix-creator-studio-staging-acceptance
+          path: |
+            staging-environment.log
+            deployment-identity.json
+            live-provider-evidence.json
+            staging-acceptance-evidence.json
+            staging-run-summary.json
+          if-no-files-found: error
+          retention-days: 30
