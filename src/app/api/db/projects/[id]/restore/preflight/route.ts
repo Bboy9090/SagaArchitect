@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { requireOwnedProject, requireUser, AuthError } from '@/lib/auth-helpers';
-import { LARGE_MIGRATION_BODY } from '@/lib/http/body-limits';
+import { BACKUP_RESTORE_BODY } from '@/lib/http/body-limits';
 import { readJsonBodyWithLimit } from '@/lib/http/read-bounded-body';
 import { recordLifecycleEvent } from '@/lib/data-lifecycle';
 import { validateProjectBackup } from '@/lib/project-backup';
@@ -24,7 +24,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const userId = await requireUser();
     await consumeRateLimit(request, 'restorePreflight', userId);
     await requireOwnedProject(id, userId);
-    const backup = await readJsonBodyWithLimit<unknown>(request, { policy: LARGE_MIGRATION_BODY });
+    const backup = await readJsonBodyWithLimit<unknown>(request, { policy: BACKUP_RESTORE_BODY });
     const report = assetBackupRequested(backup)
       ? validateProjectBackupWithAssets(backup, { expectedProjectId: id })
       : validateProjectBackup(backup, { expectedProjectId: id });
