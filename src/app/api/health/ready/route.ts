@@ -4,7 +4,7 @@ import { db } from '@/db';
 import { createLogger } from '@/lib/logger';
 import { getConfiguredRateLimiter } from '@/lib/rate-limit/rate-limiter';
 import { evaluateReadiness, type DependencyCheck } from '@/lib/readiness';
-import { getStorageProvider } from '@/lib/storage';
+import { getStorageProvider } from '@/lib/storage/index';
 
 function environmentName(): string {
   return (process.env.APP_ENV || process.env.VERCEL_ENV || process.env.NODE_ENV || 'development').toLowerCase();
