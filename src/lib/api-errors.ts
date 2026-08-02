@@ -7,6 +7,7 @@ export type ApiErrorCode =
   | 'PAYLOAD_TOO_LARGE'
   | 'UNSUPPORTED_MEDIA_TYPE'
   | 'RATE_LIMITED'
+  | 'FEATURE_DISABLED'
   | 'CONFIGURATION_ERROR'
   | 'DEPENDENCY_UNAVAILABLE'
   | 'INTERNAL_ERROR';
@@ -73,6 +74,15 @@ export class RateLimitError extends ApiError {
   constructor(retryAfterSeconds: number, message = 'Too many requests. Please try again later.') {
     super(message, 429, 'RATE_LIMITED');
     this.retryAfterSeconds = Math.max(1, Math.ceil(retryAfterSeconds));
+  }
+}
+
+export class FeatureDisabledError extends ApiError {
+  readonly feature: string;
+
+  constructor(feature: string, message = 'This capability is temporarily unavailable.') {
+    super(message, 503, 'FEATURE_DISABLED');
+    this.feature = feature;
   }
 }
 
