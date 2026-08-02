@@ -1,71 +1,120 @@
 import { NextResponse } from 'next/server';
 import { sql } from 'drizzle-orm';
 import { db } from '@/db';
+import { createLogger } from '@/lib/logger';
+import { getConfiguredRateLimiter } from '@/lib/rate-limit/rate-limiter';
 import { evaluateReadiness, type DependencyCheck } from '@/lib/readiness';
+import { getStorageProvider } from '@/lib/storage';
 
-function storageCheck(): DependencyCheck {
-  const provider = (process.env.STORAGE_PROVIDER || 'local').toLowerCase();
-  if (provider === 'local') {
-    const production = process.env.APP_ENV === 'production' || process.env.NODE_ENV === 'production';
-    return {
-      name: 'storage',
-      required: true,
-      ok: !production && Boolean(process.env.STORAGE_PATH || 'storage/uploads'),
-      detail: production ? 'Local storage is not accepted for production readiness.' : 'Local storage configured.',
-    };
-  }
-  if (provider === 'supabase') {
-    return {
-      name: 'storage',
-      required: true,
-      ok: Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.SUPABASE_STORAGE_BUCKET),
-      detail: 'Supabase storage configuration checked without exposing credentials.',
-    };
-  }
-  return { name: 'storage', required: true, ok: false, detail: 'Unsupported storage provider.' };
+function environmentName(): string {
+  return (process.env.APP_ENV || process.env.VERCEL_ENV || process.env.NODE_ENV || 'development').toLowerCase();
 }
 
-function rateLimitCheck(): DependencyCheck {
-  const provider = (process.env.RATE_LIMIT_PROVIDER || 'memory').toLowerCase();
-  const production = process.env.APP_ENV === 'production' || process.env.NODE_ENV === 'production';
-  if (provider === 'memory') {
+function productionLike(): boolean {
+  return ['production', 'staging', 'preview'].includes(environmentName());
+}
+
+async function storageCheck(): Promise<DependencyCheck> {
+  const providerName = (process.env.STORAGE_PROVIDER || 'local').toLowerCase();
+  if (providerName === 'local' && productionLike()) {
+    return {
+      name: 'storage',
+      required: true,
+      ok: false,
+      detail: 'Local storage is not accepted for staging or production readiness.',
+    };
+  }
+
+  const startedAt = Date.now();
+  try {
+    const result = await getStorageProvider().probe();
+    return {
+      name: 'storage',
+      required: true,
+      ok: result.ok,
+      latencyMs: Date.now() - startedAt,
+      detail: `${result.provider} storage probe completed.`,
+    };
+  } catch (error) {
+    createLogger().warn('readiness.storage.failed', { provider: providerName, error });
+    return {
+      name: 'storage',
+      required: true,
+      ok: false,
+      latencyMs: Date.now() - startedAt,
+      detail: 'Storage probe failed.',
+    };
+  }
+}
+
+async function rateLimitCheck(): Promise<DependencyCheck> {
+  const providerName = (process.env.RATE_LIMIT_PROVIDER || 'memory').toLowerCase();
+  if (providerName === 'memory' && productionLike()) {
     return {
       name: 'rate-limit',
       required: true,
-      ok: !production,
-      detail: production ? 'In-memory rate limiting is not accepted for production readiness.' : 'In-memory test/development rate limiter configured.',
+      ok: false,
+      detail: 'In-memory rate limiting is not accepted for staging or production readiness.',
     };
   }
-  if (provider === 'redis' || provider === 'upstash') {
+
+  const startedAt = Date.now();
+  try {
+    const limiter = getConfiguredRateLimiter();
+    const result = await limiter.consume(
+      `readiness:${crypto.randomUUID()}`,
+      { name: 'readiness', limit: 1, windowMs: 1_000 },
+    );
     return {
       name: 'rate-limit',
       required: true,
-      ok: Boolean(process.env.RATE_LIMIT_URL && process.env.RATE_LIMIT_TOKEN),
-      detail: 'Distributed rate-limit configuration checked without exposing credentials.',
+      ok: result.allowed,
+      latencyMs: Date.now() - startedAt,
+      detail: `${providerName} rate-limit probe completed.`,
+    };
+  } catch (error) {
+    createLogger().warn('readiness.rate-limit.failed', { provider: providerName, error });
+    return {
+      name: 'rate-limit',
+      required: true,
+      ok: false,
+      latencyMs: Date.now() - startedAt,
+      detail: 'Rate-limit probe failed.',
     };
   }
-  return { name: 'rate-limit', required: true, ok: false, detail: 'Unsupported rate-limit provider.' };
+}
+
+async function databaseCheck(): Promise<DependencyCheck> {
+  const startedAt = Date.now();
+  if (!db) return { name: 'database', required: true, ok: false, detail: 'Database is not configured.' };
+  try {
+    await db.execute(sql`SELECT 1`);
+    return { name: 'database', required: true, ok: true, latencyMs: Date.now() - startedAt };
+  } catch {
+    return {
+      name: 'database',
+      required: true,
+      ok: false,
+      latencyMs: Date.now() - startedAt,
+      detail: 'Database probe failed.',
+    };
+  }
 }
 
 export async function GET() {
-  const checks: DependencyCheck[] = [storageCheck(), rateLimitCheck()];
-  const startedAt = Date.now();
-  if (!db) {
-    checks.push({ name: 'database', required: true, ok: false, detail: 'Database is not configured.' });
-  } else {
-    try {
-      await db.execute(sql`SELECT 1`);
-      checks.push({ name: 'database', required: true, ok: true, latencyMs: Date.now() - startedAt });
-    } catch {
-      checks.push({ name: 'database', required: true, ok: false, latencyMs: Date.now() - startedAt, detail: 'Database probe failed.' });
-    }
-  }
+  const checks = await Promise.all([
+    storageCheck(),
+    rateLimitCheck(),
+    databaseCheck(),
+  ]);
 
   checks.push({
     name: 'ai-provider',
     required: false,
     ok: Boolean(process.env.OPENAI_API_KEY),
-    detail: process.env.OPENAI_API_KEY ? 'AI provider configured.' : 'AI provider is optional; mock/local workflows remain available.',
+    detail: process.env.OPENAI_API_KEY
+      ? 'AI provider configured.'
+      : 'AI provider is optional; mock/local workflows remain available.',
   });
 
   const report = evaluateReadiness(checks);
