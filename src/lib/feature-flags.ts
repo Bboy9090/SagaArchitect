@@ -3,6 +3,7 @@ import { ConfigurationError, FeatureDisabledError } from './api-errors';
 export type FeatureName =
   | 'projectCreation'
   | 'projectDeletion'
+  | 'projectRestore'
   | 'migrationImport'
   | 'assetUpload'
   | 'pdfExport'
@@ -14,6 +15,7 @@ export type FeatureName =
 const DEFAULTS: Record<FeatureName, boolean> = {
   projectCreation: true,
   projectDeletion: true,
+  projectRestore: false,
   migrationImport: true,
   assetUpload: true,
   pdfExport: true,
@@ -26,6 +28,7 @@ const DEFAULTS: Record<FeatureName, boolean> = {
 const ENV_KEYS: Record<FeatureName, string> = {
   projectCreation: 'FEATURE_PROJECT_CREATION',
   projectDeletion: 'FEATURE_PROJECT_DELETION',
+  projectRestore: 'FEATURE_PROJECT_RESTORE',
   migrationImport: 'FEATURE_MIGRATION_IMPORT',
   assetUpload: 'FEATURE_ASSET_UPLOAD',
   pdfExport: 'FEATURE_PDF_EXPORT',

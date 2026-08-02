@@ -31,9 +31,10 @@ try {
     path.join(output, 'tests', 'enterprise-foundation-sprint-2.test.js'),
     path.join(output, 'tests', 'enterprise-foundation-sprint-3.test.js'),
     path.join(output, 'tests', 'enterprise-foundation-sprint-4.test.js'),
+    path.join(output, 'tests', 'enterprise-foundation-sprint-5.test.js'),
     path.join(output, 'tests', 'writing-sync.test.js'),
   ]);
-  process.stdout.write('\nEnterprise Foundation Sprint 1–4 focused verification passed.\n');
+  process.stdout.write('\nEnterprise Foundation Sprint 1–5 focused verification passed.\n');
 } finally {
   rmSync(output, { recursive: true, force: true });
 }

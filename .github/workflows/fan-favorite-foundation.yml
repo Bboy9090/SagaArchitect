@@ -22,6 +22,7 @@ jobs:
     env:
       APP_ENV: test
       ENABLE_TEST_AUTH_BYPASS: "true"
+      FEATURE_PROJECT_RESTORE: "true"
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/phoenix_creator_studio_test
       DATABASE_MIGRATION_URL: postgresql://postgres:postgres@127.0.0.1:5432/phoenix_creator_studio_test
       TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/phoenix_creator_studio_test
@@ -183,6 +184,15 @@ jobs:
           set -o pipefail
           node verify-history-restore.js 2>&1 | tee history-regression.log
 
+      - name: Verify transactional project restore
+        id: projectrestore
+        if: always() && !cancelled() && steps.server.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          node verify-project-restore.js 2>&1 | tee project-restore.log
+
       - name: Smoke-test repository contract
         id: smoke
         if: always() && !cancelled() && steps.install.outcome == 'success'
@@ -216,6 +226,7 @@ jobs:
             "auth_regression_outcome=${{ steps.authregression.outcome }}" \
             "canon_regression_outcome=${{ steps.canonregression.outcome }}" \
             "history_regression_outcome=${{ steps.historyregression.outcome }}" \
+            "project_restore_outcome=${{ steps.projectrestore.outcome }}" \
             "smoke_outcome=${{ steps.smoke.outcome }}" \
             > foundation-outcomes.txt
 
@@ -241,6 +252,7 @@ jobs:
             auth-regression.log
             canon-regression.log
             history-regression.log
+            project-restore.log
             smoke.log
             foundation-outcomes.txt
             .next/build-manifest.json
@@ -265,4 +277,5 @@ jobs:
           test "${{ steps.authregression.outcome }}" = "success"
           test "${{ steps.canonregression.outcome }}" = "success"
           test "${{ steps.historyregression.outcome }}" = "success"
+          test "${{ steps.projectrestore.outcome }}" = "success"
           test "${{ steps.smoke.outcome }}" = "success"

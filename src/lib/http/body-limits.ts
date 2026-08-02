@@ -18,6 +18,11 @@ export const LARGE_MIGRATION_BODY: BodyLimitPolicy = {
   maxBytes: 8 * 1024 * 1024,
 };
 
+export const BACKUP_RESTORE_BODY: BodyLimitPolicy = {
+  name: 'backup-restore-body',
+  maxBytes: 40 * 1024 * 1024,
+};
+
 export const ASSET_UPLOAD_BODY: BodyLimitPolicy = {
   name: 'asset-upload-body',
   maxBytes: 6 * 1024 * 1024,

@@ -35,6 +35,7 @@
     "src/lib/storage/local-storage-provider.ts",
     "src/lib/storage/storage-key.ts",
     "src/lib/storage/supabase-storage-provider.ts",
+    "src/lib/storage/asset-storage.ts",
     "src/lib/storage/index.ts",
     "src/db/enterprise-schema.ts",
     "src/lib/idempotency.ts",
@@ -42,6 +43,8 @@
     "src/lib/optimistic-concurrency.ts",
     "src/lib/data-lifecycle.ts",
     "src/lib/project-backup.ts",
+    "src/lib/project-backup-assets.ts",
+    "src/lib/project-restore.ts",
     "src/lib/readiness.ts",
     "src/lib/recovery-objectives.ts",
     "src/lib/writing-sync.ts",
@@ -57,6 +60,7 @@
     "tests/enterprise-foundation-sprint-2.test.ts",
     "tests/enterprise-foundation-sprint-3.test.ts",
     "tests/enterprise-foundation-sprint-4.test.ts",
+    "tests/enterprise-foundation-sprint-5.test.ts",
     "tests/writing-sync.test.ts"
   ]
 }

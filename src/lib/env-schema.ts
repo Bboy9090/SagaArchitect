@@ -18,6 +18,9 @@ export interface ServerEnvironment {
   rateLimitProvider: RateLimitProvider;
   rateLimitUrl?: string;
   rateLimitToken?: string;
+  deploymentCommitSha?: string;
+  rollbackCommitSha?: string;
+  stagingConfirmedIsolated: boolean;
 }
 
 export interface EnvironmentIssue {
