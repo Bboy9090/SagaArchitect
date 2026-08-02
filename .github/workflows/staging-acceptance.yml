@@ -31,7 +31,7 @@ jobs:
   accept:
     name: Live isolated staging acceptance
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     environment: staging
     env:
       APP_ENV: staging
@@ -58,8 +58,7 @@ jobs:
       CREDENTIAL_ROTATION_CONFIRMED: ${{ vars.CREDENTIAL_ROTATION_CONFIRMED }}
       HISTORY_REVIEW_CONFIRMED: ${{ vars.HISTORY_REVIEW_CONFIRMED }}
       ROLLBACK_REHEARSAL_CONFIRMED: ${{ vars.ROLLBACK_REHEARSAL_CONFIRMED }}
-      PCS_FF_1440_VALIDATED: ${{ vars.PCS_FF_1440_VALIDATED }}
-      PCS_WK_1440_VALIDATED: ${{ vars.PCS_WK_1440_VALIDATED }}
+      PLAYWRIGHT_VERSION: "1.62.0"
       NEXT_TELEMETRY_DISABLED: "1"
 
     steps:
@@ -83,20 +82,26 @@ jobs:
           node-version: "22"
           cache: npm
 
-      - name: Install locked dependencies
+      - name: Install locked application dependencies
         id: install
         shell: bash
         run: npm ci
 
-      - name: Locate Chromium executable
-        id: chromium
+      - name: Install exact Playwright browser runtime
+        id: playwright
         continue-on-error: true
         shell: bash
         run: |
-          executable="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
-          test -n "$executable"
-          echo "BROWSER_EXECUTABLE_PATH=$executable" >> "$GITHUB_ENV"
-          "$executable" --version | tee chromium-version.log
+          set -o pipefail
+          npm install --no-save --ignore-scripts "@playwright/test@${PLAYWRIGHT_VERSION}" \
+            2>&1 | tee playwright-install.log
+          npx playwright install --with-deps chromium firefox webkit \
+            2>&1 | tee playwright-browser-install.log
+          npx playwright --version | tee playwright-version.log
+          node - <<'NODE'
+          const { chromium, firefox, webkit } = require('playwright');
+          if (!chromium || !firefox || !webkit) throw new Error('Playwright browser engines were not installed.');
+          NODE
 
       - name: Validate staging deployment policy
         id: envcheck
@@ -135,13 +140,37 @@ jobs:
           node scripts/verify-live-staging-providers.mjs | tee live-provider.log
 
       - name: Run PCS-CHR-1440 browser acceptance
-        id: browser
-        if: steps.identity.outcome == 'success' && steps.chromium.outcome == 'success'
+        id: chromium
+        if: steps.identity.outcome == 'success' && steps.playwright.outcome == 'success'
         continue-on-error: true
+        env:
+          BROWSER_ENGINE: chromium
         shell: bash
         run: |
           set -o pipefail
-          node verify-staging-browser.js | tee staging-browser-evidence.log
+          node verify-staging-browser.js | tee staging-browser-chromium.log
+
+      - name: Run PCS-FF-1440 browser acceptance
+        id: firefox
+        if: steps.identity.outcome == 'success' && steps.playwright.outcome == 'success'
+        continue-on-error: true
+        env:
+          BROWSER_ENGINE: firefox
+        shell: bash
+        run: |
+          set -o pipefail
+          node verify-staging-browser.js | tee staging-browser-firefox.log
+
+      - name: Run PCS-WK-1440 browser acceptance
+        id: webkit
+        if: steps.identity.outcome == 'success' && steps.playwright.outcome == 'success'
+        continue-on-error: true
+        env:
+          BROWSER_ENGINE: webkit
+        shell: bash
+        run: |
+          set -o pipefail
+          node verify-staging-browser.js | tee staging-browser-webkit.log
 
       - name: Run authenticated staging vertical slice and recovery drill
         id: acceptance
@@ -171,7 +200,8 @@ jobs:
             "commitSha": "${DEPLOYMENT_COMMIT_SHA}",
             "rollbackCommitSha": "${ROLLBACK_COMMIT_SHA}",
             "stagingUrl": "${STAGING_BASE_URL}",
-            "browserConfiguration": "PCS-CHR-1440",
+            "browserConfigurations": ["PCS-CHR-1440", "PCS-FF-1440", "PCS-WK-1440"],
+            "playwrightVersion": "${PLAYWRIGHT_VERSION}",
             "runId": "${GITHUB_RUN_ID}",
             "runAttempt": "${GITHUB_RUN_ATTEMPT}",
             "completedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -195,11 +225,15 @@ jobs:
             deployment-identity.json
             live-provider.log
             live-provider-evidence.json
-            staging-browser-evidence.log
+            playwright-install.log
+            playwright-browser-install.log
+            playwright-version.log
+            staging-browser-chromium.log
+            staging-browser-firefox.log
+            staging-browser-webkit.log
             staging-acceptance-evidence.json
             staging-cleanup.log
             staging-cleanup-evidence.json
-            chromium-version.log
             artifacts/staging-browser/
             staging-run-summary.json
             staging-evidence-receipt.json
@@ -212,11 +246,13 @@ jobs:
         shell: bash
         run: |
           test "${{ steps.install.outcome }}" = "success"
-          test "${{ steps.chromium.outcome }}" = "success"
+          test "${{ steps.playwright.outcome }}" = "success"
           test "${{ steps.envcheck.outcome }}" = "success"
           test "${{ steps.identity.outcome }}" = "success"
           test "${{ steps.providers.outcome }}" = "success"
-          test "${{ steps.browser.outcome }}" = "success"
+          test "${{ steps.chromium.outcome }}" = "success"
+          test "${{ steps.firefox.outcome }}" = "success"
+          test "${{ steps.webkit.outcome }}" = "success"
           test "${{ steps.acceptance.outcome }}" = "success"
           test "${{ steps.cleanup.outcome }}" = "success"
           test "${{ steps.receipt.outcome }}" = "success"

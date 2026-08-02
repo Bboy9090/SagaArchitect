@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   assertAuthDeploymentUrl,
   authCookiePolicy,
@@ -8,6 +10,10 @@ import {
   isProductionLikeAuthEnvironment,
 } from '../src/lib/auth-security';
 import { buildDeploymentIdentity } from '../src/lib/deployment-identity';
+
+function repositoryFile(filePath: string): string {
+  return fs.readFileSync(path.join(process.cwd(), filePath), 'utf8');
+}
 
 test('staging and preview Auth.js environments require secure cookies', () => {
   assert.equal(authEnvironmentName({ APP_ENV: 'staging' }), 'staging');
@@ -81,4 +87,39 @@ test('deployment identity rejects malformed commit and provider values', () => {
   assert.equal(identity.storageProvider, 'local');
   assert.equal(identity.rateLimitProvider, 'memory');
   assert.equal(identity.projectRestoreEnabled, false);
+});
+
+test('protected staging workflow executes the complete Playwright browser matrix', () => {
+  const workflow = repositoryFile('.github/workflows/staging-acceptance.yml');
+  assert.match(workflow, /PLAYWRIGHT_VERSION: "1\.62\.0"/);
+  assert.match(workflow, /playwright install --with-deps chromium firefox webkit/);
+  assert.match(workflow, /BROWSER_ENGINE: chromium/);
+  assert.match(workflow, /BROWSER_ENGINE: firefox/);
+  assert.match(workflow, /BROWSER_ENGINE: webkit/);
+  assert.match(workflow, /steps\.chromium\.outcome/);
+  assert.match(workflow, /steps\.firefox\.outcome/);
+  assert.match(workflow, /steps\.webkit\.outcome/);
+  assert.doesNotMatch(workflow, /PCS_FF_1440_VALIDATED|PCS_WK_1440_VALIDATED/);
+});
+
+test('staging browser verifier is engine-scoped, isolated, and evidence-producing', () => {
+  const verifier = repositoryFile('verify-staging-browser.js');
+  assert.match(verifier, /require\('playwright'\)/);
+  assert.match(verifier, /PCS-CHR-1440/);
+  assert.match(verifier, /PCS-FF-1440/);
+  assert.match(verifier, /PCS-WK-1440/);
+  assert.match(verifier, /production origin/);
+  assert.match(verifier, /sessionCookiePolicy/);
+  assert.match(verifier, /delete from users where email/);
+});
+
+test('staging receipt derives all browser classifications from artifact files', () => {
+  const receipt = repositoryFile('scripts/generate-staging-receipt.mjs');
+  assert.match(receipt, /PCS-CHR-1440\.json/);
+  assert.match(receipt, /PCS-FF-1440\.json/);
+  assert.match(receipt, /PCS-WK-1440\.json/);
+  assert.match(receipt, /browserResults\.chromium/);
+  assert.match(receipt, /browserResults\.firefox/);
+  assert.match(receipt, /browserResults\.webkit/);
+  assert.doesNotMatch(receipt, /PCS_FF_1440_VALIDATED|PCS_WK_1440_VALIDATED/);
 });
