@@ -8,6 +8,7 @@ import { analyzePublishingReadiness } from '../src/lib/publishing-preflight';
 import { isValidIsbn, normalizePublishingMetadata } from '../src/lib/publishing-metadata';
 import { documentsForExportProfile, getExportProfile } from '../src/lib/export-profiles';
 import { replaceInWritingDocuments, searchWritingDocuments } from '../src/lib/project-search';
+import { instantiateWritingTemplate, WRITING_TEMPLATES } from '../src/lib/writing-templates';
 
 function storedZipEntries(archive: Uint8Array): Record<string, string> {
   const entries: Record<string, string> = {};
@@ -204,4 +205,14 @@ test('project search reports bounded previews and guarded document-scoped replac
   assert.match(replaced.documents.find(document => document.id === 'chapter')!.content, /Firebird phoenixes Firebird/);
   assert.match(replaced.documents.find(document => document.id === 'scene')!.content, /Phoenix phoenixes PHOENIX/);
   assert.equal(searchWritingDocuments(documents, 'Phoenix', { whole_word: true, case_sensitive: true })[0].matches, 1);
+});
+
+test('production writing templates cover every project type and avoid duplicate sections', () => {
+  assert.deepEqual(Object.keys(WRITING_TEMPLATES).sort(), ['comic', 'film', 'game', 'novel', 'series', 'world_bible']);
+  let id = 0;
+  const novel = instantiateWritingTemplate('novel', 'project', 'Phoenix Test', sampleDocuments, () => `template-${++id}`, '2026-01-01');
+  assert.ok(novel.some(document => document.kind === 'title_page' && document.title === 'Phoenix Test'));
+  assert.equal(novel.some(document => document.kind === 'chapter' && document.title === 'Chapter One'), false);
+  assert.ok(novel.every((document, index) => document.order === sampleDocuments.length + index));
+  assert.ok(instantiateWritingTemplate('comic', 'project', 'Issue One', [], () => `comic-${++id}`).some(document => document.kind === 'comic_script'));
 });

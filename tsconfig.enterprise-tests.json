@@ -51,6 +51,7 @@
     "src/lib/publishing-metadata.ts",
     "src/lib/export-profiles.ts",
     "src/lib/project-search.ts",
+    "src/lib/writing-templates.ts",
     "src/lib/publishing-preflight.ts",
     "tests/enterprise-foundation.test.ts",
     "tests/enterprise-foundation-sprint-2.test.ts",
