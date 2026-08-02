@@ -1,5 +1,4 @@
-import { jsonb, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
-import { pgTable } from 'drizzle-orm/pg-core';
+import { integer, jsonb, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 import { users } from './schema';
 
 export const idempotencyKeys = pgTable('idempotency_keys', {
@@ -9,7 +8,7 @@ export const idempotencyKeys = pgTable('idempotency_keys', {
   keyHash: varchar('key_hash', { length: 64 }).notNull(),
   requestHash: varchar('request_hash', { length: 64 }).notNull(),
   state: varchar('state', { length: 20 }).default('processing').notNull(),
-  responseStatus: varchar('response_status', { length: 3 }),
+  responseStatus: integer('response_status'),
   responseBody: jsonb('response_body'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
