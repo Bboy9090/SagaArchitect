@@ -10,6 +10,8 @@ import {
 } from './env-schema';
 import { ConfigurationError } from './api-errors';
 
+const COMMIT_SHA = /^[0-9a-f]{40}$/i;
+
 function valueOf(input: NodeJS.ProcessEnv, key: string): string | undefined {
   const value = input[key]?.trim();
   return value ? value : undefined;
@@ -33,6 +35,12 @@ function isValidUrl(value: string | undefined, protocols?: string[]): boolean {
   }
 }
 
+function isRemoteHttpsUrl(value: string | undefined): boolean {
+  if (!isValidUrl(value, ['https:'])) return false;
+  const hostname = new URL(value as string).hostname.toLowerCase();
+  return hostname !== 'localhost' && hostname !== '127.0.0.1' && hostname !== '::1';
+}
+
 function pushMissing(issues: EnvironmentIssue[], input: NodeJS.ProcessEnv, key: string): void {
   if (!valueOf(input, key)) issues.push({ key, message: `${key} is required.` });
 }
@@ -45,6 +53,9 @@ export function validateServerEnvironment(
   const appEnvironment = appEnvironmentOf(input);
   const productionLike = appEnvironment === 'production' || appEnvironment === 'staging';
   const testAuthBypassRequested = valueOf(input, 'ENABLE_TEST_AUTH_BYPASS') === 'true';
+  const deploymentCommitSha = valueOf(input, 'DEPLOYMENT_COMMIT_SHA') ?? valueOf(input, 'VERCEL_GIT_COMMIT_SHA');
+  const rollbackCommitSha = valueOf(input, 'ROLLBACK_COMMIT_SHA');
+  const stagingConfirmedIsolated = valueOf(input, 'STAGING_CONFIRM_ISOLATED') === 'true';
 
   const storageProvider = (valueOf(input, 'STORAGE_PROVIDER') ?? 'local') as StorageProvider;
   const rateLimitProvider = (valueOf(input, 'RATE_LIMIT_PROVIDER') ?? 'memory') as RateLimitProvider;
@@ -76,8 +87,8 @@ export function validateServerEnvironment(
     }
 
     const authUrl = valueOf(input, 'NEXTAUTH_URL');
-    if (authUrl && !isValidUrl(authUrl, ['https:'])) {
-      issues.push({ key: 'NEXTAUTH_URL', message: 'NEXTAUTH_URL must be a valid HTTPS URL in staging and production.' });
+    if (authUrl && !isRemoteHttpsUrl(authUrl)) {
+      issues.push({ key: 'NEXTAUTH_URL', message: 'NEXTAUTH_URL must be a remote HTTPS URL in staging and production.' });
     }
 
     if (storageProvider === 'local') {
@@ -92,8 +103,8 @@ export function validateServerEnvironment(
       pushMissing(issues, input, 'SUPABASE_SERVICE_ROLE_KEY');
       pushMissing(issues, input, 'SUPABASE_STORAGE_BUCKET');
       const supabaseUrl = valueOf(input, 'SUPABASE_URL');
-      if (supabaseUrl && !isValidUrl(supabaseUrl, ['https:'])) {
-        issues.push({ key: 'SUPABASE_URL', message: 'SUPABASE_URL must be a valid HTTPS URL.' });
+      if (supabaseUrl && !isRemoteHttpsUrl(supabaseUrl)) {
+        issues.push({ key: 'SUPABASE_URL', message: 'SUPABASE_URL must be a remote HTTPS URL.' });
       }
     }
 
@@ -101,19 +112,56 @@ export function validateServerEnvironment(
       pushMissing(issues, input, 'RATE_LIMIT_URL');
       pushMissing(issues, input, 'RATE_LIMIT_TOKEN');
       const rateLimitUrl = valueOf(input, 'RATE_LIMIT_URL');
-      if (rateLimitUrl && !isValidUrl(rateLimitUrl, ['https:'])) {
-        issues.push({ key: 'RATE_LIMIT_URL', message: 'RATE_LIMIT_URL must be a valid HTTPS URL.' });
+      if (rateLimitUrl && !isRemoteHttpsUrl(rateLimitUrl)) {
+        issues.push({ key: 'RATE_LIMIT_URL', message: 'RATE_LIMIT_URL must be a remote HTTPS URL.' });
       }
     }
   }
 
-  if (target === 'deployment') {
-    pushMissing(issues, input, 'DATABASE_MIGRATION_URL');
-  }
-
   const databaseUrl = valueOf(input, 'DATABASE_URL') ?? '';
+  const databaseMigrationUrl = valueOf(input, 'DATABASE_MIGRATION_URL');
   if (databaseUrl && !isValidUrl(databaseUrl, ['postgres:', 'postgresql:'])) {
     issues.push({ key: 'DATABASE_URL', message: 'DATABASE_URL must be a valid PostgreSQL URL.' });
+  }
+  if (databaseMigrationUrl && !isValidUrl(databaseMigrationUrl, ['postgres:', 'postgresql:'])) {
+    issues.push({ key: 'DATABASE_MIGRATION_URL', message: 'DATABASE_MIGRATION_URL must be a valid PostgreSQL URL.' });
+  }
+
+  if (target === 'deployment') {
+    pushMissing(issues, input, 'DATABASE_MIGRATION_URL');
+    if (databaseUrl && databaseMigrationUrl && databaseUrl === databaseMigrationUrl && productionLike) {
+      issues.push({
+        key: 'DATABASE_MIGRATION_URL',
+        message: 'Runtime and migration database URLs must be separate in staging and production deployments.',
+      });
+    }
+
+    if (appEnvironment === 'staging') {
+      if (storageProvider !== 'supabase') {
+        issues.push({ key: 'STORAGE_PROVIDER', message: 'The approved staging architecture requires Supabase Storage.' });
+      }
+      if (rateLimitProvider !== 'upstash') {
+        issues.push({ key: 'RATE_LIMIT_PROVIDER', message: 'The approved staging architecture requires Upstash rate limiting.' });
+      }
+      if (!deploymentCommitSha || !COMMIT_SHA.test(deploymentCommitSha)) {
+        issues.push({
+          key: 'DEPLOYMENT_COMMIT_SHA',
+          message: 'A full 40-character deployment commit SHA is required for staging evidence.',
+        });
+      }
+      if (!rollbackCommitSha || !COMMIT_SHA.test(rollbackCommitSha)) {
+        issues.push({
+          key: 'ROLLBACK_COMMIT_SHA',
+          message: 'A full 40-character rollback commit SHA is required for staging deployment.',
+        });
+      }
+      if (!stagingConfirmedIsolated) {
+        issues.push({
+          key: 'STAGING_CONFIRM_ISOLATED',
+          message: 'Set STAGING_CONFIRM_ISOLATED=true only after confirming staging uses no production data or credentials.',
+        });
+      }
+    }
   }
 
   if (issues.length > 0) return { ok: false, issues };
@@ -122,7 +170,7 @@ export function validateServerEnvironment(
     appEnvironment,
     nodeEnvironment: valueOf(input, 'NODE_ENV') ?? 'development',
     databaseUrl,
-    databaseMigrationUrl: valueOf(input, 'DATABASE_MIGRATION_URL'),
+    databaseMigrationUrl,
     nextAuthSecret: valueOf(input, 'NEXTAUTH_SECRET') ?? 'phoenix-studio-local-development-secret-key-1234',
     nextAuthUrl: valueOf(input, 'NEXTAUTH_URL'),
     storageProvider,
@@ -133,6 +181,9 @@ export function validateServerEnvironment(
     rateLimitProvider,
     rateLimitUrl: valueOf(input, 'RATE_LIMIT_URL'),
     rateLimitToken: valueOf(input, 'RATE_LIMIT_TOKEN'),
+    deploymentCommitSha,
+    rollbackCommitSha,
+    stagingConfirmedIsolated,
   };
 
   return { ok: true, issues: [], value };
