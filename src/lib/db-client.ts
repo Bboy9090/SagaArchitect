@@ -31,7 +31,7 @@ export async function dbGetProject(id: string): Promise<Project> {
 }
 
 export async function dbUpdateProject(id: string, data: Partial<Project>): Promise<Project> {
-  const expectedVersion = typeof data.version === 'number' ? data.version : (await dbGetProject(id)).version;
+  const expectedVersion = typeof data.version === 'number' ? data.version : (await dbGetProject(id)).version ?? 1;
   const res = await fetch(`/api/db/projects/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', 'If-Match': `"${expectedVersion}"` },
