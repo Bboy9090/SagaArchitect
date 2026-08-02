@@ -15,8 +15,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       asset.storageProvider as StorageProviderName,
       asset.filePath,
     );
+    const body = bytes.buffer.slice(
+      bytes.byteOffset,
+      bytes.byteOffset + bytes.byteLength,
+    ) as ArrayBuffer;
 
-    return new Response(bytes, {
+    return new Response(body, {
       headers: {
         'Content-Type': asset.mimeType,
         'Content-Length': bytes.byteLength.toString(),
