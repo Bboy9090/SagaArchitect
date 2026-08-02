@@ -11,6 +11,7 @@ import { dbDeleteWritingDocument, dbGetWritingDocumentRevisions, dbGetWritingDoc
 import { EMPTY_PUBLISHING_METADATA, normalizePublishingMetadata } from '@/lib/publishing-metadata';
 import { documentsForExportProfile, EXPORT_PROFILES, getExportProfile } from '@/lib/export-profiles';
 import { replaceInWritingDocuments, searchWritingDocuments } from '@/lib/project-search';
+import { instantiateWritingTemplate, WRITING_TEMPLATES } from '@/lib/writing-templates';
 import type { PublishingMetadata, Universe, WritingDocument, WritingDocumentKind, WritingDocumentRevision, WritingDocumentStatus } from '@/lib/types';
 
 const KIND_LABELS: Record<WritingDocumentKind, string> = {
@@ -232,6 +233,24 @@ export function WritingRoom({ universe }: WritingRoomProps) {
     setActiveId(remaining[0]?.id);
   };
 
+  const applyWritingTemplate = async () => {
+    const type = universe.production_type ?? 'novel';
+    const template = WRITING_TEMPLATES[type];
+    const additions = instantiateWritingTemplate(type, universe.id, universe.name, documents, () => crypto.randomUUID());
+    if (!additions.length) { alert(`${template.label} sections are already present.`); return; }
+    if (!confirm(`Add ${additions.length} missing ${template.label} section${additions.length === 1 ? '' : 's'}? Existing writing will not be changed.`)) return;
+    setSaveState('saving');
+    try {
+      const saved: WritingDocument[] = [];
+      for (const document of additions) {
+        let next = saveWritingDocument(document);
+        if (isDbMode()) next = await dbSaveWritingDocument(universe.id, next);
+        saveWritingDocument(next); saved.push(next);
+      }
+      setDocuments(current => [...current, ...saved]); setActiveId(saved[0]?.id); setSaveState('saved');
+    } catch { setSaveState('offline'); }
+  };
+
   const openHistory = async () => {
     if (!active || !isDbMode()) return;
     setShowHistory(true);
@@ -386,6 +405,7 @@ export function WritingRoom({ universe }: WritingRoomProps) {
           {active && <>
             <div className="bg-[#0f0f1a] border border-[#c9a84c]/20 rounded-xl p-4 space-y-4">
               <h2 className="text-xs font-bold text-[#c9a84c] uppercase tracking-widest">Document</h2>
+              <div><p className="text-xs text-gray-500">Production template</p><p className="mt-1 text-sm text-white">{WRITING_TEMPLATES[universe.production_type ?? 'novel'].label}</p><Button className="w-full mt-2" size="sm" variant="ghost" onClick={() => void applyWritingTemplate()}>Add missing template sections</Button></div>
               <label className="block text-xs text-gray-500">Type
                 <select value={active.kind} onChange={event => updateActive({ kind: event.target.value as WritingDocumentKind })} className="mt-1 w-full bg-[#09090f] border border-white/10 rounded px-2 py-2 text-sm text-white">
                   {Object.entries(KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
