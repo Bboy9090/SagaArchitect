@@ -134,7 +134,7 @@ jobs:
 
       - name: Restore staging alias to current deployment
         id: undo
-        if: always()
+        if: always() && steps.rollback.outcome != 'skipped'
         continue-on-error: true
         shell: bash
         run: |
