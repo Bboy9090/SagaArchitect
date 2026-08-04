@@ -6,7 +6,7 @@ Identify existing Supabase, Upstash/Redis, and Vercel resources across Bobby's r
 
 ## Audit boundary
 
-This audit inspected repository structure, deployment workflows, environment-variable usage, and committed configuration paths. It did **not** expose or copy secret values.
+This audit inspected repository structure, deployment workflows, environment-variable usage, committed configuration paths, and available workflow execution evidence. It did **not** expose or copy secret values.
 
 GitHub Actions and Environment secrets are write-only. Their values cannot be retrieved through the GitHub API. A repository may reference a secret name without proving that the secret currently exists, remains valid, or belongs to an unused provider resource.
 
@@ -41,25 +41,39 @@ Required SagaArchitect secret mapping:
 - `STAGING_DATABASE_MIGRATION_URL`
 - variable: `STAGING_SUPABASE_STORAGE_BUCKET`
 
-## Vercel candidate
+## Vercel audit
 
 ### `Bboy9090/GhostWriter-`
 
 Evidence found:
 
-The deployment workflow references these GitHub secrets:
+The deployment workflow references these GitHub secret names:
 
 - `VERCEL_TOKEN`
 - `VERCEL_ORG_ID`
 - `VERCEL_PROJECT_ID`
 
+However, the most recent inspected production workflow execution ran its `Report unconfigured Vercel deployment` step and skipped:
+
+- Vercel project pull
+- production deployment
+- preview deployment
+- deployment URL comment
+
+This means the workflow references Vercel secrets, but available execution evidence does **not** prove those secrets were configured or usable.
+
+### `Bboy9090/universal-cart-brows`
+
+The repository contains Vercel deployment documentation, but the actual active deployment workflow targets GitHub Pages and does not provide evidence of reusable Vercel credentials.
+
 Decision:
 
-- The Vercel **account** is a reuse candidate.
-- The secret values cannot be read or copied from GitHub.
-- Rotate/create a Vercel token from the Vercel dashboard.
-- Prefer creating a new Vercel project for SagaArchitect staging rather than silently repointing the old GhostWriter project.
-- Reusing the old project is acceptable only after confirming its domains, environment variables, deployments, analytics, and integrations are no longer needed.
+- No evidence-backed reusable Vercel token was found in repository-accessible data.
+- The Vercel **account** may still be reusable through the Vercel dashboard.
+- GitHub cannot reveal the values of any Actions or Environment secrets.
+- Create or rotate a Vercel token in the dashboard.
+- Prefer creating a new Vercel project for SagaArchitect staging rather than silently repointing an old project.
+- Reusing an old project is acceptable only after confirming its domains, environment variables, deployments, analytics, and integrations are no longer needed.
 
 Required secret mapping:
 
@@ -117,7 +131,7 @@ Do not:
 ## Current conclusion
 
 - Supabase resource candidate: `dads-million-miles`
-- Vercel account/workflow candidate: `GhostWriter-`
+- Vercel account candidate: possible, but no configured reusable token was proven
 - Upstash credential candidate: none proven
 - Safe direct secret migration from repositories: not possible
 - Safe provider-account/resource reuse after rotation: possible
