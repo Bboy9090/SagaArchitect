@@ -4,17 +4,21 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "npm run test:release-foundation",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test:smoke": "bash scripts/smoke-test.sh",
     "test:enterprise": "node verify-enterprise-foundation.js",
+    "test:release-foundation": "node --test tests/release-candidate-foundation.test.mjs",
     "test:staging:providers": "node scripts/verify-live-staging-providers.mjs",
     "test:staging:browser": "node verify-staging-browser.js",
     "test:staging:acceptance": "node verify-staging-acceptance.js",
     "test:staging:cleanup": "node scripts/cleanup-staging-acceptance.mjs",
     "test:staging:receipt": "node scripts/generate-staging-receipt.mjs",
+    "test:hardware:assessment": "node scripts/generate-hardware-assessment.mjs",
+    "test:rc1:assessment": "node scripts/generate-rc1-assessment.mjs",
     "env:check": "node scripts/check-env.mjs",
     "env:check:staging": "node scripts/check-env.mjs --staging",
     "env:check:production": "node scripts/check-env.mjs --production",
@@ -28,7 +32,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "check": "npm run secrets:check && npm run supply-chain:check && npm run lint && npm run typecheck && npm run test:enterprise && npm run build"
+    "check": "npm run secrets:check && npm run supply-chain:check && npm run lint && npm run typecheck && npm run test:enterprise && npm run test:release-foundation && npm run build"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.3",

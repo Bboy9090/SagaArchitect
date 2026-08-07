@@ -1,0 +1,10 @@
+{
+  "credentialRotationConfirmed": false,
+  "oldCredentialRejected": false,
+  "historyReviewConfirmed": false,
+  "rollbackRehearsalConfirmed": false,
+  "rotationReceiptReference": null,
+  "historyReviewReference": null,
+  "rollbackReceiptReference": null,
+  "notes": "Set booleans true only after the corresponding evidence exists. Never place credentials, tokens, database URLs, cookies, or service-role keys in this file."
+}

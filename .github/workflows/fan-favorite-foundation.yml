@@ -130,6 +130,15 @@ jobs:
           set -o pipefail
           npm run test:enterprise 2>&1 | tee enterprise.log
 
+      - name: Verify hardware and RC1 evidence gates
+        id: releasefoundation
+        if: always() && !cancelled() && steps.install.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:release-foundation 2>&1 | tee release-foundation.log
+
       - name: Build
         id: build
         if: always() && !cancelled() && steps.install.outcome == 'success'
@@ -221,6 +230,7 @@ jobs:
             "typecheck_outcome=${{ steps.typecheck.outcome }}" \
             "envcheck_outcome=${{ steps.envcheck.outcome }}" \
             "enterprise_outcome=${{ steps.enterprise.outcome }}" \
+            "release_foundation_outcome=${{ steps.releasefoundation.outcome }}" \
             "build_outcome=${{ steps.build.outcome }}" \
             "server_outcome=${{ steps.server.outcome }}" \
             "auth_regression_outcome=${{ steps.authregression.outcome }}" \
@@ -246,6 +256,7 @@ jobs:
             typecheck.log
             envcheck.log
             enterprise.log
+            release-foundation.log
             build.log
             server.log
             health-response.json
@@ -272,6 +283,7 @@ jobs:
           test "${{ steps.typecheck.outcome }}" = "success"
           test "${{ steps.envcheck.outcome }}" = "success"
           test "${{ steps.enterprise.outcome }}" = "success"
+          test "${{ steps.releasefoundation.outcome }}" = "success"
           test "${{ steps.build.outcome }}" = "success"
           test "${{ steps.server.outcome }}" = "success"
           test "${{ steps.authregression.outcome }}" = "success"
