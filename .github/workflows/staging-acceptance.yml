@@ -125,6 +125,10 @@ jobs:
           if (body.data?.rateLimitProvider !== 'upstash') throw new Error('Upstash rate limiting is not active.');
           if (body.data?.databaseSchema !== process.env.DATABASE_SCHEMA) throw new Error('Staging database schema isolation is not active.');
           if (body.data?.rateLimitNamespace !== process.env.RATE_LIMIT_NAMESPACE) throw new Error('Staging rate-limit namespace isolation is not active.');
+          if (body.data?.stagingIsolationConfirmed !== true) throw new Error('Deployed staging isolation confirmation is not active.');
+          if (body.data?.remoteTestsEnabled !== true) throw new Error('Deployed remote-test approval is not active.');
+          if (body.data?.stagingMigrationsEnabled !== true) throw new Error('Deployed staging migration gate is not active.');
+          if (body.data?.stagingAutomationConfigured !== true) throw new Error('Deployed staging automation is not configured.');
           if (!body.data?.projectRestoreEnabled) throw new Error('Project restore feature is not enabled for the drill.');
           if (body.data?.testAuthBypassEnabled) throw new Error('Test auth bypass is active in staging.');
           NODE

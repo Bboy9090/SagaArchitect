@@ -88,6 +88,14 @@ test('staging harnesses no longer import direct PostgreSQL or provider service c
   }
 });
 
+test('staging acceptance requires deployed isolation, migration, remote-test, and automation flags', () => {
+  const workflow = repositoryFile('.github/workflows/staging-acceptance.yml');
+  assert.match(workflow, /stagingIsolationConfirmed !== true/);
+  assert.match(workflow, /remoteTestsEnabled !== true/);
+  assert.match(workflow, /stagingMigrationsEnabled !== true/);
+  assert.match(workflow, /stagingAutomationConfigured !== true/);
+});
+
 test('staging automation endpoints remain server-side and environment-gated', () => {
   const providerRoute = repositoryFile('src/app/api/staging/provider-probe/route.ts');
   const cleanupRoute = repositoryFile('src/app/api/staging/cleanup/route.ts');

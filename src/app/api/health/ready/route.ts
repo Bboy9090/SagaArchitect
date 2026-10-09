@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sql } from 'drizzle-orm';
 import { db } from '@/db';
+import { users } from '@/db/schema';
 import { createLogger } from '@/lib/logger';
 import { getConfiguredRateLimiter } from '@/lib/rate-limit/rate-limiter';
 import { evaluateReadiness, type DependencyCheck } from '@/lib/readiness';
@@ -89,7 +90,16 @@ async function databaseCheck(): Promise<DependencyCheck> {
   if (!db) return { name: 'database', required: true, ok: false, detail: 'Database is not configured.' };
   try {
     await db.execute(sql`SELECT 1`);
-    return { name: 'database', required: true, ok: true, latencyMs: Date.now() - startedAt };
+    await db.select({ id: users.id }).from(users).limit(1);
+    return {
+      name: 'database',
+      required: true,
+      ok: true,
+      latencyMs: Date.now() - startedAt,
+      detail: process.env.DATABASE_SCHEMA
+        ? `Database schema ${process.env.DATABASE_SCHEMA} contains the application tables.`
+        : 'Database application tables are reachable.',
+    };
   } catch {
     return {
       name: 'database',

@@ -60,6 +60,10 @@ test('deployment identity exposes only safe evidence fields', () => {
     ENABLE_TEST_AUTH_BYPASS: 'true',
     DATABASE_URL: 'postgresql://should-not-appear',
     SUPABASE_SERVICE_ROLE_KEY: 'should-not-appear',
+    STAGING_CONFIRM_ISOLATED: 'true',
+    ALLOW_REMOTE_TESTS: 'true',
+    RUN_STAGING_MIGRATIONS: 'true',
+    STAGING_AUTOMATION_TOKEN: 'x'.repeat(48),
   });
 
   assert.deepEqual(identity, {
@@ -72,6 +76,10 @@ test('deployment identity exposes only safe evidence fields', () => {
     rateLimitNamespace: 'pcs:staging:phoenix',
     projectRestoreEnabled: true,
     testAuthBypassEnabled: false,
+    stagingIsolationConfirmed: true,
+    remoteTestsEnabled: true,
+    stagingMigrationsEnabled: true,
+    stagingAutomationConfigured: true,
   });
   assert.doesNotMatch(JSON.stringify(identity), /postgresql|service-role|should-not-appear/);
 });
@@ -93,6 +101,10 @@ test('deployment identity rejects malformed commit and provider values', () => {
   assert.equal(identity.databaseSchema, null);
   assert.equal(identity.rateLimitNamespace, null);
   assert.equal(identity.projectRestoreEnabled, false);
+  assert.equal(identity.stagingIsolationConfirmed, false);
+  assert.equal(identity.remoteTestsEnabled, false);
+  assert.equal(identity.stagingMigrationsEnabled, false);
+  assert.equal(identity.stagingAutomationConfigured, false);
 });
 
 test('protected staging workflow executes the complete Playwright browser matrix', () => {

@@ -12,6 +12,10 @@ export interface DeploymentIdentity {
   rateLimitNamespace: string | null;
   projectRestoreEnabled: boolean;
   testAuthBypassEnabled: boolean;
+  stagingIsolationConfirmed: boolean;
+  remoteTestsEnabled: boolean;
+  stagingMigrationsEnabled: boolean;
+  stagingAutomationConfigured: boolean;
 }
 
 function safeProvider(value: string | undefined, fallback: string): string {
@@ -52,5 +56,12 @@ export function buildDeploymentIdentity(
     testAuthBypassEnabled:
       environment.APP_ENV === 'test'
       && environment.ENABLE_TEST_AUTH_BYPASS === 'true',
+    stagingIsolationConfirmed: environment.STAGING_CONFIRM_ISOLATED === 'true',
+    remoteTestsEnabled: environment.ALLOW_REMOTE_TESTS === 'true',
+    stagingMigrationsEnabled: environment.RUN_STAGING_MIGRATIONS === 'true',
+    stagingAutomationConfigured: Boolean(
+      environment.STAGING_AUTOMATION_TOKEN
+      && environment.STAGING_AUTOMATION_TOKEN.trim().length >= 32
+    ),
   };
 }
