@@ -52,9 +52,10 @@ jobs:
       CURRENT_COMMIT_SHA: ${{ inputs.current_commit_sha }}
       ROLLBACK_COMMIT_SHA: ${{ inputs.rollback_commit_sha }}
       PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      STAGING_VERCEL_API_TOKEN: ${{ secrets.STAGING_VERCEL_API_TOKEN }}
+      STAGING_VERCEL_ORG_ID: ${{ secrets.STAGING_VERCEL_ORG_ID }}
+      STAGING_VERCEL_PROJECT_ID: ${{ secrets.STAGING_VERCEL_PROJECT_ID }}
       NEXT_TELEMETRY_DISABLED: "1"
 
     steps:
@@ -67,9 +68,10 @@ jobs:
           test -n "$PRODUCTION_BASE_URL"
           test "$STAGING_ALIAS_URL" != "$PRODUCTION_BASE_URL"
           test "$CURRENT_DEPLOYMENT_URL" != "$ROLLBACK_DEPLOYMENT_URL"
-          test -n "$VERCEL_TOKEN"
-          test -n "$VERCEL_ORG_ID"
-          test -n "$VERCEL_PROJECT_ID"
+          test "${#VERCEL_AUTOMATION_BYPASS_SECRET}" -ge 32
+          test -n "$STAGING_VERCEL_API_TOKEN"
+          test -n "$STAGING_VERCEL_ORG_ID"
+          test -n "$STAGING_VERCEL_PROJECT_ID"
 
       - name: Check out current repository tooling
         uses: actions/checkout@v4
@@ -83,18 +85,28 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Link Vercel project non-interactively
+      - name: Link Vercel staging project non-interactively
         shell: bash
         run: |
           mkdir -p .vercel
-          printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > .vercel/project.json
+          printf '{"orgId":"%s","projectId":"%s"}\n'             "$STAGING_VERCEL_ORG_ID" "$STAGING_VERCEL_PROJECT_ID"             > .vercel/project.json
 
       - name: Verify both immutable deployments before alias change
         shell: bash
         run: |
           node - <<'NODE'
+          function protectionHeaders() {
+            return {
+              'x-vercel-protection-bypass': process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+              'x-vercel-set-bypass-cookie': 'true',
+            };
+          }
+
           async function verify(url, expected, label) {
-            const response = await fetch(new URL('/api/health/deployment', url));
+            const response = await fetch(new URL('/api/health/deployment', url), {
+              cache: 'no-store',
+              headers: protectionHeaders(),
+            });
             if (!response.ok) throw new Error(`${label} identity returned ${response.status}.`);
             const body = await response.json();
             if (body.data?.environment !== 'staging') throw new Error(`${label} is not a staging deployment.`);
@@ -102,6 +114,7 @@ jobs:
               throw new Error(`${label} commit mismatch: ${body.data?.commitSha}`);
             }
           }
+
           await verify(process.env.CURRENT_DEPLOYMENT_URL, process.env.CURRENT_COMMIT_SHA, 'Current deployment');
           await verify(process.env.ROLLBACK_DEPLOYMENT_URL, process.env.ROLLBACK_COMMIT_SHA, 'Rollback deployment');
           NODE
@@ -112,13 +125,19 @@ jobs:
         shell: bash
         run: |
           alias_host="$(node -e "console.log(new URL(process.env.STAGING_ALIAS_URL).hostname)")"
-          npx --yes vercel@58.0.0 alias set "$ROLLBACK_DEPLOYMENT_URL" "$alias_host" \
-            --token "$VERCEL_TOKEN"
+          npx --yes vercel@58.0.0 alias set "$ROLLBACK_DEPLOYMENT_URL" "$alias_host"             --token "$STAGING_VERCEL_API_TOKEN"
           node - <<'NODE'
           const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          const headers = {
+            'x-vercel-protection-bypass': process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+            'x-vercel-set-bypass-cookie': 'true',
+          };
           for (let attempt = 1; attempt <= 30; attempt += 1) {
             try {
-              const response = await fetch(new URL('/api/health/deployment', process.env.STAGING_ALIAS_URL), { cache: 'no-store' });
+              const response = await fetch(
+                new URL('/api/health/deployment', process.env.STAGING_ALIAS_URL),
+                { cache: 'no-store', headers },
+              );
               const body = await response.json();
               if (response.ok && body.data?.commitSha === process.env.ROLLBACK_COMMIT_SHA.toLowerCase()) {
                 console.log(JSON.stringify(body, null, 2));
@@ -129,8 +148,7 @@ jobs:
           }
           throw new Error('Staging alias did not converge to the rollback deployment.');
           NODE
-          curl --fail --silent --show-error "$STAGING_ALIAS_URL/api/health/ready" \
-            | tee rollback-readiness.json
+          curl --fail --silent --show-error             -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET"             -H "x-vercel-set-bypass-cookie: true"             "$STAGING_ALIAS_URL/api/health/ready" | tee rollback-readiness.json
 
       - name: Restore staging alias to current deployment
         id: undo
@@ -139,13 +157,19 @@ jobs:
         shell: bash
         run: |
           alias_host="$(node -e "console.log(new URL(process.env.STAGING_ALIAS_URL).hostname)")"
-          npx --yes vercel@58.0.0 alias set "$CURRENT_DEPLOYMENT_URL" "$alias_host" \
-            --token "$VERCEL_TOKEN"
+          npx --yes vercel@58.0.0 alias set "$CURRENT_DEPLOYMENT_URL" "$alias_host"             --token "$STAGING_VERCEL_API_TOKEN"
           node - <<'NODE'
           const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          const headers = {
+            'x-vercel-protection-bypass': process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+            'x-vercel-set-bypass-cookie': 'true',
+          };
           for (let attempt = 1; attempt <= 30; attempt += 1) {
             try {
-              const response = await fetch(new URL('/api/health/deployment', process.env.STAGING_ALIAS_URL), { cache: 'no-store' });
+              const response = await fetch(
+                new URL('/api/health/deployment', process.env.STAGING_ALIAS_URL),
+                { cache: 'no-store', headers },
+              );
               const body = await response.json();
               if (response.ok && body.data?.commitSha === process.env.CURRENT_COMMIT_SHA.toLowerCase()) {
                 console.log(JSON.stringify(body, null, 2));
@@ -156,8 +180,7 @@ jobs:
           }
           throw new Error('Staging alias did not return to the current deployment.');
           NODE
-          curl --fail --silent --show-error "$STAGING_ALIAS_URL/api/health/ready" \
-            | tee restored-readiness.json
+          curl --fail --silent --show-error             -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET"             -H "x-vercel-set-bypass-cookie: true"             "$STAGING_ALIAS_URL/api/health/ready" | tee restored-readiness.json
 
       - name: Record rollback rehearsal receipt
         if: always()

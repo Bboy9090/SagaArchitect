@@ -117,3 +117,17 @@ test('staging automation endpoints remain server-side and environment-gated', ()
   assert.match(cleanupRoute, /isStagingTestEmail/);
   assert.match(cleanupRoute, /deleteAssetObject/);
 });
+
+
+test('rollback rehearsal keeps provider credentials out of GitHub and uses protected Vercel access', () => {
+  const rollback = repositoryFile('.github/workflows/staging-rollback-rehearsal.yml');
+  assert.match(rollback, /STAGING_VERCEL_API_TOKEN/);
+  assert.match(rollback, /STAGING_VERCEL_ORG_ID/);
+  assert.match(rollback, /STAGING_VERCEL_PROJECT_ID/);
+  assert.match(rollback, /VERCEL_AUTOMATION_BYPASS_SECRET/);
+  assert.match(rollback, /x-vercel-protection-bypass/);
+  assert.doesNotMatch(rollback, /\bVERCEL_TOKEN:/);
+  assert.doesNotMatch(rollback, /\bVERCEL_ORG_ID:/);
+  assert.doesNotMatch(rollback, /\bVERCEL_PROJECT_ID:/);
+  assert.doesNotMatch(rollback, /STAGING_DATABASE_URL|STAGING_DATABASE_MIGRATION_URL|STAGING_SUPABASE_SERVICE_ROLE_KEY|STAGING_RATE_LIMIT_TOKEN/);
+});
