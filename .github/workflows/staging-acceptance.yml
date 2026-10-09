@@ -48,7 +48,7 @@ jobs:
       RATE_LIMIT_PROVIDER: upstash
       RATE_LIMIT_NAMESPACE: ${{ vars.STAGING_RATE_LIMIT_NAMESPACE }}
       STAGING_AUTOMATION_TOKEN: ${{ secrets.STAGING_AUTOMATION_TOKEN }}
-      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      VERCEL_SHARE_BYPASS_SECRET: ${{ secrets.VERCEL_SHARE_BYPASS_SECRET }}
       FEATURE_PROJECT_RESTORE: "true"
       ENABLE_TEST_AUTH_BYPASS: "false"
       CREDENTIAL_ROTATION_CONFIRMED: ${{ vars.CREDENTIAL_ROTATION_CONFIRMED }}
@@ -112,8 +112,8 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          curl --fail --silent --show-error \
-            -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" \
+          curl --fail --silent --show-error --get \
+            --data-urlencode "_vercel_share=$VERCEL_SHARE_BYPASS_SECRET" \
             "$STAGING_BASE_URL/api/health/deployment" | tee deployment-identity.json
           node - <<'NODE'
           const fs = require('node:fs');

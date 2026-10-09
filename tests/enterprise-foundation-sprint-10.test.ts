@@ -69,7 +69,7 @@ test('staging cleanup email allowlist accepts only generated acceptance identiti
 test('GitHub staging workflow no longer receives provider or database credentials', () => {
   const workflow = repositoryFile('.github/workflows/staging-acceptance.yml');
   assert.match(workflow, /STAGING_AUTOMATION_TOKEN/);
-  assert.match(workflow, /VERCEL_AUTOMATION_BYPASS_SECRET/);
+  assert.match(workflow, /VERCEL_SHARE_BYPASS_SECRET/);
   assert.doesNotMatch(workflow, /STAGING_DATABASE_URL/);
   assert.doesNotMatch(workflow, /STAGING_DATABASE_MIGRATION_URL/);
   assert.doesNotMatch(workflow, /STAGING_SUPABASE_SERVICE_ROLE_KEY/);

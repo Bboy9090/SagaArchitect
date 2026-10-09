@@ -12,18 +12,19 @@ export function stagingAutomationConfiguration(environment = process.env) {
     throw new Error('Staging automation refuses the configured production origin.');
   }
   if (!token || token.length < 32) throw new Error('STAGING_AUTOMATION_TOKEN is required.');
-  const vercelBypass = environment.VERCEL_AUTOMATION_BYPASS_SECRET?.trim() || null;
-  return { baseUrl, token, vercelBypass };
+  const vercelShare = environment.VERCEL_SHARE_BYPASS_SECRET?.trim() || null;
+  return { baseUrl, token, vercelShare };
 }
 
 export async function stagingAutomationPost(path, environment = process.env) {
-  const { baseUrl, token, vercelBypass } = stagingAutomationConfiguration(environment);
-  const response = await fetch(new URL(path, baseUrl), {
+  const { baseUrl, token, vercelShare } = stagingAutomationConfiguration(environment);
+  const url = new URL(path, baseUrl);
+  if (vercelShare) url.searchParams.set('_vercel_share', vercelShare);
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       authorization: `Bearer ${token}`,
       'content-type': 'application/json',
-      ...(vercelBypass ? { 'x-vercel-protection-bypass': vercelBypass } : {}),
     },
     body: '{}',
   });

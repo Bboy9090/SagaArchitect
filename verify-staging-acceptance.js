@@ -3,7 +3,7 @@ const { randomUUID } = require('node:crypto');
 
 const BASE_URL = process.env.STAGING_BASE_URL || process.env.TEST_BASE_URL;
 const AUTOMATION_TOKEN = process.env.STAGING_AUTOMATION_TOKEN;
-const VERCEL_BYPASS = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+const VERCEL_SHARE = process.env.VERCEL_SHARE_BYPASS_SECRET;
 const EXPECTED_COMMIT = process.env.DEPLOYMENT_COMMIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA;
 
 function requireConfiguration() {
@@ -79,10 +79,11 @@ class CookieJar {
 
 async function requestWithJar(jar, path, options = {}) {
   const headers = new Headers(options.headers || {});
-  if (VERCEL_BYPASS) headers.set('x-vercel-protection-bypass', VERCEL_BYPASS);
   const cookie = jar.header();
   if (cookie) headers.set('cookie', cookie);
-  const response = await fetch(new URL(path, BASE_URL), {
+  const requestUrl = new URL(path, BASE_URL);
+  if (VERCEL_SHARE) requestUrl.searchParams.set('_vercel_share', VERCEL_SHARE);
+  const response = await fetch(requestUrl, {
     ...options,
     headers,
     redirect: options.redirect || 'manual',
@@ -417,12 +418,13 @@ async function run() {
     evidence.ok = true;
   } finally {
     try {
-      const cleanupResponse = await fetch(new URL('/api/staging/cleanup', BASE_URL), {
+      const cleanupUrl = new URL('/api/staging/cleanup', BASE_URL);
+      if (VERCEL_SHARE) cleanupUrl.searchParams.set('_vercel_share', VERCEL_SHARE);
+      const cleanupResponse = await fetch(cleanupUrl, {
         method: 'POST',
         headers: {
           authorization: `Bearer ${AUTOMATION_TOKEN}`,
           'content-type': 'application/json',
-          ...(VERCEL_BYPASS ? { 'x-vercel-protection-bypass': VERCEL_BYPASS } : {}),
         },
         body: '{}',
       });

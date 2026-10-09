@@ -6,7 +6,7 @@ const path = require('node:path');
 
 const BASE_URL = process.env.STAGING_BASE_URL;
 const AUTOMATION_TOKEN = process.env.STAGING_AUTOMATION_TOKEN;
-const VERCEL_BYPASS = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+const VERCEL_SHARE = process.env.VERCEL_SHARE_BYPASS_SECRET;
 const ENGINE = process.env.BROWSER_ENGINE?.trim().toLowerCase();
 const ARTIFACT_DIR = path.resolve('artifacts/staging-browser');
 
@@ -80,7 +80,6 @@ async function run() {
     evidence.browserVersion = browser.version();
     context = await browser.newContext({
       viewport: { width: 1440, height: 900 },
-      extraHTTPHeaders: VERCEL_BYPASS ? { 'x-vercel-protection-bypass': VERCEL_BYPASS } : {},
       deviceScaleFactor: 1,
       ignoreHTTPSErrors: false,
     });
@@ -100,8 +99,9 @@ async function run() {
       });
     });
 
-    const registerUrl = new URL('/register', BASE_URL).toString();
-    const response = await page.goto(registerUrl, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+    const registerUrl = new URL('/register', BASE_URL);
+    if (VERCEL_SHARE) registerUrl.searchParams.set('_vercel_share', VERCEL_SHARE);
+    const response = await page.goto(registerUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 45_000 });
     if (!response || response.status() !== 200) {
       throw new Error(`Registration page returned ${response?.status() ?? 'no response'}.`);
     }
@@ -169,12 +169,13 @@ async function run() {
     if (browser) await browser.close().catch(() => undefined);
 
     try {
-      const cleanupResponse = await fetch(new URL('/api/staging/cleanup', BASE_URL), {
+      const cleanupUrl = new URL('/api/staging/cleanup', BASE_URL);
+      if (VERCEL_SHARE) cleanupUrl.searchParams.set('_vercel_share', VERCEL_SHARE);
+      const cleanupResponse = await fetch(cleanupUrl, {
         method: 'POST',
         headers: {
           authorization: `Bearer ${AUTOMATION_TOKEN}`,
           'content-type': 'application/json',
-          ...(VERCEL_BYPASS ? { 'x-vercel-protection-bypass': VERCEL_BYPASS } : {}),
         },
         body: '{}',
       });

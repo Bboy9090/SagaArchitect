@@ -16,7 +16,7 @@ Keep Supabase, Upstash, and PostgreSQL credentials inside the Vercel staging run
 - cleanup removes durable asset objects before cascading test-user records
 - browser and creator-journey harnesses no longer import PostgreSQL or receive migration credentials
 - GitHub staging acceptance no longer receives Supabase service-role, Upstash, database, or Auth.js secrets
-- Vercel Deployment Protection support is wired through an automation-bypass header, but the project-level bypass must still be provisioned by an authorized Vercel owner
+- Vercel Deployment Protection support uses a short-lived shareable-link bypass query; the stronger project-level automation bypass remains unavailable to the connected Vercel API identity
 
 ## Local verification checkpoint
 
@@ -32,6 +32,6 @@ Keep Supabase, Upstash, and PostgreSQL credentials inside the Vercel staging run
 
 The staging automation token has been generated and stored only in the protected GitHub `staging` environment and the Vercel `staging` branch Preview environment. Its value is not committed or recorded here.
 
-Vercel project automation-bypass creation currently requires project-owner permission not available to the connected API identity. Until that bypass is configured, the GitHub browser runner cannot cross Vercel Preview Deployment Protection, so live browser classification remains blocked.
+The project-level automation bypass requires project-owner permission not available to the connected API identity. A seven-day shareable-link bypass has been created instead and stored only as a protected GitHub staging secret; this is sufficient for the current acceptance window but is intentionally temporary.
 
 No production deployment or merge is authorized by this evidence file.

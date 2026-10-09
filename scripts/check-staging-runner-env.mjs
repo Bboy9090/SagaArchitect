@@ -20,7 +20,7 @@ if (!/^[A-Za-z0-9][A-Za-z0-9:_-]{2,95}$/.test(required('RATE_LIMIT_NAMESPACE')))
   throw new Error('RATE_LIMIT_NAMESPACE must be a safe staging namespace.');
 }
 if (required('STAGING_AUTOMATION_TOKEN').length < 32) throw new Error('STAGING_AUTOMATION_TOKEN is too short.');
-if (required('VERCEL_AUTOMATION_BYPASS_SECRET').length < 24) throw new Error('VERCEL_AUTOMATION_BYPASS_SECRET is too short.');
+if (required('VERCEL_SHARE_BYPASS_SECRET').length < 24) throw new Error('VERCEL_SHARE_BYPASS_SECRET is too short.');
 
 console.log(JSON.stringify({
   ok: true,
