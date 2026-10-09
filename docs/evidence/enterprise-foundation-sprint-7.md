@@ -50,3 +50,32 @@ The Vercel prebuild is a secondary signal only. A GitHub enterprise gate remains
 ## Merge rule
 
 Do not merge PR #52 unless the fresh enterprise gate completes successfully. Do not claim hardware validation or RC1 from this PR alone. Production publication remains separately owner-approved.
+
+## 2026-10-09 security refresh checkpoint
+
+The dependency gate was refreshed against current npm advisories before any merge decision:
+
+- Next.js upgraded from 16.2.12 to 16.4.0.
+- `eslint-config-next` upgraded to 16.4.0.
+- the `sharp` override moved to 0.35.5.
+- the `js-yaml` override moved to 4.3.2.
+- transitive patched versions were refreshed through the lockfile without `npm audit fix --force`.
+- production dependency audit now reports zero vulnerabilities with `npm audit --omit=dev --audit-level=high`.
+- unresolved high advisories are confined to reviewed development-only lint tooling and are enforced through `scripts/check-dev-advisory-policy.mjs`; any new high/critical package or any production-path appearance fails the gate.
+- the dev-advisory report is retained as a CI evidence artifact rather than being silently ignored.
+
+The same pass also removed the Next.js middleware deprecation by moving the route guard to `src/proxy.ts`, removed two lint warnings, eliminated the Turbopack dynamic-filesystem tracing warnings, and routed PDF asset reads through the provider-neutral storage layer so durable Supabase-backed assets can be embedded in exports.
+
+Local Apple Silicon validation on the authorized Mac completed successfully with the CI-equivalent test environment:
+
+- tracked-file secret scan: PASS
+- dependency/license policy: PASS
+- production high/critical audit: PASS (0 production vulnerabilities)
+- reviewed dev-advisory policy: PASS
+- lint: PASS with no warnings
+- typecheck: PASS
+- enterprise focused tests: 72/72 PASS
+- release-foundation tests: 8/8 PASS
+- Next.js 16.4.0 production build: PASS
+
+This local checkpoint is supporting evidence only. The GitHub Actions gate and Vercel preview must still pass on the pushed exact commit before merge.

@@ -9,7 +9,7 @@ export class LocalStorageProvider implements StorageProvider {
   private readonly root: string;
 
   constructor(rootPath = process.env.STORAGE_PATH || 'storage/uploads') {
-    this.root = path.resolve(path.isAbsolute(rootPath) ? rootPath : path.join(process.cwd(), rootPath));
+    this.root = path.resolve(/* turbopackIgnore: true */ rootPath);
   }
 
   private resolveKey(key: string): string {

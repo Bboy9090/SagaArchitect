@@ -38,6 +38,7 @@
     "src/lib/storage/storage-key.ts",
     "src/lib/storage/supabase-storage-provider.ts",
     "src/lib/storage/asset-storage.ts",
+    "src/lib/pdf-asset-resolver.ts",
     "src/lib/storage/index.ts",
     "src/db/enterprise-schema.ts",
     "src/lib/idempotency.ts",

@@ -250,6 +250,7 @@ jobs:
             secrets.log
             supply-chain.log
             artifacts/dependency-policy.json
+            artifacts/dev-advisory-policy.json
             artifacts/sbom.cdx.json
             schema.log
             lint.log

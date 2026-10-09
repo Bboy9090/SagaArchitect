@@ -13,8 +13,6 @@ import type { SharedLoreEntry, SharedLoreSourceType } from '@/lib/types';
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-type GenerateType = 'character' | 'faction' | 'world_concept';
-
 /** Fresh recombination seed — new unified output format */
 interface FreshSeed {
   title: string;
@@ -80,7 +78,6 @@ export default function SharedLorePoolPage() {
 
   // Generate panel
   const [showGenerate, setShowGenerate] = useState(false);
-  const [genTypes, setGenTypes] = useState<GenerateType[]>(['character', 'faction']);
   const [genGenre, setGenGenre] = useState('fantasy');
   const [genTone, setGenTone] = useState('dark epic');
   const [genThemes, setGenThemes] = useState('');
@@ -129,12 +126,6 @@ export default function SharedLorePoolPage() {
   const handleDeleteLocal = (id: string) => {
     deleteSharedLoreEntry(id);
     setPoolEntries(prev => prev.filter(e => e.id !== id));
-  };
-
-  const toggleGenType = (t: GenerateType) => {
-    setGenTypes(prev =>
-      prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t],
-    );
   };
 
   const handleGenerate = async () => {

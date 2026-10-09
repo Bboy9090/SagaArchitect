@@ -25,14 +25,16 @@
     "secrets:check": "node scripts/check-secrets.mjs",
     "dependency:policy": "node scripts/check-dependency-policy.mjs",
     "sbom:generate": "node scripts/generate-sbom.mjs",
-    "audit:ci": "npm audit --audit-level=high",
-    "supply-chain:check": "npm run dependency:policy && npm run sbom:generate && npm run audit:ci",
+    "audit:ci": "npm audit --omit=dev --audit-level=high",
+    "supply-chain:check": "npm run dependency:policy && npm run sbom:generate && npm run audit:ci && npm run audit:dev-policy",
     "healthcheck": "bash scripts/healthcheck.sh",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "check": "npm run secrets:check && npm run supply-chain:check && npm run lint && npm run typecheck && npm run test:enterprise && npm run test:release-foundation && npm run build"
+    "check": "npm run secrets:check && npm run supply-chain:check && npm run lint && npm run typecheck && npm run test:enterprise && npm run test:release-foundation && npm run build",
+    "audit:dev-policy": "node scripts/check-dev-advisory-policy.mjs",
+    "audit:full": "npm audit"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.3",
@@ -40,7 +42,7 @@
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
-    "next": "16.2.12",
+    "next": "16.4.0",
     "next-auth": "^4.24.15",
     "openai": "^6.27.0",
     "postgres": "^3.4.9",
@@ -56,13 +58,13 @@
     "@types/react-dom": "^19",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
-    "eslint-config-next": "16.2.12",
+    "eslint-config-next": "16.4.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   },
   "overrides": {
-    "js-yaml": "4.3.0",
+    "js-yaml": "4.3.2",
     "postcss": "8.5.25",
-    "sharp": "0.35.3"
+    "sharp": "0.35.5"
   }
 }

@@ -24,6 +24,7 @@ import {
   saveAssetObject,
 } from '../src/lib/storage/asset-storage';
 import { resetStorageProviderForTests } from '../src/lib/storage/index';
+import { resolveStoredAssetToDataUrl } from '../src/lib/pdf-asset-resolver';
 
 function validStagingEnvironment(): NodeJS.ProcessEnv {
   return {
@@ -118,6 +119,39 @@ test('provider-neutral asset operations preserve private bytes through the local
     assert.deepEqual([...await readAssetObject('local', stored.storageReference)], [1, 2, 3, 4]);
     await deleteAssetObject('local', stored.storageReference);
     assert.equal(await assetObjectExists('local', stored.storageReference), false);
+  } finally {
+    resetStorageProviderForTests();
+    if (previousPath === undefined) delete process.env.STORAGE_PATH;
+    else process.env.STORAGE_PATH = previousPath;
+    if (previousProvider === undefined) delete process.env.STORAGE_PROVIDER;
+    else process.env.STORAGE_PROVIDER = previousProvider;
+    await fs.promises.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('PDF asset resolution uses the provider-neutral storage path', async () => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'pcs-pdf-asset-'));
+  const previousPath = process.env.STORAGE_PATH;
+  const previousProvider = process.env.STORAGE_PROVIDER;
+  process.env.STORAGE_PATH = root;
+  process.env.STORAGE_PROVIDER = 'local';
+  resetStorageProviderForTests();
+
+  const assetId = '77777777-7777-4777-8777-777777777777';
+  try {
+    const stored = await saveAssetObject({
+      assetId,
+      extension: '.png',
+      data: new Uint8Array([1, 2, 3, 4]),
+      contentType: 'image/png',
+      provider: 'local',
+    });
+    const dataUrl = await resolveStoredAssetToDataUrl({
+      storageProvider: stored.storageProvider,
+      storageReference: stored.storageReference,
+      mimeType: stored.contentType,
+    });
+    assert.equal(dataUrl, 'data:image/png;base64,AQIDBA==');
   } finally {
     resetStorageProviderForTests();
     if (previousPath === undefined) delete process.env.STORAGE_PATH;
