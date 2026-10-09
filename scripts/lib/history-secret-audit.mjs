@@ -39,7 +39,7 @@ export function scanTextForSecretFingerprints(text) {
     while ((match = detector.pattern.exec(text)) !== null) {
       const matchedValue = match[0];
       const candidateValue = match[1] || matchedValue;
-      if (PLACEHOLDER.test(candidateValue) || PLACEHOLDER.test(matchedValue)) continue;
+      if (PLACEHOLDER.test(candidateValue)) continue;
       const fingerprint = fingerprintSecret(matchedValue);
       const key = `${detector.category}:${fingerprint}`;
       if (seen.has(key)) continue;
