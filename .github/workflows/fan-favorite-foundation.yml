@@ -94,6 +94,21 @@ jobs:
           set -o pipefail
           npx drizzle-kit push --force 2>&1 | tee schema.log
 
+      - name: Verify isolated staging deployment migration
+        id: stagingmigration
+        if: always() && !cancelled() && steps.schema.outcome == 'success'
+        continue-on-error: true
+        env:
+          APP_ENV: staging
+          STAGING_CONFIRM_ISOLATED: "true"
+          RUN_STAGING_MIGRATIONS: "true"
+          DATABASE_MIGRATION_URL: ${{ env.TEST_DATABASE_URL }}
+          DATABASE_SCHEMA: phoenix_ci_staging
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/run-staging-deployment-migrations.mjs 2>&1 | tee staging-migration.log
+
       - name: Lint
         id: lint
         if: always() && !cancelled() && steps.install.outcome == 'success'
@@ -226,6 +241,7 @@ jobs:
             "secrets_outcome=${{ steps.secrets.outcome }}" \
             "supply_chain_outcome=${{ steps.supplychain.outcome }}" \
             "schema_outcome=${{ steps.schema.outcome }}" \
+            "staging_migration_outcome=${{ steps.stagingmigration.outcome }}" \
             "lint_outcome=${{ steps.lint.outcome }}" \
             "typecheck_outcome=${{ steps.typecheck.outcome }}" \
             "envcheck_outcome=${{ steps.envcheck.outcome }}" \
@@ -253,6 +269,8 @@ jobs:
             artifacts/dev-advisory-policy.json
             artifacts/sbom.cdx.json
             schema.log
+            staging-migration.log
+            staging-migration-evidence.json
             lint.log
             typecheck.log
             envcheck.log
@@ -280,6 +298,7 @@ jobs:
           test "${{ steps.secrets.outcome }}" = "success"
           test "${{ steps.supplychain.outcome }}" = "success"
           test "${{ steps.schema.outcome }}" = "success"
+          test "${{ steps.stagingmigration.outcome }}" = "success"
           test "${{ steps.lint.outcome }}" = "success"
           test "${{ steps.typecheck.outcome }}" = "success"
           test "${{ steps.envcheck.outcome }}" = "success"

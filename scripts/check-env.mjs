@@ -33,6 +33,10 @@ const rateLimitProvider = value('RATE_LIMIT_PROVIDER') || 'memory';
 const testAuthBypassRequested = value('ENABLE_TEST_AUTH_BYPASS') === 'true';
 const deploymentCommitSha = value('DEPLOYMENT_COMMIT_SHA') || value('VERCEL_GIT_COMMIT_SHA');
 const rollbackCommitSha = value('ROLLBACK_COMMIT_SHA');
+const databaseSchema = value('DATABASE_SCHEMA');
+const rateLimitNamespace = value('RATE_LIMIT_NAMESPACE');
+const safeDatabaseSchema = /^[a-z][a-z0-9_]{2,62}$/;
+const safeRateLimitNamespace = /^[A-Za-z0-9][A-Za-z0-9:_-]{2,95}$/;
 
 if (!['local', 'supabase', 's3'].includes(storageProvider)) issues.push('STORAGE_PROVIDER must be local, supabase, or s3.');
 if (!['memory', 'redis', 'upstash'].includes(rateLimitProvider)) issues.push('RATE_LIMIT_PROVIDER must be memory, redis, or upstash.');
@@ -77,6 +81,12 @@ if (deploymentMode) {
 if (appEnv === 'staging' && deploymentMode) {
   if (storageProvider !== 'supabase') issues.push('The approved staging architecture requires STORAGE_PROVIDER=supabase.');
   if (rateLimitProvider !== 'upstash') issues.push('The approved staging architecture requires RATE_LIMIT_PROVIDER=upstash.');
+  if (!databaseSchema || !safeDatabaseSchema.test(databaseSchema) || databaseSchema === 'public') {
+    issues.push('DATABASE_SCHEMA must be a safe, non-public staging schema.');
+  }
+  if (!rateLimitNamespace || !safeRateLimitNamespace.test(rateLimitNamespace) || rateLimitNamespace === 'pcs:rate-limit' || /production/i.test(rateLimitNamespace)) {
+    issues.push('RATE_LIMIT_NAMESPACE must be a safe staging-specific namespace.');
+  }
   if (!deploymentCommitSha || !commitSha.test(deploymentCommitSha)) issues.push('A full 40-character deployment commit SHA is required.');
   if (!rollbackCommitSha || !commitSha.test(rollbackCommitSha)) issues.push('A full 40-character rollback commit SHA is required.');
   if (value('STAGING_CONFIRM_ISOLATED') !== 'true') {
@@ -94,6 +104,8 @@ console.log(JSON.stringify({
   environment: appEnv,
   storageProvider,
   rateLimitProvider,
+  databaseSchema: databaseSchema || null,
+  rateLimitNamespace: rateLimitNamespace || null,
   testAuthBypassEnabled: testAuthBypassRequested,
   deploymentValidated: deploymentMode,
   deploymentCommitRecorded: Boolean(deploymentCommitSha),

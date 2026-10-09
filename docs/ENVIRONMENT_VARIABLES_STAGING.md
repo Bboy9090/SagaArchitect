@@ -14,8 +14,10 @@ Phoenix Creator Studio staging must be isolated from production and must fail cl
 
 - `DATABASE_URL=<serverless runtime pooler connection>`
 - `DATABASE_MIGRATION_URL=<migration-safe direct connection>`
+- `DATABASE_SCHEMA=phoenix_staging` (or another dedicated non-`public` schema)
+- `RUN_STAGING_MIGRATIONS=true` only for the reviewed staging deployment build
 
-The runtime and migration URLs must target the staging database, never production.
+The runtime and migration URLs may reuse an approved retired provider account, but staging must use a dedicated non-`public` schema. Runtime connections set PostgreSQL `search_path` to that schema. Migrations run during the explicitly enabled staging deployment build, never from requests or readiness probes.
 
 ## Storage
 
@@ -31,8 +33,9 @@ The runtime and migration URLs must target the staging database, never productio
 - `RATE_LIMIT_PROVIDER=upstash` or another implemented shared backend
 - `RATE_LIMIT_URL=<staging shared-store endpoint>`
 - `RATE_LIMIT_TOKEN=<server-only staging token>`
+- `RATE_LIMIT_NAMESPACE=pcs:staging:phoenix` (or another staging-specific namespace)
 
-`RATE_LIMIT_PROVIDER=memory` is forbidden in staging.
+`RATE_LIMIT_PROVIDER=memory` is forbidden in staging. A dedicated namespace is required even when an existing Upstash database is reused, so staging counters cannot collide with production counters.
 
 ## Testing
 

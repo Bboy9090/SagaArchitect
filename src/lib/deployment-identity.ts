@@ -8,6 +8,8 @@ export interface DeploymentIdentity {
   rollbackCommitSha: string | null;
   storageProvider: string;
   rateLimitProvider: string;
+  databaseSchema: string | null;
+  rateLimitNamespace: string | null;
   projectRestoreEnabled: boolean;
   testAuthBypassEnabled: boolean;
 }
@@ -15,6 +17,12 @@ export interface DeploymentIdentity {
 function safeProvider(value: string | undefined, fallback: string): string {
   const normalized = value?.trim().toLowerCase();
   return normalized && /^[a-z0-9-]{1,32}$/.test(normalized) ? normalized : fallback;
+}
+
+
+function safeNamespace(value: string | undefined, pattern: RegExp): string | null {
+  const normalized = value?.trim();
+  return normalized && pattern.test(normalized) ? normalized : null;
 }
 
 function safeCommit(value: string | undefined): string | null {
@@ -38,6 +46,8 @@ export function buildDeploymentIdentity(
     rollbackCommitSha: safeCommit(environment.ROLLBACK_COMMIT_SHA),
     storageProvider: safeProvider(environment.STORAGE_PROVIDER, 'local'),
     rateLimitProvider: safeProvider(environment.RATE_LIMIT_PROVIDER, 'memory'),
+    databaseSchema: safeNamespace(environment.DATABASE_SCHEMA?.toLowerCase(), /^[a-z][a-z0-9_]{2,62}$/),
+    rateLimitNamespace: safeNamespace(environment.RATE_LIMIT_NAMESPACE, /^[A-Za-z0-9][A-Za-z0-9:_-]{2,95}$/),
     projectRestoreEnabled: isFeatureEnabled('projectRestore', environment),
     testAuthBypassEnabled:
       environment.APP_ENV === 'test'

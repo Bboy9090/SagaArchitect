@@ -16,6 +16,7 @@
     "src/lib/client-api-error.ts",
     "src/lib/env-schema.ts",
     "src/lib/env-validator.ts",
+    "src/lib/staging-isolation.ts",
     "src/lib/auth-security.ts",
     "src/lib/deployment-identity.ts",
     "src/lib/redact-sensitive.ts",
@@ -65,6 +66,7 @@
     "tests/enterprise-foundation-sprint-4.test.ts",
     "tests/enterprise-foundation-sprint-5.test.ts",
     "tests/enterprise-foundation-sprint-6.test.ts",
+    "tests/enterprise-foundation-sprint-8.test.ts",
     "tests/writing-sync.test.ts"
   ]
 }

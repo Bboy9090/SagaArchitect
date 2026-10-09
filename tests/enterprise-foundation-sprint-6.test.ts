@@ -54,6 +54,8 @@ test('deployment identity exposes only safe evidence fields', () => {
     ROLLBACK_COMMIT_SHA: 'b'.repeat(40),
     STORAGE_PROVIDER: 'supabase',
     RATE_LIMIT_PROVIDER: 'upstash',
+    DATABASE_SCHEMA: 'phoenix_staging',
+    RATE_LIMIT_NAMESPACE: 'pcs:staging:phoenix',
     FEATURE_PROJECT_RESTORE: 'true',
     ENABLE_TEST_AUTH_BYPASS: 'true',
     DATABASE_URL: 'postgresql://should-not-appear',
@@ -66,6 +68,8 @@ test('deployment identity exposes only safe evidence fields', () => {
     rollbackCommitSha: 'b'.repeat(40),
     storageProvider: 'supabase',
     rateLimitProvider: 'upstash',
+    databaseSchema: 'phoenix_staging',
+    rateLimitNamespace: 'pcs:staging:phoenix',
     projectRestoreEnabled: true,
     testAuthBypassEnabled: false,
   });
@@ -86,6 +90,8 @@ test('deployment identity rejects malformed commit and provider values', () => {
   assert.equal(identity.rollbackCommitSha, null);
   assert.equal(identity.storageProvider, 'local');
   assert.equal(identity.rateLimitProvider, 'memory');
+  assert.equal(identity.databaseSchema, null);
+  assert.equal(identity.rateLimitNamespace, null);
   assert.equal(identity.projectRestoreEnabled, false);
 });
 

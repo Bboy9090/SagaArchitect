@@ -5,6 +5,6 @@ export default defineConfig({
   schema: ['./src/db/schema.ts', './src/db/enterprise-schema.ts'],
   dialect: 'postgresql',
   dbCredentials: {
-    url: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/phoenix_creator_studio',
+    url: process.env.DATABASE_MIGRATION_URL || process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/phoenix_creator_studio',
   },
 });
