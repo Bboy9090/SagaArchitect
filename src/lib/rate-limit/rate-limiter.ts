@@ -4,6 +4,7 @@ import { RATE_LIMIT_POLICIES, type RateLimitPolicyName } from './policies';
 import { MemoryRateLimitStore } from './memory-store';
 import { UpstashRateLimitStore } from './upstash-store';
 import type { RateLimitDecision, RateLimitPolicy, RateLimitStore } from './types';
+import { configuredRateLimitNamespace } from '../staging-isolation';
 
 type RateLimitEnvironment = Record<string, string | undefined>;
 
@@ -57,6 +58,7 @@ export function getConfiguredRateLimiter(environment: RateLimitEnvironment = pro
     return new RateLimiter(new UpstashRateLimitStore({
       url: environment.RATE_LIMIT_URL || '',
       token: environment.RATE_LIMIT_TOKEN || '',
+      namespace: configuredRateLimitNamespace(environment),
     }));
   }
 

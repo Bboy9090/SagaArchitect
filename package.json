@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "npm run test:release-foundation",
+    "prebuild": "npm run test:release-foundation && node scripts/run-staging-deployment-migrations.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
@@ -34,7 +34,8 @@
     "db:studio": "drizzle-kit studio",
     "check": "npm run secrets:check && npm run supply-chain:check && npm run lint && npm run typecheck && npm run test:enterprise && npm run test:release-foundation && npm run build",
     "audit:dev-policy": "node scripts/check-dev-advisory-policy.mjs",
-    "audit:full": "npm audit"
+    "audit:full": "npm audit",
+    "staging:migrate": "node scripts/run-staging-deployment-migrations.mjs"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.3",

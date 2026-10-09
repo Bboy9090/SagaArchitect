@@ -9,6 +9,7 @@ import {
   type StorageProvider,
 } from './env-schema';
 import { ConfigurationError } from './api-errors';
+import { isSafeDatabaseSchema, isSafeRateLimitNamespace } from './staging-isolation';
 
 const COMMIT_SHA = /^[0-9a-f]{40}$/i;
 
@@ -56,6 +57,8 @@ export function validateServerEnvironment(
   const deploymentCommitSha = valueOf(input, 'DEPLOYMENT_COMMIT_SHA') ?? valueOf(input, 'VERCEL_GIT_COMMIT_SHA');
   const rollbackCommitSha = valueOf(input, 'ROLLBACK_COMMIT_SHA');
   const stagingConfirmedIsolated = valueOf(input, 'STAGING_CONFIRM_ISOLATED') === 'true';
+  const databaseSchema = valueOf(input, 'DATABASE_SCHEMA')?.toLowerCase();
+  const rateLimitNamespace = valueOf(input, 'RATE_LIMIT_NAMESPACE');
 
   const storageProvider = (valueOf(input, 'STORAGE_PROVIDER') ?? 'local') as StorageProvider;
   const rateLimitProvider = (valueOf(input, 'RATE_LIMIT_PROVIDER') ?? 'memory') as RateLimitProvider;
@@ -143,6 +146,20 @@ export function validateServerEnvironment(
       if (rateLimitProvider !== 'upstash') {
         issues.push({ key: 'RATE_LIMIT_PROVIDER', message: 'The approved staging architecture requires Upstash rate limiting.' });
       }
+      if (!databaseSchema) {
+        issues.push({ key: 'DATABASE_SCHEMA', message: 'DATABASE_SCHEMA is required for isolated staging.' });
+      } else if (!isSafeDatabaseSchema(databaseSchema) || databaseSchema === 'public') {
+        issues.push({ key: 'DATABASE_SCHEMA', message: 'DATABASE_SCHEMA must be a safe, non-public staging schema.' });
+      }
+      if (!rateLimitNamespace) {
+        issues.push({ key: 'RATE_LIMIT_NAMESPACE', message: 'RATE_LIMIT_NAMESPACE is required for isolated staging.' });
+      } else if (
+        !isSafeRateLimitNamespace(rateLimitNamespace)
+        || rateLimitNamespace === 'pcs:rate-limit'
+        || /production/i.test(rateLimitNamespace)
+      ) {
+        issues.push({ key: 'RATE_LIMIT_NAMESPACE', message: 'RATE_LIMIT_NAMESPACE must be a safe staging-specific namespace.' });
+      }
       if (!deploymentCommitSha || !COMMIT_SHA.test(deploymentCommitSha)) {
         issues.push({
           key: 'DEPLOYMENT_COMMIT_SHA',
@@ -171,6 +188,7 @@ export function validateServerEnvironment(
     nodeEnvironment: valueOf(input, 'NODE_ENV') ?? 'development',
     databaseUrl,
     databaseMigrationUrl,
+    databaseSchema,
     nextAuthSecret: valueOf(input, 'NEXTAUTH_SECRET') ?? 'phoenix-studio-local-development-secret-key-1234',
     nextAuthUrl: valueOf(input, 'NEXTAUTH_URL'),
     storageProvider,
@@ -181,6 +199,7 @@ export function validateServerEnvironment(
     rateLimitProvider,
     rateLimitUrl: valueOf(input, 'RATE_LIMIT_URL'),
     rateLimitToken: valueOf(input, 'RATE_LIMIT_TOKEN'),
+    rateLimitNamespace,
     deploymentCommitSha,
     rollbackCommitSha,
     stagingConfirmedIsolated,

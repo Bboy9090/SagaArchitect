@@ -8,6 +8,7 @@ export interface ServerEnvironment {
   nodeEnvironment: string;
   databaseUrl: string;
   databaseMigrationUrl?: string;
+  databaseSchema?: string;
   nextAuthSecret: string;
   nextAuthUrl?: string;
   storageProvider: StorageProvider;
@@ -18,6 +19,7 @@ export interface ServerEnvironment {
   rateLimitProvider: RateLimitProvider;
   rateLimitUrl?: string;
   rateLimitToken?: string;
+  rateLimitNamespace?: string;
   deploymentCommitSha?: string;
   rollbackCommitSha?: string;
   stagingConfirmedIsolated: boolean;
