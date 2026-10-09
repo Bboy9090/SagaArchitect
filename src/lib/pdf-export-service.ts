@@ -22,7 +22,8 @@ import {
   assets as assetsTable,
 } from '@/db/schema';
 import { eq } from 'drizzle-orm';
-import { readFileLocal } from '@/lib/storage-driver';
+import { resolveStoredAssetToDataUrl } from '@/lib/pdf-asset-resolver';
+import type { StorageProviderName } from '@/lib/storage/storage-provider';
 import { exportProjectToPrintableHtml } from '@/lib/pdf-exporter';
 import type { Project, Character, Scene, StoryboardPanel } from '@/lib/types';
 
@@ -49,7 +50,7 @@ const BROWSER_CANDIDATES: string[] = [
 function detectBrowserExecutable(): string | null {
   for (const candidate of BROWSER_CANDIDATES) {
     try {
-      if (fs.existsSync(candidate)) return candidate;
+      if (fs.existsSync(/* turbopackIgnore: true */ candidate)) return candidate;
     } catch {
       // existsSync can throw on permission errors — keep searching
     }
@@ -59,13 +60,15 @@ function detectBrowserExecutable(): string | null {
 
 // ─── Asset Resolution ─────────────────────────────────────────────────────────
 
-async function resolveAssetToDataUrl(filePath: string, mimeType: string): Promise<string> {
+async function resolveAssetToDataUrl(
+  storageProvider: StorageProviderName,
+  storageReference: string,
+  mimeType: string,
+): Promise<string> {
   try {
-    const buf = await readFileLocal(filePath);
-    const b64 = buf.toString('base64');
-    return `data:${mimeType};base64,${b64}`;
+    return await resolveStoredAssetToDataUrl({ storageProvider, storageReference, mimeType });
   } catch (err) {
-    console.warn('[pdf-export-service] Could not read asset file:', filePath, err);
+    console.warn('[pdf-export-service] Could not read asset object:', { storageProvider, err });
     return ''; // caller will fall back to placeholder
   }
 }
@@ -107,7 +110,11 @@ export async function generateProjectPdf(projectId: string): Promise<Uint8Array>
   const assetDataMap = new Map<string, string>();
   for (const asset of assetRows) {
     if (asset.filePath && asset.mimeType) {
-      const dataUrl = await resolveAssetToDataUrl(asset.filePath, asset.mimeType);
+      const dataUrl = await resolveAssetToDataUrl(
+        asset.storageProvider as StorageProviderName,
+        asset.filePath,
+        asset.mimeType,
+      );
       if (dataUrl) assetDataMap.set(asset.id, dataUrl);
     }
   }
