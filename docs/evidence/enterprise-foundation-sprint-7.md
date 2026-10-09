@@ -17,7 +17,8 @@ Build the final repository-side evidence lane needed after live staging: physica
 - `tests/release-candidate-foundation.test.mjs`
 - `docs/HARDWARE_VALIDATION_MATRIX.md`
 - `docs/RC1_RELEASE_GATE.md`
-- enterprise CI now enforces `npm run test:release-foundation`
+- enterprise CI enforces `npm run test:release-foundation`
+- Vercel prebuild executes the release-foundation tests before the Next.js build
 
 ## Classification boundary
 
@@ -25,16 +26,27 @@ The evidence machinery may be classified as implemented after focused tests and 
 
 ## Live provider status discovered during this sprint
 
-The Vercel GitHub integration created a successful preview deployment for PR #52 and reported project `saga-architect` with project ID `prj_wfipp1Nv18kLfiKU6QYkagYduFjv`. The preview URL reported by the Vercel bot is:
+The Vercel GitHub integration created preview deployments for PR #52 and reported project `saga-architect` with project ID `prj_wfipp1Nv18kLfiKU6QYkagYduFjv`.
 
-`https://saga-architect-git-enterprise-release-6c4940-bboy9090s-projects.vercel.app`
+This preview is **not** equivalent to the protected staging acceptance environment because isolated Supabase, Upstash, migration, security, and rollback evidence is not yet proven.
 
-This preview is **not** equivalent to the protected staging acceptance environment because the required isolated Supabase, Upstash, migration, security, and rollback evidence is not yet proven.
+## Current validation refresh
 
-## Current CI note
+The prior GitHub Actions runs are outside GitHub's rerun window. A current branch commit is used to trigger a fresh repository gate and a fresh Vercel prebuild instead of bypassing required checks.
 
-The first GitHub Actions run for PR #52 failed before any job steps were exposed by the Actions API, and a failed-job rerun produced the same no-step result. No repository test failure has therefore been identified from that run. A fresh PR synchronization run is being triggered by this evidence commit before any merge decision.
+The Vercel prebuild is a secondary signal only. A GitHub enterprise gate remains required before merge.
+
+## Current external blockers
+
+- live isolated Supabase validation
+- live isolated Upstash validation
+- protected staging acceptance
+- Chromium / Firefox / WebKit staging evidence
+- rollback rehearsal
+- historical credential rotation and old-credential rejection
+- Git-history / retained-artifact review
+- physical-device receipts for all required hardware classes
 
 ## Merge rule
 
-Do not merge PR #52 unless the fresh enterprise gate completes successfully. Do not claim hardware validation or RC1 from this PR alone.
+Do not merge PR #52 unless the fresh enterprise gate completes successfully. Do not claim hardware validation or RC1 from this PR alone. Production publication remains separately owner-approved.
