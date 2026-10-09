@@ -69,7 +69,7 @@ test('staging cleanup email allowlist accepts only generated acceptance identiti
 test('GitHub staging workflow no longer receives provider or database credentials', () => {
   const workflow = repositoryFile('.github/workflows/staging-acceptance.yml');
   assert.match(workflow, /STAGING_AUTOMATION_TOKEN/);
-  assert.match(workflow, /VERCEL_SHARE_BYPASS_SECRET/);
+  assert.match(workflow, /VERCEL_AUTOMATION_BYPASS_SECRET/);
   assert.doesNotMatch(workflow, /STAGING_DATABASE_URL/);
   assert.doesNotMatch(workflow, /STAGING_DATABASE_MIGRATION_URL/);
   assert.doesNotMatch(workflow, /STAGING_SUPABASE_SERVICE_ROLE_KEY/);
@@ -85,6 +85,17 @@ test('staging harnesses no longer import direct PostgreSQL or provider service c
   for (const source of [browser, acceptance, cleanup, providers]) {
     assert.doesNotMatch(source, /require\(['"]postgres['"]\)|from ['"]postgres['"]/);
     assert.doesNotMatch(source, /SUPABASE_SERVICE_ROLE_KEY|RATE_LIMIT_TOKEN|DATABASE_MIGRATION_URL/);
+  }
+});
+
+test('staging runner uses Vercel automation bypass headers instead of share-link query secrets', () => {
+  const workflow = repositoryFile('.github/workflows/staging-acceptance.yml');
+  const browser = repositoryFile('verify-staging-browser.js');
+  const acceptance = repositoryFile('verify-staging-acceptance.js');
+  const client = repositoryFile('scripts/lib/staging-automation-client.mjs');
+  for (const source of [workflow, browser, acceptance, client]) {
+    assert.match(source, /x-vercel-protection-bypass/);
+    assert.doesNotMatch(source, /_vercel_share|VERCEL_SHARE_BYPASS_SECRET/);
   }
 });
 
