@@ -3,7 +3,7 @@ const { randomUUID } = require('node:crypto');
 
 const BASE_URL = process.env.STAGING_BASE_URL || process.env.TEST_BASE_URL;
 const AUTOMATION_TOKEN = process.env.STAGING_AUTOMATION_TOKEN;
-const VERCEL_SHARE = process.env.VERCEL_SHARE_BYPASS_SECRET;
+const VERCEL_BYPASS = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
 const EXPECTED_COMMIT = process.env.DEPLOYMENT_COMMIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA;
 
 function requireConfiguration() {
@@ -16,6 +16,7 @@ function requireConfiguration() {
   }
   if (!BASE_URL) throw new Error('STAGING_BASE_URL is required.');
   if (!AUTOMATION_TOKEN || AUTOMATION_TOKEN.length < 32) throw new Error('STAGING_AUTOMATION_TOKEN is required for deterministic staging cleanup.');
+  if (!VERCEL_BYPASS || VERCEL_BYPASS.length < 32) throw new Error('VERCEL_AUTOMATION_BYPASS_SECRET is required for protected staging.');
 
   const base = new URL(BASE_URL);
   if (base.protocol !== 'https:') throw new Error('STAGING_BASE_URL must use HTTPS.');
@@ -82,7 +83,10 @@ async function requestWithJar(jar, path, options = {}) {
   const cookie = jar.header();
   if (cookie) headers.set('cookie', cookie);
   const requestUrl = new URL(path, BASE_URL);
-  if (VERCEL_SHARE) requestUrl.searchParams.set('_vercel_share', VERCEL_SHARE);
+  if (VERCEL_BYPASS) {
+    headers.set('x-vercel-protection-bypass', VERCEL_BYPASS);
+    headers.set('x-vercel-set-bypass-cookie', 'true');
+  }
   const response = await fetch(requestUrl, {
     ...options,
     headers,
@@ -419,12 +423,13 @@ async function run() {
   } finally {
     try {
       const cleanupUrl = new URL('/api/staging/cleanup', BASE_URL);
-      if (VERCEL_SHARE) cleanupUrl.searchParams.set('_vercel_share', VERCEL_SHARE);
       const cleanupResponse = await fetch(cleanupUrl, {
         method: 'POST',
         headers: {
           authorization: `Bearer ${AUTOMATION_TOKEN}`,
           'content-type': 'application/json',
+          'x-vercel-protection-bypass': VERCEL_BYPASS,
+          'x-vercel-set-bypass-cookie': 'true',
         },
         body: '{}',
       });
