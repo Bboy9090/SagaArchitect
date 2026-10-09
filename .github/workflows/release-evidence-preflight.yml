@@ -1,0 +1,49 @@
+name: Phoenix Creator Studio Release Evidence Preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  history-audit:
+    name: Non-secret full Git-history credential audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out complete repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run non-secret history credential audit
+        run: npm run audit:history-secrets | tee history-secret-audit.log
+
+      - name: Verify audit output contains no raw secret declaration
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync('history-secret-audit.json', 'utf8'));
+          if (report.secretValuesIncluded !== false) throw new Error('History audit must never include raw secret values.');
+          if (report.currentTreeClean !== true) throw new Error('Current-tree credential-like findings remain.');
+          NODE
+
+      - name: Upload non-secret history audit evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phoenix-creator-studio-history-audit
+          path: |
+            history-secret-audit.json
+            history-secret-audit.log
+          retention-days: 30

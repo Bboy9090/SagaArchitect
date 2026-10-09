@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test:smoke": "bash scripts/smoke-test.sh",
     "test:enterprise": "node verify-enterprise-foundation.js",
-    "test:release-foundation": "node --test tests/release-candidate-foundation.test.mjs",
+    "test:release-foundation": "node --test tests/release-candidate-foundation.test.mjs tests/release-evidence-closure.test.mjs",
     "test:staging:providers": "node scripts/verify-live-staging-providers.mjs",
     "test:staging:browser": "node verify-staging-browser.js",
     "test:staging:acceptance": "node verify-staging-acceptance.js",
@@ -35,7 +35,9 @@
     "check": "npm run secrets:check && npm run supply-chain:check && npm run lint && npm run typecheck && npm run test:enterprise && npm run test:release-foundation && npm run build",
     "audit:dev-policy": "node scripts/check-dev-advisory-policy.mjs",
     "audit:full": "npm audit",
-    "staging:migrate": "node scripts/run-staging-deployment-migrations.mjs"
+    "staging:migrate": "node scripts/run-staging-deployment-migrations.mjs",
+    "audit:history-secrets": "node scripts/audit-git-history-secrets.mjs",
+    "test:hardware:preflight": "node scripts/collect-hardware-preflight.mjs"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.3",
