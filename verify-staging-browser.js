@@ -6,7 +6,7 @@ const path = require('node:path');
 
 const BASE_URL = process.env.STAGING_BASE_URL;
 const AUTOMATION_TOKEN = process.env.STAGING_AUTOMATION_TOKEN;
-const VERCEL_SHARE = process.env.VERCEL_SHARE_BYPASS_SECRET;
+const VERCEL_BYPASS = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
 const ENGINE = process.env.BROWSER_ENGINE?.trim().toLowerCase();
 const ARTIFACT_DIR = path.resolve('artifacts/staging-browser');
 
@@ -25,6 +25,7 @@ function requireConfiguration() {
     throw new Error('STAGING_BASE_URL must be a remote HTTPS URL.');
   }
   if (!AUTOMATION_TOKEN || AUTOMATION_TOKEN.length < 32) throw new Error('STAGING_AUTOMATION_TOKEN is required for browser cleanup.');
+  if (!VERCEL_BYPASS || VERCEL_BYPASS.length < 32) throw new Error('VERCEL_AUTOMATION_BYPASS_SECRET is required for protected staging.');
   if (!ENGINE || !Object.hasOwn(BROWSER_CONFIGURATIONS, ENGINE)) {
     throw new Error('BROWSER_ENGINE must be one of chromium, firefox, or webkit.');
   }
@@ -82,6 +83,10 @@ async function run() {
       viewport: { width: 1440, height: 900 },
       deviceScaleFactor: 1,
       ignoreHTTPSErrors: false,
+      extraHTTPHeaders: {
+        'x-vercel-protection-bypass': VERCEL_BYPASS,
+        'x-vercel-set-bypass-cookie': 'true',
+      },
     });
 
     const page = await context.newPage();
@@ -100,7 +105,6 @@ async function run() {
     });
 
     const registerUrl = new URL('/register', BASE_URL);
-    if (VERCEL_SHARE) registerUrl.searchParams.set('_vercel_share', VERCEL_SHARE);
     const response = await page.goto(registerUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 45_000 });
     if (!response || response.status() !== 200) {
       throw new Error(`Registration page returned ${response?.status() ?? 'no response'}.`);
@@ -170,12 +174,13 @@ async function run() {
 
     try {
       const cleanupUrl = new URL('/api/staging/cleanup', BASE_URL);
-      if (VERCEL_SHARE) cleanupUrl.searchParams.set('_vercel_share', VERCEL_SHARE);
       const cleanupResponse = await fetch(cleanupUrl, {
         method: 'POST',
         headers: {
           authorization: `Bearer ${AUTOMATION_TOKEN}`,
           'content-type': 'application/json',
+          'x-vercel-protection-bypass': VERCEL_BYPASS,
+          'x-vercel-set-bypass-cookie': 'true',
         },
         body: '{}',
       });
