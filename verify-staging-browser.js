@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { chromium, firefox, webkit } = require('playwright');
-const postgres = require('postgres');
 const { randomUUID } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
 const BASE_URL = process.env.STAGING_BASE_URL;
-const DATABASE_URL = process.env.DATABASE_MIGRATION_URL;
+const AUTOMATION_TOKEN = process.env.STAGING_AUTOMATION_TOKEN;
+const VERCEL_BYPASS = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
 const ENGINE = process.env.BROWSER_ENGINE?.trim().toLowerCase();
 const ARTIFACT_DIR = path.resolve('artifacts/staging-browser');
 
@@ -24,7 +24,8 @@ function requireConfiguration() {
   if (!BASE_URL || new URL(BASE_URL).protocol !== 'https:') {
     throw new Error('STAGING_BASE_URL must be a remote HTTPS URL.');
   }
-  if (!DATABASE_URL) throw new Error('DATABASE_MIGRATION_URL is required for browser test cleanup.');
+  if (!AUTOMATION_TOKEN || AUTOMATION_TOKEN.length < 32) throw new Error('STAGING_AUTOMATION_TOKEN is required for browser cleanup.');
+  if (!VERCEL_BYPASS || VERCEL_BYPASS.length < 32) throw new Error('VERCEL_AUTOMATION_BYPASS_SECRET is required for protected staging.');
   if (!ENGINE || !Object.hasOwn(BROWSER_CONFIGURATIONS, ENGINE)) {
     throw new Error('BROWSER_ENGINE must be one of chromium, firefox, or webkit.');
   }
@@ -51,7 +52,6 @@ async function run() {
   await fs.promises.mkdir(ARTIFACT_DIR, { recursive: true });
 
   const { browserType, configuration } = BROWSER_CONFIGURATIONS[ENGINE];
-  const sql = postgres(DATABASE_URL, { ssl: 'require', max: 1, prepare: false });
   const suffix = randomUUID().slice(0, 8);
   const email = `pcs-${ENGINE}-${suffix}@example.test`;
   const password = `PCS-${ENGINE}-${suffix}-Password!`;
@@ -83,6 +83,10 @@ async function run() {
       viewport: { width: 1440, height: 900 },
       deviceScaleFactor: 1,
       ignoreHTTPSErrors: false,
+      extraHTTPHeaders: {
+        'x-vercel-protection-bypass': VERCEL_BYPASS,
+        'x-vercel-set-bypass-cookie': 'true',
+      },
     });
 
     const page = await context.newPage();
@@ -100,8 +104,8 @@ async function run() {
       });
     });
 
-    const registerUrl = new URL('/register', BASE_URL).toString();
-    const response = await page.goto(registerUrl, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+    const registerUrl = new URL('/register', BASE_URL);
+    const response = await page.goto(registerUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 45_000 });
     if (!response || response.status() !== 200) {
       throw new Error(`Registration page returned ${response?.status() ?? 'no response'}.`);
     }
@@ -168,10 +172,28 @@ async function run() {
     if (context) await context.close().catch(() => undefined);
     if (browser) await browser.close().catch(() => undefined);
 
-    const deletedUsers = await sql`delete from users where email = ${email} returning id`.catch(() => []);
-    evidence.cleanup.deletedUserCount = deletedUsers.length;
-    evidence.cleanup.userDeleted = deletedUsers.length === 1;
-    await sql.end({ timeout: 5 });
+    try {
+      const cleanupUrl = new URL('/api/staging/cleanup', BASE_URL);
+      const cleanupResponse = await fetch(cleanupUrl, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${AUTOMATION_TOKEN}`,
+          'content-type': 'application/json',
+          'x-vercel-protection-bypass': VERCEL_BYPASS,
+          'x-vercel-set-bypass-cookie': 'true',
+        },
+        body: '{}',
+      });
+      const cleanup = await cleanupResponse.json().catch(() => null);
+      if (!cleanupResponse.ok || cleanup?.ok !== true) {
+        throw new Error(cleanup?.error || `HTTP ${cleanupResponse.status}`);
+      }
+      evidence.cleanup.deletedUserCount = Number(cleanup.data?.deletedUsers || 0);
+      evidence.cleanup.userDeleted = evidence.cleanup.deletedUserCount >= 1
+        && Number(cleanup.data?.remainingUsers || 0) === 0;
+    } catch (error) {
+      evidence.cleanup.error = error instanceof Error ? error.message.slice(0, 300) : 'cleanup failed';
+    }
 
     evidence.completedAt = new Date().toISOString();
     evidence.durationMs = Date.now() - startedAt;

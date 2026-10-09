@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
-const postgres = require('postgres');
 const { randomUUID } = require('node:crypto');
 
 const BASE_URL = process.env.STAGING_BASE_URL || process.env.TEST_BASE_URL;
-const DATABASE_URL = process.env.DATABASE_MIGRATION_URL;
+const AUTOMATION_TOKEN = process.env.STAGING_AUTOMATION_TOKEN;
+const VERCEL_BYPASS = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
 const EXPECTED_COMMIT = process.env.DEPLOYMENT_COMMIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA;
 
 function requireConfiguration() {
@@ -15,7 +15,8 @@ function requireConfiguration() {
     throw new Error('ALLOW_REMOTE_TESTS=true is required for the explicitly approved isolated staging run.');
   }
   if (!BASE_URL) throw new Error('STAGING_BASE_URL is required.');
-  if (!DATABASE_URL) throw new Error('DATABASE_MIGRATION_URL is required for deterministic staging cleanup.');
+  if (!AUTOMATION_TOKEN || AUTOMATION_TOKEN.length < 32) throw new Error('STAGING_AUTOMATION_TOKEN is required for deterministic staging cleanup.');
+  if (!VERCEL_BYPASS || VERCEL_BYPASS.length < 32) throw new Error('VERCEL_AUTOMATION_BYPASS_SECRET is required for protected staging.');
 
   const base = new URL(BASE_URL);
   if (base.protocol !== 'https:') throw new Error('STAGING_BASE_URL must use HTTPS.');
@@ -81,7 +82,12 @@ async function requestWithJar(jar, path, options = {}) {
   const headers = new Headers(options.headers || {});
   const cookie = jar.header();
   if (cookie) headers.set('cookie', cookie);
-  const response = await fetch(new URL(path, BASE_URL), {
+  const requestUrl = new URL(path, BASE_URL);
+  if (VERCEL_BYPASS) {
+    headers.set('x-vercel-protection-bypass', VERCEL_BYPASS);
+    headers.set('x-vercel-set-bypass-cookie', 'true');
+  }
+  const response = await fetch(requestUrl, {
     ...options,
     headers,
     redirect: options.redirect || 'manual',
@@ -192,7 +198,6 @@ async function deleteProject(jar, projectId) {
 
 async function run() {
   requireConfiguration();
-  const sql = postgres(DATABASE_URL, { ssl: 'require', max: 1 });
   const jar = new CookieJar();
   const suffix = randomUUID().slice(0, 8);
   const email = `pcs-staging-${suffix}@example.test`;
@@ -379,9 +384,9 @@ async function run() {
       throw new Error('Staging restore replay returned a different project.');
     }
 
-    const restoredAssets = await sql`
-      select id from assets where project_id = ${restoredProjectId} and owner_id = ${userId}
-    `;
+    const restoredAssetsResponse = await requestWithJar(jar, `/api/db/projects/${restoredProjectId}/assets`);
+    const restoredAssetsBody = await readJson(restoredAssetsResponse, 'Restored project assets', [200]);
+    const restoredAssets = Array.isArray(restoredAssetsBody.data) ? restoredAssetsBody.data : [];
     if (restoredAssets.length !== 1) throw new Error('Restored project does not contain exactly one owned asset.');
     const restoredAssetId = restoredAssets[0].id;
     createdAssets.add(restoredAssetId);
@@ -416,20 +421,28 @@ async function run() {
 
     evidence.ok = true;
   } finally {
-    if (userId) {
-      const remainingAssets = await sql`
-        select id, file_path, storage_provider from assets where owner_id = ${userId}
-      `.catch(() => []);
-      for (const asset of remainingAssets) {
-        if (jar.header()) await deleteAsset(jar, asset.id).catch(() => undefined);
+    try {
+      const cleanupUrl = new URL('/api/staging/cleanup', BASE_URL);
+      const cleanupResponse = await fetch(cleanupUrl, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${AUTOMATION_TOKEN}`,
+          'content-type': 'application/json',
+          'x-vercel-protection-bypass': VERCEL_BYPASS,
+          'x-vercel-set-bypass-cookie': 'true',
+        },
+        body: '{}',
+      });
+      const cleanup = await cleanupResponse.json().catch(() => null);
+      if (!cleanupResponse.ok || cleanup?.ok !== true) {
+        throw new Error(cleanup?.error || `HTTP ${cleanupResponse.status}`);
       }
-      await sql`delete from projects where owner_id = ${userId}`.catch(() => undefined);
-      await sql`delete from users where id = ${userId}`.catch(() => undefined);
-      evidence.cleanup.user = true;
-    } else {
-      await sql`delete from users where email = ${email}`.catch(() => undefined);
+      evidence.cleanup.user = Number(cleanup.data?.remainingUsers || 0) === 0
+        && (!userId || Number(cleanup.data?.deletedUsers || 0) >= 1);
+    } catch (error) {
+      evidence.cleanup.user = false;
+      evidence.cleanup.error = error instanceof Error ? error.message.slice(0, 300) : 'cleanup failed';
     }
-    await sql.end({ timeout: 5 });
     evidence.completedAt = new Date().toISOString();
     evidence.durationMs = Date.now() - startedAt;
     console.log(JSON.stringify(evidence, null, 2));
