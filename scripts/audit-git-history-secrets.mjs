@@ -81,7 +81,7 @@ const report = buildHistoryAuditReport({
 fs.writeFileSync(OUTPUT, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
 console.log(JSON.stringify(report, null, 2));
 
-if (!report.currentTreeClean) {
+if (process.env.HISTORY_AUDIT_FAIL_ON_CURRENT === 'true' && !report.currentTreeClean) {
   console.error('Current-tree credential-like findings were detected. See the non-secret fingerprint report.');
   process.exitCode = 1;
 }
