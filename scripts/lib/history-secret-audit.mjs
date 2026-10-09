@@ -57,6 +57,15 @@ export function scanTextForSecretFingerprints(text) {
   );
 }
 
+export function likelyFixtureOrExamplePath(path = '') {
+  const normalized = String(path).toLowerCase();
+  return normalized === '.env.example'
+    || normalized.endsWith('.example')
+    || normalized.includes('/.env.example')
+    || /(^|\/)(tests?|__tests__|fixtures?|docs)(\/|$)/.test(normalized)
+    || /(^|\/)[^/]*example[^/]*(\/|$)/.test(normalized);
+}
+
 export function buildHistoryAuditReport({ objects, currentTree = new Set(), generatedAt = new Date().toISOString() }) {
   const findings = [];
   const uniqueFingerprints = new Set();
@@ -70,6 +79,7 @@ export function buildHistoryAuditReport({ objects, currentTree = new Set(), gene
         blobSha: object.sha,
         path: object.path || null,
         currentTree: currentTree.has(currentTreeKey),
+        likelyFixtureOrExample: likelyFixtureOrExamplePath(object.path || ''),
       });
       uniqueFingerprints.add(finding.fingerprint);
     }
@@ -84,6 +94,14 @@ export function buildHistoryAuditReport({ objects, currentTree = new Set(), gene
 
   const currentTreeFindings = findings.filter((finding) => finding.currentTree).length;
   const historicalOnlyFindings = findings.length - currentTreeFindings;
+  const fixtureOrExampleFindings = findings.filter((finding) => finding.likelyFixtureOrExample).length;
+  const nonFixtureFindings = findings.length - fixtureOrExampleFindings;
+  const currentTreeReviewFindings = findings.filter(
+    (finding) => finding.currentTree && !finding.likelyFixtureOrExample,
+  ).length;
+  const historicalReviewFindings = findings.filter(
+    (finding) => !finding.currentTree && !finding.likelyFixtureOrExample,
+  ).length;
 
   return {
     format: 'phoenix-creator-studio.git-history-secret-audit',
@@ -94,9 +112,14 @@ export function buildHistoryAuditReport({ objects, currentTree = new Set(), gene
     uniqueFingerprintCount: uniqueFingerprints.size,
     currentTreeFindings,
     historicalOnlyFindings,
+    fixtureOrExampleFindings,
+    nonFixtureFindings,
+    currentTreeReviewFindings,
+    historicalReviewFindings,
     currentTreeClean: currentTreeFindings === 0,
     historyClean: historicalOnlyFindings === 0,
-    reviewRequired: findings.length > 0,
+    reviewRequired: nonFixtureFindings > 0,
+    historyReviewRequired: historicalReviewFindings > 0,
     findings,
   };
 }
