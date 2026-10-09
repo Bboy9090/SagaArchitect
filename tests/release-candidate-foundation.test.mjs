@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
   HARDWARE_CLASSES,
   assessHardwareMatrix,
@@ -153,4 +154,10 @@ test('RC1 becomes eligible only when staging, browsers, hardware, rollback, and 
   assert.equal(result.eligible, true);
   assert.equal(result.decision, 'RC1_ELIGIBLE');
   assert.deepEqual(result.blockers, []);
+});
+
+test('Vercel Git policy blocks automatic main production deploys but keeps staging enabled', () => {
+  const config = JSON.parse(fs.readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
+  assert.equal(config.git?.deploymentEnabled?.main, false);
+  assert.equal(config.git?.deploymentEnabled?.staging, true);
 });
