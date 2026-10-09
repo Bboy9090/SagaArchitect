@@ -43,18 +43,12 @@ jobs:
       DEPLOYMENT_COMMIT_SHA: ${{ inputs.expected_commit_sha }}
       ROLLBACK_COMMIT_SHA: ${{ inputs.rollback_commit_sha }}
       PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
-      DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
-      DATABASE_MIGRATION_URL: ${{ secrets.STAGING_DATABASE_MIGRATION_URL }}
       DATABASE_SCHEMA: ${{ vars.STAGING_DATABASE_SCHEMA }}
-      NEXTAUTH_SECRET: ${{ secrets.STAGING_NEXTAUTH_SECRET }}
       STORAGE_PROVIDER: supabase
-      SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SUPABASE_SERVICE_ROLE_KEY }}
-      SUPABASE_STORAGE_BUCKET: ${{ vars.STAGING_SUPABASE_STORAGE_BUCKET }}
       RATE_LIMIT_PROVIDER: upstash
-      RATE_LIMIT_URL: ${{ secrets.STAGING_RATE_LIMIT_URL }}
-      RATE_LIMIT_TOKEN: ${{ secrets.STAGING_RATE_LIMIT_TOKEN }}
       RATE_LIMIT_NAMESPACE: ${{ vars.STAGING_RATE_LIMIT_NAMESPACE }}
+      STAGING_AUTOMATION_TOKEN: ${{ secrets.STAGING_AUTOMATION_TOKEN }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       FEATURE_PROJECT_RESTORE: "true"
       ENABLE_TEST_AUTH_BYPASS: "false"
       CREDENTIAL_ROTATION_CONFIRMED: ${{ vars.CREDENTIAL_ROTATION_CONFIRMED }}
@@ -105,11 +99,11 @@ jobs:
           if (!chromium || !firefox || !webkit) throw new Error('Playwright browser engines were not installed.');
           NODE
 
-      - name: Validate staging deployment policy
+      - name: Validate staging runner policy
         id: envcheck
         continue-on-error: true
         shell: bash
-        run: npm run env:check:staging | tee staging-environment.log
+        run: node scripts/check-staging-runner-env.mjs | tee staging-environment.log
 
       - name: Verify exact deployment identity
         id: identity
@@ -118,8 +112,9 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          curl --fail --silent --show-error "$STAGING_BASE_URL/api/health/deployment" \
-            | tee deployment-identity.json
+          curl --fail --silent --show-error \
+            -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" \
+            "$STAGING_BASE_URL/api/health/deployment" | tee deployment-identity.json
           node - <<'NODE'
           const fs = require('node:fs');
           const body = JSON.parse(fs.readFileSync('deployment-identity.json', 'utf8'));

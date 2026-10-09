@@ -116,7 +116,9 @@ test('staging browser verifier is engine-scoped, isolated, and evidence-producin
   assert.match(verifier, /PCS-WK-1440/);
   assert.match(verifier, /production origin/);
   assert.match(verifier, /sessionCookiePolicy/);
-  assert.match(verifier, /delete from users where email/);
+  assert.match(verifier, /STAGING_AUTOMATION_TOKEN/);
+  assert.match(verifier, /api\/staging\/cleanup/);
+  assert.doesNotMatch(verifier, /delete from users where email/);
 });
 
 test('staging receipt derives all browser classifications from artifact files', () => {
