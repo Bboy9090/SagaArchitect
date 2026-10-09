@@ -158,6 +158,7 @@ test('RC1 becomes eligible only when staging, browsers, hardware, rollback, and 
 
 test('Vercel Git policy blocks automatic main production deploys but keeps staging enabled', () => {
   const config = JSON.parse(fs.readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
+  assert.equal(config.git?.deploymentEnabled?.['*'], false);
   assert.equal(config.git?.deploymentEnabled?.main, false);
   assert.equal(config.git?.deploymentEnabled?.staging, true);
 });
