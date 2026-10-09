@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildHistoryAuditReport,
+  likelyFixtureOrExamplePath,
   scanTextForSecretFingerprints,
 } from '../scripts/lib/history-secret-audit.mjs';
 import {
@@ -45,7 +46,20 @@ test('history audit distinguishes current-tree findings from historical-only fin
   assert.equal(report.historicalOnlyFindings, 1);
   assert.equal(report.currentTreeClean, false);
   assert.equal(report.historyClean, false);
+  assert.equal(report.fixtureOrExampleFindings, 1);
+  assert.equal(report.nonFixtureFindings, 1);
+  assert.equal(report.currentTreeReviewFindings, 0);
+  assert.equal(report.historicalReviewFindings, 1);
+  assert.equal(report.reviewRequired, true);
+  assert.equal(report.historyReviewRequired, true);
   assert.equal(report.secretValuesIncluded, false);
+});
+
+test('history audit marks example and test paths as triage hints without suppressing findings', () => {
+  assert.equal(likelyFixtureOrExamplePath('.env.example'), true);
+  assert.equal(likelyFixtureOrExamplePath('tests/security.test.ts'), true);
+  assert.equal(likelyFixtureOrExamplePath('docs/SECURITY.md'), true);
+  assert.equal(likelyFixtureOrExamplePath('verify-auth-ownership.js'), false);
 });
 
 test('placeholder examples are ignored by the history scanner', () => {
