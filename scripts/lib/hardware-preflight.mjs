@@ -1,3 +1,8 @@
+export function physicalArchitecture(platform, processArch, appleArm64Capability = false) {
+  if (platform === 'darwin' && appleArm64Capability) return 'arm64';
+  return processArch;
+}
+
 export function suggestedHardwareClass(platform, arch) {
   if (platform === 'darwin' && arch === 'arm64') return 'macos-apple-silicon';
   if (platform === 'win32') return 'windows-desktop';

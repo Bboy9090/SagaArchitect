@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { buildHardwarePreflight } from './lib/hardware-preflight.mjs';
+import { buildHardwarePreflight, physicalArchitecture } from './lib/hardware-preflight.mjs';
 
 function command(file, args = []) {
   try {
@@ -62,6 +62,9 @@ function browserEvidence() {
 }
 
 const platform = process.platform;
+const appleArm64Capability = platform === 'darwin'
+  && command('/usr/sbin/sysctl', ['-n', 'hw.optional.arm64']) === '1';
+const arch = physicalArchitecture(platform, process.arch, appleArm64Capability);
 const hardware = platform === 'darwin'
   ? macHardware()
   : platform === 'win32'
@@ -76,7 +79,7 @@ const hardware = platform === 'darwin'
 
 const receipt = buildHardwarePreflight({
   platform,
-  arch: process.arch,
+  arch,
   hostname: os.hostname(),
   ...hardware,
   browser: browserEvidence(),

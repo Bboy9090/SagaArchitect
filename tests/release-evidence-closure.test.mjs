@@ -6,6 +6,7 @@ import {
 } from '../scripts/lib/history-secret-audit.mjs';
 import {
   buildHardwarePreflight,
+  physicalArchitecture,
   suggestedHardwareClass,
 } from '../scripts/lib/hardware-preflight.mjs';
 import { validateHardwareReceipt } from '../scripts/lib/release-evidence.mjs';
@@ -52,6 +53,13 @@ test('placeholder examples are ignored by the history scanner', () => {
     'DATABASE_URL=postgresql://user:your-password@example.com/db\nAPI_KEY=changeme-placeholder',
   );
   assert.deepEqual(findings, []);
+});
+
+test('hardware preflight detects physical Apple Silicon even under an x64 translated Node runtime', () => {
+  assert.equal(physicalArchitecture('darwin', 'x64', true), 'arm64');
+  assert.equal(physicalArchitecture('darwin', 'arm64', true), 'arm64');
+  assert.equal(physicalArchitecture('darwin', 'x64', false), 'x64');
+  assert.equal(physicalArchitecture('win32', 'x64', false), 'x64');
 });
 
 test('hardware preflight identifies Apple Silicon and Windows desktop classes only', () => {
