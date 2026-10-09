@@ -18,11 +18,13 @@ The scanner walks reachable Git blobs and detects credential-like material. It n
 - path
 - whether that exact blob/path is present in the current tree
 
-The generated `history-secret-audit.json` distinguishes current-tree findings from historical-only findings.
+The generated `history-secret-audit.json` distinguishes current-tree findings from historical-only findings. It also marks paths such as tests, docs, fixtures, and `.env.example` as **triage hints**. Those findings are not deleted or silently ignored; the hint simply prevents example material from being confused with confirmed credential exposure.
+
+This scanner is intentionally broad. The existing tracked-file secret gate remains the blocking control for the current tree. The history workflow is evidence collection and review: a successful workflow means the audit executed safely and retained its report, not that Git history is clean.
 
 A historical fingerprint is evidence for review and purge work; it is not evidence that the associated provider credential has been rotated or revoked.
 
-The manual **Phoenix Creator Studio Release Evidence Preflight** workflow performs a full-history checkout and uploads this non-secret report.
+The manual **Phoenix Creator Studio Release Evidence Preflight** workflow performs a full-history checkout and always uploads the non-secret report, including when findings require review.
 
 ## Physical-device preflight
 
