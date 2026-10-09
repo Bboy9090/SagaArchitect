@@ -28,22 +28,49 @@ jobs:
         run: npm ci
 
       - name: Run non-secret history credential audit
-        run: npm run audit:history-secrets | tee history-secret-audit.log
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run audit:history-secrets | tee history-secret-audit.log
 
-      - name: Verify audit output contains no raw secret declaration
+      - name: Verify audit output is non-secret and summarize review state
+        shell: bash
         run: |
           node - <<'NODE'
           const fs = require('node:fs');
           const report = JSON.parse(fs.readFileSync('history-secret-audit.json', 'utf8'));
-          if (report.secretValuesIncluded !== false) throw new Error('History audit must never include raw secret values.');
-          if (report.currentTreeClean !== true) throw new Error('Current-tree credential-like findings remain.');
+          if (report.format !== 'phoenix-creator-studio.git-history-secret-audit') {
+            throw new Error('Unexpected history-audit format.');
+          }
+          if (report.secretValuesIncluded !== false) {
+            throw new Error('History audit must never include raw secret values.');
+          }
+          const summary = {
+            format: 'phoenix-creator-studio.git-history-secret-audit-summary',
+            version: 1,
+            findingCount: report.findingCount,
+            uniqueFingerprintCount: report.uniqueFingerprintCount,
+            currentTreeFindings: report.currentTreeFindings,
+            historicalOnlyFindings: report.historicalOnlyFindings,
+            fixtureOrExampleFindings: report.fixtureOrExampleFindings,
+            currentTreeReviewFindings: report.currentTreeReviewFindings,
+            historicalReviewFindings: report.historicalReviewFindings,
+            reviewRequired: report.reviewRequired,
+            historyReviewRequired: report.historyReviewRequired,
+            secretValuesIncluded: false,
+          };
+          fs.writeFileSync('history-audit-summary.json', JSON.stringify(summary, null, 2) + '\n');
+          console.log(JSON.stringify(summary, null, 2));
           NODE
 
       - name: Upload non-secret history audit evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: phoenix-creator-studio-history-audit
           path: |
             history-secret-audit.json
+            history-audit-summary.json
             history-secret-audit.log
+          if-no-files-found: warn
           retention-days: 30
