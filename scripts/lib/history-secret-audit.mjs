@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-const PLACEHOLDER = /(?:example|placeholder|changeme|replace[-_ ]?me|your[-_ ]?(?:token|key|secret|password)|dummy|fake|sample|<[^>]+>|\*{3,}|x{6,})/i;
+const PLACEHOLDER = /(?:example|placeholder|changeme|replace[-_ ]?me|your[-_ ]?(?:token|key|secret|password)|dummy|fake|sample|test[-_ ]?password|ci[-_ ]?only|not[-_ ]?for[-_ ]?production|<[^>]+>|\*{3,}|x{6,})/i;
 
 const DETECTORS = [
   {
@@ -21,9 +21,23 @@ const DETECTORS = [
   },
   {
     category: 'assigned-secret-value',
-    pattern: /\b(?:password|passwd|secret|token|api[_-]?key|service[_-]?role[_-]?key)\s*[:=]\s*["']?([^\s"'#;,]{12,})/gi,
+    pattern: /\b(?:password|passwd|secret|token|api[_-]?key|service[_-]?role[_-]?key)\s*[:=]\s*["']([^"'\r\n]{12,})["']/gi,
+  },
+  {
+    category: 'assigned-secret-value',
+    pattern: /\b(?:password|passwd|secret|token|api[_-]?key|service[_-]?role[_-]?key)\s*[:=]\s*([A-Za-z0-9+/_=-]{16,})\b/gi,
   },
 ];
+
+function loopbackPostgresUrl(value) {
+  try {
+    const parsed = new URL(String(value));
+    const host = parsed.hostname.toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1';
+  } catch {
+    return false;
+  }
+}
 
 export function fingerprintSecret(value) {
   return createHash('sha256').update(String(value)).digest('hex');
@@ -40,6 +54,7 @@ export function scanTextForSecretFingerprints(text) {
       const matchedValue = match[0];
       const candidateValue = match[1] || matchedValue;
       if (PLACEHOLDER.test(candidateValue)) continue;
+      if (detector.category === 'postgres-url-with-password' && loopbackPostgresUrl(matchedValue)) continue;
       const fingerprint = fingerprintSecret(matchedValue);
       const key = `${detector.category}:${fingerprint}`;
       if (seen.has(key)) continue;
