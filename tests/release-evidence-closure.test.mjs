@@ -69,6 +69,32 @@ test('placeholder examples are ignored by the history scanner', () => {
   assert.deepEqual(findings, []);
 });
 
+test('history scanner ignores runtime references, helper expressions, generated templates, and loopback databases', () => {
+  const findings = scanTextForSecretFingerprints([
+    'const password = payload.password;',
+    'const token = environment.STAGING_AUTOMATION_TOKEN?.trim();',
+    'const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });',
+    'secret: getAuthSecret(),',
+    'const password = `PCS-Staging-${suffix}-Password!`;',
+    'password: \'Test-Password-A-123!\',',
+    'DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/phoenix_ci',
+    'DATABASE_URL=postgresql://postgres:postgres@localhost:5432/phoenix_dev',
+  ].join('\n'));
+  assert.deepEqual(findings, []);
+});
+
+test('history scanner still detects quoted and bare hardcoded secrets plus remote PostgreSQL passwords', () => {
+  const findings = scanTextForSecretFingerprints([
+    'api_key="not-a-placeholder-real-secret-ABC123456789"',
+    'token=AbCdEfGhIjKlMnOpQrStUvWxYz012345',
+    'DATABASE_URL=postgresql://appuser:remote-real-password-987@db.example.internal:5432/app',
+  ].join('\n'));
+  assert.equal(findings.some((finding) => finding.category === 'assigned-secret-value'), true);
+  assert.equal(findings.some((finding) => finding.category === 'postgres-url-with-password'), true);
+  const serialized = JSON.stringify(findings);
+  assert.doesNotMatch(serialized, /remote-real-password-987|AbCdEfGhIjKlMnOpQrStUvWxYz012345/);
+});
+
 test('hardware preflight detects physical Apple Silicon even under an x64 translated Node runtime', () => {
   assert.equal(physicalArchitecture('darwin', 'x64', true), 'arm64');
   assert.equal(physicalArchitecture('darwin', 'arm64', true), 'arm64');
