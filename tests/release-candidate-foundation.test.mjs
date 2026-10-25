@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import {
   HARDWARE_CLASSES,
   assessHardwareMatrix,
@@ -77,6 +81,7 @@ test('hardware matrix passes only when every required physical class has a valid
 test('RC1 remains blocked when any live or security gate is missing', () => {
   const stagingReceipt = {
     decision: 'STAGING_PASS',
+    commitSha: commit,
     classifications: {
       liveSupabaseValidated: true,
       liveUpstashValidated: true,
@@ -89,6 +94,7 @@ test('RC1 remains blocked when any live or security gate is missing', () => {
   };
   const hardwareAssessment = assessHardwareMatrix(HARDWARE_CLASSES.map(receipt), commit);
   const blocked = assessReleaseCandidate({
+    expectedCommit: commit,
     stagingReceipt,
     hardwareAssessment,
     securityEvidence: {
@@ -104,8 +110,10 @@ test('RC1 remains blocked when any live or security gate is missing', () => {
 
 test('RC1 rejects security evidence that accidentally contains credential material', () => {
   const result = assessReleaseCandidate({
+    expectedCommit: commit,
     stagingReceipt: {
       decision: 'STAGING_PASS',
+      commitSha: commit,
       classifications: {
         liveSupabaseValidated: true,
         liveUpstashValidated: true,
@@ -131,8 +139,10 @@ test('RC1 rejects security evidence that accidentally contains credential materi
 
 test('RC1 becomes eligible only when staging, browsers, hardware, rollback, and security all pass', () => {
   const result = assessReleaseCandidate({
+    expectedCommit: commit,
     stagingReceipt: {
       decision: 'STAGING_PASS',
+      commitSha: commit,
       classifications: {
         liveSupabaseValidated: true,
         liveUpstashValidated: true,
@@ -161,4 +171,133 @@ test('Vercel Git policy blocks automatic main production deploys but keeps stagi
   assert.equal(config.git?.deploymentEnabled?.['*'], false);
   assert.equal(config.git?.deploymentEnabled?.main, false);
   assert.equal(config.git?.deploymentEnabled?.staging, true);
+});
+
+function candidateEvidence() {
+  return {
+    expectedCommit: commit,
+    stagingReceipt: {
+      decision: 'STAGING_PASS',
+      commitSha: commit,
+      classifications: {
+        liveSupabaseValidated: true,
+        liveUpstashValidated: true,
+        browsers: Object.fromEntries(['chromium', 'firefox', 'webkit'].map((engine) => [engine, { emulatorValidated: true }])),
+      },
+    },
+    hardwareAssessment: assessHardwareMatrix(HARDWARE_CLASSES.map(receipt), commit),
+    securityEvidence: {
+      credentialRotationConfirmed: true,
+      historyReviewConfirmed: true,
+      rollbackRehearsalConfirmed: true,
+      oldCredentialRejected: true,
+    },
+  };
+}
+
+test('hardware receipts and complete matrices require an explicit full candidate commit', () => {
+  for (const expectedCommit of [undefined, null, '', 'abc123', 'g'.repeat(40)]) {
+    const validation = validateHardwareReceipt(receipt('android'), expectedCommit);
+    assert.equal(validation.valid, false);
+    assert.match(validation.errors.join('\n'), /expected staging commit is required/);
+    const matrix = assessHardwareMatrix(HARDWARE_CLASSES.map(receipt), expectedCommit);
+    assert.equal(matrix.allRequiredPassed, false);
+    assert.equal(matrix.expectedCommit, null);
+  }
+});
+
+test('hardware matrices reject a stale device receipt even when every class reports PASS', () => {
+  const receipts = HARDWARE_CLASSES.map(receipt);
+  receipts.find((entry) => entry.hardwareClass === 'android').commitSha = 'b'.repeat(40);
+  const matrix = assessHardwareMatrix(receipts, commit);
+  assert.equal(matrix.allRequiredPassed, false);
+  assert.equal(matrix.classes.android.hardwareValidated, false);
+  assert.match(matrix.classes.android.errors.join('\n'), /does not match the staging commit/);
+});
+
+test('commit comparisons normalize hexadecimal case without weakening identity', () => {
+  const receipts = HARDWARE_CLASSES.map((hardwareClass) => ({ ...receipt(hardwareClass), commitSha: commit.toUpperCase() }));
+  const matrix = assessHardwareMatrix(receipts, commit.toUpperCase());
+  assert.equal(matrix.allRequiredPassed, true);
+  assert.equal(matrix.expectedCommit, commit);
+  assert.equal(matrix.classes.android.commitSha, commit);
+  const evidence = candidateEvidence();
+  evidence.expectedCommit = commit.toUpperCase();
+  evidence.stagingReceipt.commitSha = commit.toUpperCase();
+  assert.equal(assessReleaseCandidate(evidence).eligible, true);
+});
+
+test('RC1 cannot infer candidate identity from otherwise passing evidence', () => {
+  for (const expectedCommit of [undefined, null, '', 'abc123', 'g'.repeat(40)]) {
+    const result = assessReleaseCandidate({ ...candidateEvidence(), expectedCommit });
+    assert.equal(result.eligible, false);
+    assert.match(result.blockers.join('\n'), /expected release commit is required/);
+  }
+});
+
+test('RC1 rejects passing staging or hardware assessments from another commit', () => {
+  const staleStaging = candidateEvidence();
+  staleStaging.stagingReceipt.commitSha = 'b'.repeat(40);
+  assert.match(assessReleaseCandidate(staleStaging).blockers.join('\n'), /Staging evidence does not match/);
+  const staleHardware = candidateEvidence();
+  staleHardware.hardwareAssessment.expectedCommit = 'b'.repeat(40);
+  assert.match(assessReleaseCandidate(staleHardware).blockers.join('\n'), /Hardware matrix does not match/);
+});
+
+test('RC1 verifies every hardware class instead of trusting the summary pass flag', () => {
+  const mutations = [
+    (evidence) => { delete evidence.hardwareAssessment.classes.android; },
+    (evidence) => { evidence.hardwareAssessment.classes.android.commitSha = 'b'.repeat(40); },
+    (evidence) => { evidence.hardwareAssessment.classes.android.hardwareValidated = false; },
+    (evidence) => { evidence.hardwareAssessment.classes.android.evidenceDigest = null; },
+    (evidence) => { evidence.hardwareAssessment.classes.android.evidenceDigest = 'not-a-sha256'; },
+  ];
+  for (const mutate of mutations) {
+    const evidence = candidateEvidence();
+    mutate(evidence);
+    assert.equal(evidence.hardwareAssessment.allRequiredPassed, true);
+    const result = assessReleaseCandidate(evidence);
+    assert.equal(result.eligible, false);
+    assert.match(result.blockers.join('\n'), /android hardware evidence/);
+  }
+});
+
+test('RC1 command writes blocked evidence without a candidate and rejects a mismatched candidate', (t) => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'pcs-rc-source-test-'));
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const evidence = candidateEvidence();
+  for (const [filename, value] of [
+    ['staging-evidence-receipt.json', evidence.stagingReceipt],
+    ['hardware-matrix-assessment.json', evidence.hardwareAssessment],
+    ['security-release-evidence.json', evidence.securityEvidence],
+  ]) fs.writeFileSync(path.join(cwd, filename), JSON.stringify(value));
+
+  const script = fileURLToPath(new URL('../scripts/generate-rc1-assessment.mjs', import.meta.url));
+  const env = { ...process.env };
+  for (const name of ['DEPLOYMENT_COMMIT_SHA', 'STAGING_RECEIPT', 'HARDWARE_ASSESSMENT', 'SECURITY_EVIDENCE']) delete env[name];
+  const run = (candidate) => spawnSync(process.execPath, [script], {
+    cwd,
+    env: candidate === undefined ? env : { ...env, DEPLOYMENT_COMMIT_SHA: candidate },
+    encoding: 'utf8',
+    timeout: 10000,
+  });
+  const read = () => JSON.parse(fs.readFileSync(path.join(cwd, 'rc1-assessment.json'), 'utf8'));
+
+  const missing = run();
+  assert.ifError(missing.error);
+  assert.equal(missing.status, 1, missing.stderr);
+  assert.equal(read().commitSha, null);
+  assert.equal(read().decision, 'RC1_BLOCKED');
+
+  const wrong = run('b'.repeat(40));
+  assert.ifError(wrong.error);
+  assert.equal(wrong.status, 1, wrong.stderr);
+  assert.equal(read().commitSha, 'b'.repeat(40));
+  assert.equal(read().decision, 'RC1_BLOCKED');
+
+  const correct = run(commit.toUpperCase());
+  assert.ifError(correct.error);
+  assert.equal(correct.status, 0, correct.stderr);
+  assert.equal(read().commitSha, commit);
+  assert.equal(read().decision, 'RC1_ELIGIBLE');
 });
