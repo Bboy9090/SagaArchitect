@@ -17,9 +17,10 @@ concurrency:
 jobs:
   verify:
     name: Enterprise foundation and ownership regression gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
+      EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       APP_ENV: test
       ENABLE_TEST_AUTH_BYPASS: "true"
       FEATURE_PROJECT_RESTORE: "true"
@@ -34,24 +35,40 @@ jobs:
       RATE_LIMIT_PROVIDER: memory
       NEXT_TELEMETRY_DISABLED: "1"
 
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: phoenix_creator_studio_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d phoenix_creator_studio_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact candidate source
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          git diff --exit-code HEAD
+          git diff --cached --exit-code
+          printf 'source_sha=%s\n' "$EXPECTED_SOURCE_SHA" | tee source-identity.txt
+
+      - name: Start isolated PostgreSQL 16
+        id: database
+        continue-on-error: true
+        shell: bash
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          # Ubuntu 24.04 runners include PostgreSQL 16, disabled by default.
+          # Use the ephemeral runner's loopback-only service, not a remote DB.
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql --set=ON_ERROR_STOP=1 --command="ALTER USER postgres PASSWORD 'postgres';"
+          createdb --host=127.0.0.1 --username=postgres phoenix_creator_studio_test
+          version="$(psql "$TEST_DATABASE_URL" --tuples-only --no-align --command='SHOW server_version_num')"
+          test "$version" -ge 160000
+          test "$version" -lt 170000
+          pg_isready --host=127.0.0.1 --username=postgres --dbname=phoenix_creator_studio_test
+          printf 'postgres_version_num=%s\n' "$version" | tee database-runtime.txt
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -87,7 +104,7 @@ jobs:
 
       - name: Apply schema to isolated test database
         id: schema
-        if: always() && !cancelled() && steps.install.outcome == 'success'
+        if: always() && !cancelled() && steps.install.outcome == 'success' && steps.database.outcome == 'success'
         continue-on-error: true
         shell: bash
         run: |
@@ -232,11 +249,17 @@ jobs:
         run: |
           if test -f server.pid; then kill "$(cat server.pid)" 2>/dev/null || true; fi
 
+      - name: Stop isolated PostgreSQL
+        if: always() && steps.database.outcome != 'skipped'
+        shell: bash
+        run: sudo systemctl stop postgresql.service
+
       - name: Record outcomes
         if: always()
         shell: bash
         run: |
           printf '%s\n' \
+            "database_outcome=${{ steps.database.outcome }}" \
             "install_outcome=${{ steps.install.outcome }}" \
             "secrets_outcome=${{ steps.secrets.outcome }}" \
             "supply_chain_outcome=${{ steps.supplychain.outcome }}" \
@@ -262,6 +285,8 @@ jobs:
         with:
           name: phoenix-creator-studio-foundation
           path: |
+            source-identity.txt
+            database-runtime.txt
             install.log
             secrets.log
             supply-chain.log
@@ -294,6 +319,7 @@ jobs:
         if: always() && !cancelled()
         shell: bash
         run: |
+          test "${{ steps.database.outcome }}" = "success"
           test "${{ steps.install.outcome }}" = "success"
           test "${{ steps.secrets.outcome }}" = "success"
           test "${{ steps.supplychain.outcome }}" = "success"
