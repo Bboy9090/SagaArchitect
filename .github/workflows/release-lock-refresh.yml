@@ -1,0 +1,40 @@
+name: Release Lock Refresh
+
+on:
+  push:
+    branches:
+      - release/rc-evidence-source-binding-20261024
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    if: "${{ !contains(github.event.head_commit.message, 'chore: refresh lockfile for Next.js 16.4.1') }}"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: release/rc-evidence-source-binding-20261024
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Refresh lockfile for patched Next.js
+        run: npm install --package-lock-only --ignore-scripts next@16.4.1
+      - name: Verify patched dependency tree
+        run: |
+          npm ls next
+          npm audit --omit=dev --audit-level=high
+      - name: Commit refreshed lockfile
+        shell: bash
+        run: |
+          if git diff --quiet package.json package-lock.json; then
+            echo "Lockfile already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "chore: refresh lockfile for Next.js 16.4.1"
+          git push origin HEAD:release/rc-evidence-source-binding-20261024

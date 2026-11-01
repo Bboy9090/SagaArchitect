@@ -28,6 +28,7 @@ RC1 remains blocked unless all of the following are true on one exact commit SHA
 
 The RC assessment consumes:
 
+- `DEPLOYMENT_COMMIT_SHA` — the explicit full candidate commit; never inferred from a receipt
 - `staging-evidence-receipt.json`
 - `hardware-matrix-assessment.json`
 - `security-release-evidence.json`
@@ -52,10 +53,11 @@ Never record a credential value, connection string, cookie, token, or service-ro
 Run:
 
 ```bash
-npm run test:rc1:assessment
+DEPLOYMENT_COMMIT_SHA="$candidate_sha" npm run test:rc1:assessment
 ```
 
 The command writes `rc1-assessment.json` and exits non-zero while any mandatory gate is missing.
+Staging, the hardware matrix, and every required hardware-class receipt must identify that same commit. Missing or mixed source identities remain blocked even when their individual result flags say PASS. Generate the hardware matrix with the same `DEPLOYMENT_COMMIT_SHA`.
 
 ## Freeze procedure after `RC1_ELIGIBLE`
 
