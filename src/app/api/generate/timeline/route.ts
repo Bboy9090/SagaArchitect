@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { aiProviderFailureResponse, isProductionLikeGenerationEnvironment, mockGenerationResponse } from '@/lib/ai-generation-policy';
 import type { TimelineEvent } from '@/lib/types';
 import { buildCanonBlock, formatCanonBlockAsPrompt } from '@/lib/lore-engine';
 import type { CanonBlockInput } from '@/lib/lore-engine';
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
     const { universe } = body;
 
     if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json({ events: mockTimeline(universe.id) });
+      return mockGenerationResponse({ events: mockTimeline(universe.id) });
     }
 
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -89,11 +90,17 @@ Return only valid JSON.`;
     });
 
     const content = completion.choices[0]?.message?.content;
-    if (!content) return NextResponse.json({ events: mockTimeline(universe.id) });
+    if (!content) {
+      return isProductionLikeGenerationEnvironment()
+        ? aiProviderFailureResponse('empty_response')
+        : mockGenerationResponse({ events: mockTimeline(universe.id) });
+    }
 
     return NextResponse.json(JSON.parse(content));
   } catch (error) {
     console.error('Timeline generation error:', error);
-    return NextResponse.json({ events: [] });
+    return isProductionLikeGenerationEnvironment()
+      ? aiProviderFailureResponse('provider_error')
+      : mockGenerationResponse({ events: mockTimeline(universe.id) });
   }
 }
