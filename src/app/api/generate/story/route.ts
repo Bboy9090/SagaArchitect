@@ -23,6 +23,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { aiProviderFailureResponse, isProductionLikeGenerationEnvironment, mockGenerationResponse } from '@/lib/ai-generation-policy';
 import { buildCanonBlock, formatCanonBlockAsPrompt } from '@/lib/lore-engine';
 import type { CanonBlockInput } from '@/lib/lore-engine';
 import type { StoryFormat } from '@/lib/types';
@@ -154,7 +155,7 @@ export async function POST(req: NextRequest) {
       const storyFormat = (format ?? 'opening_chapter') as StoryFormat;
 
       if (!process.env.OPENAI_API_KEY) {
-        return NextResponse.json({
+        return mockGenerationResponse({
           story: mockStory(lore_universe_id, storyFormat, canonInput.universe.name),
         });
       }
@@ -172,7 +173,9 @@ export async function POST(req: NextRequest) {
 
       const content = completion.choices[0]?.message?.content;
       if (!content) {
-        return NextResponse.json({ story: mockStory(lore_universe_id, storyFormat, canonInput.universe.name) });
+        return isProductionLikeGenerationEnvironment()
+          ? aiProviderFailureResponse('empty_response')
+          : mockGenerationResponse({ story: mockStory(lore_universe_id, storyFormat, canonInput.universe.name) });
       }
 
       console.log(`[LoreEngine] Story generated for universe "${lore_universe_id}" (${storyFormat})`);
@@ -185,7 +188,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json({
+      return mockGenerationResponse({
         story: mockStory(universe.id, format ?? 'opening_chapter', universe.name),
       });
     }
@@ -207,12 +210,19 @@ export async function POST(req: NextRequest) {
 
     const content = completion.choices[0]?.message?.content;
     if (!content) {
-      return NextResponse.json({ story: mockStory(universe.id, storyFormat, universe.name) });
+      return isProductionLikeGenerationEnvironment()
+        ? aiProviderFailureResponse('empty_response')
+        : mockGenerationResponse({ story: mockStory(universe.id, storyFormat, universe.name) });
     }
 
     return NextResponse.json({ story: JSON.parse(content) });
   } catch (error) {
     console.error('Story generation error:', error);
-    return NextResponse.json({ story: null });
+    return isProductionLikeGenerationEnvironment()
+      ? aiProviderFailureResponse('provider_error')
+      : NextResponse.json(
+          { story: null, generation_mode: 'error' },
+          { status: 500, headers: { 'cache-control': 'no-store' } },
+        );
   }
 }
