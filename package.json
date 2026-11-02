@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test:smoke": "bash scripts/smoke-test.sh",
     "test:enterprise": "node verify-enterprise-foundation.js",
-    "test:release-foundation": "node --test tests/release-candidate-foundation.test.mjs tests/release-evidence-closure.test.mjs",
+    "test:release-foundation": "node --test tests/release-candidate-foundation.test.mjs tests/release-evidence-closure.test.mjs tests/ai-production-truth-boundary.test.mjs",
     "test:staging:providers": "node scripts/verify-live-staging-providers.mjs",
     "test:staging:browser": "node verify-staging-browser.js",
     "test:staging:acceptance": "node verify-staging-acceptance.js",
