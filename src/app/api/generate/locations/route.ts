@@ -82,9 +82,7 @@ Return only valid JSON.`;
 
     return NextResponse.json(JSON.parse(content));
   } catch (error) {
-    console.error('Location generation error:', error);
-    return isProductionLikeGenerationEnvironment()
-      ? aiProviderFailureResponse('provider_error')
-      : mockGenerationResponse({ locations: mockLocations(universe.id) });
+    console.error('Locations generation error:', error);
+    return aiProviderFailureResponse('provider_error');
   }
 }
