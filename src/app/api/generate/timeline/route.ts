@@ -99,8 +99,6 @@ Return only valid JSON.`;
     return NextResponse.json(JSON.parse(content));
   } catch (error) {
     console.error('Timeline generation error:', error);
-    return isProductionLikeGenerationEnvironment()
-      ? aiProviderFailureResponse('provider_error')
-      : mockGenerationResponse({ events: mockTimeline(universe.id) });
+    return aiProviderFailureResponse('provider_error');
   }
 }
