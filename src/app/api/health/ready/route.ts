@@ -120,11 +120,13 @@ export async function GET() {
 
   checks.push({
     name: 'ai-provider',
-    required: false,
+    required: productionLike(),
     ok: Boolean(process.env.OPENAI_API_KEY),
     detail: process.env.OPENAI_API_KEY
-      ? 'AI provider configured.'
-      : 'AI provider is optional; mock/local workflows remain available.',
+      ? 'Live AI provider configured.'
+      : productionLike()
+        ? 'Live AI provider is required; production-like environments do not return mock generation.'
+        : 'AI provider is optional in development/test; mock responses are explicitly labeled.',
   });
 
   const report = evaluateReadiness(checks);
