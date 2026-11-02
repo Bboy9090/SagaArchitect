@@ -39,6 +39,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { aiProviderFailureResponse, isProductionLikeGenerationEnvironment, mockGenerationResponse } from '@/lib/ai-generation-policy';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -138,16 +139,16 @@ async function handleFreshRecombination(
 
   if (!process.env.OPENAI_API_KEY) {
     const results = buildMockFreshSeeds(count, archetypes, genre, tone, themeTags);
-    return NextResponse.json(
+    return mockGenerationResponse(
       {
         results,
         generation_mode: generationMode,
         from_archetypes: archetypeNames,
         canon_safety_note:
-          '[Mock mode — add OPENAI_API_KEY for AI generation] ' +
+          '[Mock mode — development/test only] ' +
           'All output is placeholder inspiration. No private canon has been reproduced.',
       },
-      { headers: CORS },
+      CORS,
     );
   }
 
@@ -192,36 +193,54 @@ Return only valid JSON.`;
 
   const content = completion.choices[0]?.message?.content;
   if (!content) {
-    return NextResponse.json(
-      {
-        results: buildMockFreshSeeds(count, archetypes, genre, tone, themeTags),
-        generation_mode: generationMode,
-        from_archetypes: archetypeNames,
-        canon_safety_note: 'AI returned empty response; mock seeds shown instead.',
-      },
-      { headers: CORS },
-    );
+    return isProductionLikeGenerationEnvironment()
+      ? aiProviderFailureResponse('empty_response', CORS)
+      : mockGenerationResponse(
+          {
+            results: buildMockFreshSeeds(count, archetypes, genre, tone, themeTags),
+            generation_mode: generationMode,
+            from_archetypes: archetypeNames,
+            canon_safety_note: 'Development/test fallback: AI returned an empty response.',
+          },
+          CORS,
+        );
   }
 
   let parsed: { results?: FreshSeed[] };
   try {
     parsed = JSON.parse(content) as { results?: FreshSeed[] };
   } catch {
-    console.warn('[SharedLorePool] AI returned malformed JSON; falling back to mock.');
-    return NextResponse.json(
-      {
-        results: buildMockFreshSeeds(count, archetypes, genre, tone, themeTags),
-        generation_mode: generationMode,
-        from_archetypes: archetypeNames,
-        canon_safety_note: 'AI returned malformed JSON; mock seeds shown.',
-      },
-      { headers: CORS },
-    );
+    console.warn('[SharedLorePool] AI returned malformed JSON.');
+    return isProductionLikeGenerationEnvironment()
+      ? aiProviderFailureResponse('malformed_response', CORS)
+      : mockGenerationResponse(
+          {
+            results: buildMockFreshSeeds(count, archetypes, genre, tone, themeTags),
+            generation_mode: generationMode,
+            from_archetypes: archetypeNames,
+            canon_safety_note: 'Development/test fallback: AI returned malformed JSON.',
+          },
+          CORS,
+        );
+  }
+
+  if (!parsed.results) {
+    return isProductionLikeGenerationEnvironment()
+      ? aiProviderFailureResponse('malformed_response', CORS)
+      : mockGenerationResponse(
+          {
+            results: buildMockFreshSeeds(count, archetypes, genre, tone, themeTags),
+            generation_mode: generationMode,
+            from_archetypes: archetypeNames,
+            canon_safety_note: 'Development/test fallback: AI response omitted results.',
+          },
+          CORS,
+        );
   }
 
   return NextResponse.json(
     {
-      results: parsed.results ?? buildMockFreshSeeds(count, archetypes, genre, tone, themeTags),
+      results: parsed.results,
       generation_mode: generationMode,
       from_archetypes: archetypeNames,
       canon_safety_note:
@@ -270,9 +289,9 @@ async function handleLegacyGeneration(
   const archetypeNames = archetypes.map(a => a.archetype_name);
 
   if (!process.env.OPENAI_API_KEY) {
-    return NextResponse.json(
+    return mockGenerationResponse(
       buildMockLegacyGeneration(generate_types, archetypes, genre, tone, theme_tags),
-      { headers: CORS },
+      CORS,
     );
   }
 
@@ -315,21 +334,25 @@ Return only valid JSON.`;
 
   const content = completion.choices[0]?.message?.content;
   if (!content) {
-    return NextResponse.json(
-      buildMockLegacyGeneration(generate_types, archetypes, genre, tone, theme_tags),
-      { headers: CORS },
-    );
+    return isProductionLikeGenerationEnvironment()
+      ? aiProviderFailureResponse('empty_response', CORS)
+      : mockGenerationResponse(
+          buildMockLegacyGeneration(generate_types, archetypes, genre, tone, theme_tags),
+          CORS,
+        );
   }
 
   let generated: Record<string, unknown>;
   try {
     generated = JSON.parse(content) as Record<string, unknown>;
   } catch {
-    console.warn('[SharedLorePool] AI returned malformed JSON; falling back to mock.');
-    return NextResponse.json(
-      buildMockLegacyGeneration(generate_types, archetypes, genre, tone, theme_tags),
-      { headers: CORS },
-    );
+    console.warn('[SharedLorePool] AI returned malformed JSON.');
+    return isProductionLikeGenerationEnvironment()
+      ? aiProviderFailureResponse('malformed_response', CORS)
+      : mockGenerationResponse(
+          buildMockLegacyGeneration(generate_types, archetypes, genre, tone, theme_tags),
+          CORS,
+        );
   }
 
   return NextResponse.json(
