@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { aiProviderFailureResponse, isProductionLikeGenerationEnvironment, mockGenerationResponse } from '@/lib/ai-generation-policy';
 import type { Faction } from '@/lib/types';
 import { buildCanonBlock, formatCanonBlockAsPrompt } from '@/lib/lore-engine';
 import type { CanonBlockInput } from '@/lib/lore-engine';
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
     const { universe } = body;
 
     if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json({ factions: mockFactions(universe.id) });
+      return mockGenerationResponse({ factions: mockFactions(universe.id) });
     }
 
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -86,11 +87,15 @@ Return only valid JSON.`;
     });
 
     const content = completion.choices[0]?.message?.content;
-    if (!content) return NextResponse.json({ factions: mockFactions(universe.id) });
+    if (!content) {
+      return isProductionLikeGenerationEnvironment()
+        ? aiProviderFailureResponse('empty_response')
+        : mockGenerationResponse({ factions: mockFactions(universe.id) });
+    }
 
     return NextResponse.json(JSON.parse(content));
   } catch (error) {
-    console.error('Faction generation error:', error);
-    return NextResponse.json({ factions: [] });
+    console.error('Factions generation error:', error);
+    return aiProviderFailureResponse('provider_error');
   }
 }

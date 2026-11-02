@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { aiProviderFailureResponse, isProductionLikeGenerationEnvironment, mockGenerationResponse } from '@/lib/ai-generation-policy';
 import type { Character } from '@/lib/types';
 import { buildCanonBlock, formatCanonBlockAsPrompt } from '@/lib/lore-engine';
 import type { CanonBlockInput } from '@/lib/lore-engine';
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
     const { universe, factions } = body;
 
     if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json({ characters: mockCharacters(universe.id) });
+      return mockGenerationResponse({ characters: mockCharacters(universe.id) });
     }
 
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -89,11 +90,15 @@ Return only valid JSON.`;
     });
 
     const content = completion.choices[0]?.message?.content;
-    if (!content) return NextResponse.json({ characters: mockCharacters(universe.id) });
+    if (!content) {
+      return isProductionLikeGenerationEnvironment()
+        ? aiProviderFailureResponse('empty_response')
+        : mockGenerationResponse({ characters: mockCharacters(universe.id) });
+    }
 
     return NextResponse.json(JSON.parse(content));
   } catch (error) {
-    console.error('Character generation error:', error);
-    return NextResponse.json({ characters: [] });
+    console.error('Characters generation error:', error);
+    return aiProviderFailureResponse('provider_error');
   }
 }
