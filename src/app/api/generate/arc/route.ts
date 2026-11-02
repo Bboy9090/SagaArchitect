@@ -89,8 +89,6 @@ Return only valid JSON.`;
     return NextResponse.json(JSON.parse(content));
   } catch (error) {
     console.error('Arc generation error:', error);
-    return isProductionLikeGenerationEnvironment()
-      ? aiProviderFailureResponse('provider_error')
-      : mockGenerationResponse({ arc: mockArc(universe.id, arcType as ArcType) });
+    return aiProviderFailureResponse('provider_error');
   }
 }
