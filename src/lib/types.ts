@@ -220,7 +220,13 @@ export type MediaProjectType =
   | 'comic'
   | 'film'
   | 'short_story'
-  | 'script';
+  | 'script'
+  | 'video'
+  | 'short_video'
+  | 'motion_comic'
+  | 'illustration'
+  | 'design'
+  | 'audio';
 
 export type MediaProjectStatus = 'concept' | 'in_progress' | 'complete';
 
