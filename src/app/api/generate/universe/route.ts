@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { aiProviderFailureResponse, isProductionLikeGenerationEnvironment, mockGenerationResponse } from '@/lib/ai-generation-policy';
 import { buildCanonBlock, formatCanonBlockAsPrompt } from '@/lib/lore-engine';
 import type { CanonBlockInput } from '@/lib/lore-engine';
 
@@ -20,7 +21,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json(MOCK_UNIVERSE);
+      return mockGenerationResponse(MOCK_UNIVERSE);
     }
 
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -60,11 +61,17 @@ Return only valid JSON, no markdown.`;
     });
 
     const content = completion.choices[0]?.message?.content;
-    if (!content) return NextResponse.json(MOCK_UNIVERSE);
+    if (!content) {
+      return isProductionLikeGenerationEnvironment()
+        ? aiProviderFailureResponse('empty_response')
+        : mockGenerationResponse(MOCK_UNIVERSE);
+    }
 
     return NextResponse.json(JSON.parse(content));
   } catch (error) {
     console.error('Universe generation error:', error);
-    return NextResponse.json(MOCK_UNIVERSE);
+    return isProductionLikeGenerationEnvironment()
+      ? aiProviderFailureResponse('provider_error')
+      : mockGenerationResponse(MOCK_UNIVERSE);
   }
 }
