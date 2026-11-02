@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { aiProviderFailureResponse, isProductionLikeGenerationEnvironment, mockGenerationResponse } from '@/lib/ai-generation-policy';
 import type { ArcType } from '@/lib/types';
 import { buildCanonBlock, formatCanonBlockAsPrompt } from '@/lib/lore-engine';
 import type { CanonBlockInput } from '@/lib/lore-engine';
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
     const { universe, characters, factions, arcType } = body;
 
     if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json({ arc: mockArc(universe.id, arcType as ArcType) });
+      return mockGenerationResponse({ arc: mockArc(universe.id, arcType as ArcType) });
     }
 
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -79,11 +80,17 @@ Return only valid JSON.`;
     });
 
     const content = completion.choices[0]?.message?.content;
-    if (!content) return NextResponse.json({ arc: mockArc(universe.id, arcType as ArcType) });
+    if (!content) {
+      return isProductionLikeGenerationEnvironment()
+        ? aiProviderFailureResponse('empty_response')
+        : mockGenerationResponse({ arc: mockArc(universe.id, arcType as ArcType) });
+    }
 
     return NextResponse.json(JSON.parse(content));
   } catch (error) {
     console.error('Arc generation error:', error);
-    return NextResponse.json({ arc: null });
+    return isProductionLikeGenerationEnvironment()
+      ? aiProviderFailureResponse('provider_error')
+      : mockGenerationResponse({ arc: mockArc(universe.id, arcType as ArcType) });
   }
 }
