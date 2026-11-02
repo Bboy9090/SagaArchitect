@@ -98,9 +98,7 @@ Return only valid JSON.`;
 
     return NextResponse.json(JSON.parse(content));
   } catch (error) {
-    console.error('Character generation error:', error);
-    return isProductionLikeGenerationEnvironment()
-      ? aiProviderFailureResponse('provider_error')
-      : mockGenerationResponse({ characters: mockCharacters(universe.id) });
+    console.error('Characters generation error:', error);
+    return aiProviderFailureResponse('provider_error');
   }
 }
