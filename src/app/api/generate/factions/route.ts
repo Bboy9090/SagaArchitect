@@ -95,9 +95,7 @@ Return only valid JSON.`;
 
     return NextResponse.json(JSON.parse(content));
   } catch (error) {
-    console.error('Faction generation error:', error);
-    return isProductionLikeGenerationEnvironment()
-      ? aiProviderFailureResponse('provider_error')
-      : mockGenerationResponse({ factions: mockFactions(universe.id) });
+    console.error('Factions generation error:', error);
+    return aiProviderFailureResponse('provider_error');
   }
 }
