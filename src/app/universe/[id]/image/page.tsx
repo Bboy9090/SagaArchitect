@@ -60,7 +60,20 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
   const [selection, setSelection] = useState({ x: 120, y: 120, width: 600, height: 600 });
   const [exportingFormat, setExportingFormat] = useState<PhoenixRasterExportFormat | null>(null);
   const [exportError, setExportError] = useState('');
-  const viewport = useMediaViewport(0.6);
+  const {
+    zoom,
+    setZoom,
+    showGuides,
+    setShowGuides,
+    snap,
+    setSnap,
+    showRulers,
+    setShowRulers,
+    snapValue,
+    fitToView,
+    scrollRef,
+    panHandlers,
+  } = useMediaViewport(0.6);
 
   useEffect(() => {
     let cancelled = false;
@@ -210,7 +223,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
 
   const patchTransform = (key: keyof PhoenixMediaLayer['transform'], value: number) => {
     if (!selectedLayer) return;
-    const nextValue = key === 'rotation' ? value : viewport.snapValue(value);
+    const nextValue = key === 'rotation' ? value : snapValue(value);
     patchSelectedLayer({ transform: { ...selectedLayer.transform, [key]: nextValue } } as Partial<PhoenixMediaLayer>);
   };
 
@@ -314,7 +327,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
     );
   }
 
-  const scale = viewport.zoom;
+  const scale = zoom;
 
   return (
     <Navigation>
@@ -415,23 +428,23 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
 
         <main className="flex min-h-0 flex-col bg-[#04060b] p-4 md:p-6">
           <MediaViewportToolbar
-            zoom={viewport.zoom}
-            onZoomChange={viewport.setZoom}
-            onFit={() => viewport.fitToView(document.width, document.height)}
-            showGuides={viewport.showGuides}
-            onToggleGuides={() => viewport.setShowGuides(value => !value)}
-            snap={viewport.snap}
-            onToggleSnap={() => viewport.setSnap(value => !value)}
-            showRulers={viewport.showRulers}
-            onToggleRulers={() => viewport.setShowRulers(value => !value)}
+            zoom={zoom}
+            onZoomChange={setZoom}
+            onFit={() => fitToView(document.width, document.height)}
+            showGuides={showGuides}
+            onToggleGuides={() => setShowGuides(value => !value)}
+            snap={snap}
+            onToggleSnap={() => setSnap(value => !value)}
+            showRulers={showRulers}
+            onToggleRulers={() => setShowRulers(value => !value)}
           />
           <div
-            ref={viewport.scrollRef}
-            {...viewport.panHandlers}
+            ref={scrollRef}
+            {...panHandlers}
             className="relative mt-4 min-h-[680px] flex-1 cursor-grab overflow-auto rounded-lg border border-white/5 bg-[#03050a] p-10 active:cursor-grabbing"
           >
             <div className="relative mx-auto w-max pt-6 pl-6">
-              <MediaRulers width={document.width} height={document.height} zoom={scale} visible={viewport.showRulers} />
+              <MediaRulers width={document.width} height={document.height} zoom={scale} visible={showRulers} />
               <div
                 className="relative origin-top-left overflow-hidden border border-white/15 shadow-2xl"
                 style={{
@@ -441,7 +454,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                 }}
                 aria-label="Image composition canvas"
               >
-                {viewport.showGuides && (
+                {showGuides && (
                   <>
                     <div className="pointer-events-none absolute inset-[5%] z-[9998] border border-dashed border-cyan-300/40" />
                     <div className="pointer-events-none absolute inset-[10%] z-[9998] border border-dashed border-fuchsia-300/30" />
