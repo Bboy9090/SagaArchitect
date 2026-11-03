@@ -13,6 +13,7 @@ import {
   loadPhoenixMediaDocument,
   nextLayerZIndex,
   savePhoenixMediaDocument,
+  layerCssFilter,
   type PhoenixMediaDocument,
   type PhoenixMediaLayer,
 } from '@/lib/media-composition';
@@ -67,9 +68,10 @@ function buildSvg(document: PhoenixMediaDocument): string {
     const maskDefinition = layer.mask
       ? `<defs><clipPath id="${clipId}" clipPathUnits="userSpaceOnUse"><rect x="${x + layer.mask.x}" y="${y + layer.mask.y}" width="${layer.mask.width}" height="${layer.mask.height}" transform="${transform}" /></clipPath></defs>`
       : '';
+    const filtered = `<g style="filter:${escapeXml(layerCssFilter(layer))}">${element}</g>`;
     const wrap = (element: string) => layer.mask
-      ? `${maskDefinition}<g clip-path="url(#${clipId})">${element}</g>`
-      : element;
+      ? `${maskDefinition}<g clip-path="url(#${clipId})">${`<g style="filter:${escapeXml(layerCssFilter(layer))}">${element}</g>`}</g>`
+      : `<g style="filter:${escapeXml(layerCssFilter(layer))}">${element}</g>`;
 
     if (layer.type === 'shape') {
       if (layer.shape === 'ellipse') {
@@ -337,6 +339,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                   outline: selectedLayerId === layer.id ? '2px solid #38bdf8' : undefined,
                   outlineOffset: 2,
                   clipPath: cssMaskClipPath(layer),
+                  filter: layerCssFilter(layer),
                 };
                 return (
                   <button key={layer.id} type="button" onClick={() => setSelectedLayerId(layer.id)} style={style} className="block border-0 bg-transparent p-0 text-left">
