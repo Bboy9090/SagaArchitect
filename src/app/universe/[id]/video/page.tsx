@@ -5,11 +5,15 @@ import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
+import { AudioWaveform } from '@/components/media/AudioWaveform';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
 import { dbGetAssets, dbGetProject, dbUploadAsset, type ProjectAsset } from '@/lib/db-client';
 import {
+  activeCaptionAt,
   addClipToTimeline,
+  clipTransitionOpacity,
+  clipTransformAt,
   createPhoenixVideoTimeline,
   loadPhoenixVideoTimeline,
   savePhoenixVideoTimeline,
@@ -62,6 +66,7 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState('');
+  const [captionText, setCaptionText] = useState('');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -102,6 +107,18 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
       .sort((a, b) => b.start - a.start);
     return clips[0] || null;
   }, [timeline, playhead]);
+
+  const activeCaption = useMemo(() => timeline ? activeCaptionAt(timeline, playhead) : null, [timeline, playhead]);
+
+  const activeVisualTransform = useMemo(
+    () => activeVisualClip ? clipTransformAt(activeVisualClip, playhead) : null,
+    [activeVisualClip, playhead],
+  );
+
+  const activeVisualOpacity = useMemo(
+    () => activeVisualClip ? clipTransitionOpacity(activeVisualClip, playhead) : 1,
+    [activeVisualClip, playhead],
+  );
 
   const activeAudioClip = useMemo(() => {
     if (!timeline) return null;
@@ -193,6 +210,36 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
       muted: false,
     }) : current);
     setStatus(`Added ${asset.name}`);
+  };
+
+  const addCaption = () => {
+    if (!timeline || !captionText.trim()) return;
+    const start = playhead;
+    const end = Math.min(duration, start + 3);
+    setTimeline(current => current ? ({
+      ...current,
+      captions: [...current.captions, {
+        id: crypto.randomUUID(),
+        text: captionText.trim(),
+        start,
+        end: Math.max(start + 0.5, end),
+        position: 'bottom',
+        fontSize: 46,
+        color: '#ffffff',
+        background: 'rgba(0,0,0,0.55)',
+      }],
+    }) : current);
+    setCaptionText('');
+  };
+
+  const addTransformKeyframe = () => {
+    if (!selectedClip) return;
+    const localTime = Math.max(0, playhead - selectedClip.start);
+    const frames = [...(selectedClip.keyframes || []).filter(frame => Math.abs(frame.time - localTime) > 0.02), {
+      time: localTime,
+      transform: { ...selectedClip.transform },
+    }].sort((a,b) => a.time-b.time);
+    patchClip(selectedClip.id, { keyframes: frames });
   };
 
   const deleteClip = () => {
@@ -310,10 +357,44 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
                 {!activeVisualClip && <div className="text-sm text-slate-600">No visual clip at {playhead.toFixed(2)}s</div>}
                 {activeVisualClip?.kind === 'image' && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={activeVisualClip.src} alt="" className="h-full w-full object-contain" />
+                  <img
+                    src={activeVisualClip.src}
+                    alt=""
+                    className="h-full w-full object-contain"
+                    style={{
+                      opacity: activeVisualOpacity,
+                      transform: activeVisualTransform
+                        ? `translate(${activeVisualTransform.x}px, ${activeVisualTransform.y}px) scale(${activeVisualTransform.scale}) rotate(${activeVisualTransform.rotation}deg)`
+                        : undefined,
+                    }}
+                  />
                 )}
                 {activeVisualClip?.kind === 'video' && (
-                  <video ref={videoRef} key={activeVisualClip.id} src={activeVisualClip.src} className="h-full w-full object-contain" playsInline />
+                  <video
+                    ref={videoRef}
+                    key={activeVisualClip.id}
+                    src={activeVisualClip.src}
+                    className="h-full w-full object-contain"
+                    playsInline
+                    style={{
+                      opacity: activeVisualOpacity,
+                      transform: activeVisualTransform
+                        ? `translate(${activeVisualTransform.x}px, ${activeVisualTransform.y}px) scale(${activeVisualTransform.scale}) rotate(${activeVisualTransform.rotation}deg)`
+                        : undefined,
+                    }}
+                  />
+                )}
+                {activeCaption && (
+                  <div
+                    className={`pointer-events-none absolute left-1/2 z-20 max-w-[90%] -translate-x-1/2 rounded px-4 py-2 text-center font-bold ${activeCaption.position === 'top' ? 'top-[8%]' : activeCaption.position === 'center' ? 'top-1/2 -translate-y-1/2' : 'bottom-[8%]'}`}
+                    style={{
+                      color: activeCaption.color,
+                      background: activeCaption.background,
+                      fontSize: Math.max(14, activeCaption.fontSize * Math.min(1, 720 / timeline.width)),
+                    }}
+                  >
+                    {activeCaption.text}
+                  </div>
                 )}
                 {activeAudioClip && <audio ref={audioRef} key={activeAudioClip.id} src={activeAudioClip.src} preload="metadata" />}
               </div>
@@ -373,6 +454,34 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
         </main>
 
         <aside className="border-l border-white/10 bg-[#070b15] p-4">
+          <div className="mb-6">
+            <p className="mb-3 text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Caption</p>
+            <textarea
+              value={captionText}
+              onChange={event => setCaptionText(event.target.value)}
+              placeholder="Type a caption at the playhead…"
+              className="min-h-20 w-full rounded border border-white/10 bg-black/20 p-2 text-sm text-white"
+            />
+            <Button size="sm" variant="secondary" className="mt-2 w-full" disabled={!captionText.trim()} onClick={addCaption}>
+              Add 3s Caption
+            </Button>
+            {timeline.captions.length > 0 && (
+              <div className="mt-3 space-y-1">
+                {timeline.captions.slice().sort((a,b)=>a.start-b.start).map(cue => (
+                  <button
+                    key={cue.id}
+                    type="button"
+                    onClick={() => setPlayhead(cue.start)}
+                    className="flex min-h-10 w-full items-center justify-between rounded border border-white/5 px-2 text-left text-[10px] text-slate-400 hover:border-white/15"
+                  >
+                    <span className="truncate">{cue.text}</span>
+                    <span>{cue.start.toFixed(1)}s</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <p className="mb-3 text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Clip Inspector</p>
           {!selectedClip ? (
             <p className="text-xs leading-5 text-slate-500">Select a timeline clip to trim, move, split, mute, or change playback speed.</p>
@@ -396,6 +505,48 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
               <label className="block text-[10px] uppercase text-slate-500">Volume {Math.round(selectedClip.volume*100)}%
                 <input type="range" min={0} max={1} step={0.01} value={selectedClip.volume} onChange={event => patchClip(selectedClip.id,{volume:Number(event.target.value)})} className="mt-1 w-full" />
               </label>
+
+              {selectedClip.kind === 'audio' && <AudioWaveform src={selectedClip.src} />}
+
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-[10px] uppercase text-slate-500">Fade In
+                  <select value={selectedClip.transitionIn} onChange={event => patchClip(selectedClip.id,{transitionIn:event.target.value as PhoenixTimelineClip['transitionIn']})} className="mt-1 min-h-10 w-full rounded border border-white/10 bg-[#0a0d14] p-2 text-white">
+                    <option value="none">None</option>
+                    <option value="fade">Fade</option>
+                  </select>
+                </label>
+                <label className="text-[10px] uppercase text-slate-500">Fade Out
+                  <select value={selectedClip.transitionOut} onChange={event => patchClip(selectedClip.id,{transitionOut:event.target.value as PhoenixTimelineClip['transitionOut']})} className="mt-1 min-h-10 w-full rounded border border-white/10 bg-[#0a0d14] p-2 text-white">
+                    <option value="none">None</option>
+                    <option value="fade">Fade</option>
+                  </select>
+                </label>
+              </div>
+              <label className="block text-[10px] uppercase text-slate-500">Fade Duration
+                <input type="number" min={0.05} max={5} step={0.05} value={selectedClip.transitionDuration} onChange={event => patchClip(selectedClip.id,{transitionDuration:Math.max(0.05,Number(event.target.value))})} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+              </label>
+
+              <div className="rounded-lg border border-blue-400/15 bg-blue-400/[0.04] p-3">
+                <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-blue-300">Transform</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['scale','x','y','rotation'] as const).map(key => (
+                    <label key={key} className="text-[10px] uppercase text-slate-500">{key}
+                      <input
+                        type="number"
+                        step={key === 'scale' ? 0.05 : 1}
+                        value={selectedClip.transform[key]}
+                        onChange={event => patchClip(selectedClip.id,{transform:{...selectedClip.transform,[key]:Number(event.target.value)}})}
+                        className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white"
+                      />
+                    </label>
+                  ))}
+                </div>
+                <Button size="sm" variant="ghost" className="mt-2 w-full" onClick={addTransformKeyframe}>Add Keyframe at Playhead</Button>
+                {selectedClip.keyframes.length > 0 && (
+                  <div className="mt-2 text-[10px] text-slate-500">{selectedClip.keyframes.length} transform keyframe{selectedClip.keyframes.length === 1 ? '' : 's'}</div>
+                )}
+              </div>
+
               <Button size="sm" variant="ghost" className="w-full" onClick={() => patchClip(selectedClip.id,{muted:!selectedClip.muted})}>{selectedClip.muted ? 'Unmute' : 'Mute'}</Button>
               <Button size="sm" variant="secondary" className="w-full" onClick={splitSelected}>Split at Playhead</Button>
               <Button size="sm" variant="danger" className="w-full" onClick={deleteClip}>Delete Clip</Button>
@@ -406,7 +557,7 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
             <div className="text-xs font-bold text-amber-200">Timeline foundation</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
               Real media ingest, preview, timing, trim, split, speed, volume, and vertical-video canvases are active.
-              Transitions, captions, effects, waveform rendering, and final MP4 render are the next video-engine tier.
+              Captions, audio waveforms, fade transitions, and transform keyframes are active. Multi-layer compositing, richer transitions, effects, and final MP4 render are the next video-engine tier.
             </p>
           </div>
         </aside>
