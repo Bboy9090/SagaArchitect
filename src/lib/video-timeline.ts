@@ -29,6 +29,7 @@ export interface PhoenixTimelineClip {
   id: string;
   trackId: string;
   assetId?: string;
+  syncSource?: 'audio_mix';
   name: string;
   src: string;
   mimeType: string;
@@ -229,4 +230,51 @@ export function clipTransitionOpacity(clip: PhoenixTimelineClip, timelineTime: n
 
 export function activeCaptionAt(timeline: PhoenixVideoTimeline, time: number): PhoenixCaptionCue | null {
   return timeline.captions.find(cue => time >= cue.start && time <= cue.end) || null;
+}
+
+
+export function replaceSyncedAudioMixClip(
+  timeline: PhoenixVideoTimeline,
+  input: {
+    assetId: string;
+    src: string;
+    name: string;
+    duration: number;
+  },
+): PhoenixVideoTimeline {
+  const audioTrack = timeline.tracks.find(track => track.kind === 'audio');
+  if (!audioTrack) return timeline;
+  const clip: PhoenixTimelineClip = {
+    id: crypto.randomUUID(),
+    trackId: audioTrack.id,
+    assetId: input.assetId,
+    syncSource: 'audio_mix',
+    name: input.name,
+    src: input.src,
+    mimeType: 'audio/wav',
+    kind: 'audio',
+    start: 0,
+    sourceDuration: Math.max(0.05, input.duration),
+    inPoint: 0,
+    outPoint: Math.max(0.05, input.duration),
+    playbackRate: 1,
+    volume: 1,
+    muted: false,
+    transitionIn: 'none',
+    transitionOut: 'none',
+    transitionDuration: 0.5,
+    transform: { scale: 1, x: 0, y: 0, rotation: 0 },
+    keyframes: [],
+    createdAt: new Date().toISOString(),
+  };
+  return {
+    ...timeline,
+    tracks: timeline.tracks.map(track => track.id === audioTrack.id
+      ? {
+          ...track,
+          clips: [...track.clips.filter(existing => existing.syncSource !== 'audio_mix'), clip],
+        }
+      : track),
+    updatedAt: new Date().toISOString(),
+  };
 }
