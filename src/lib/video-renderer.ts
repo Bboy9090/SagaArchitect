@@ -10,6 +10,7 @@ import {
 
 interface PreparedVisual {
   clip: PhoenixTimelineClip;
+  trackOrder: number;
   image?: HTMLImageElement;
   video?: HTMLVideoElement;
 }
@@ -148,11 +149,14 @@ function drawCaption(
 }
 
 async function prepareVisuals(timeline: PhoenixVideoTimeline): Promise<PreparedVisual[]> {
-  const clips = timeline.tracks.filter(track => track.kind === 'video').flatMap(track => track.clips);
-  return await Promise.all(clips.map(async clip => {
-    if (clip.kind === 'image') return { clip, image: await loadImage(clip.src) };
-    if (clip.kind === 'video') return { clip, video: await loadVideo(clip.src) };
-    return { clip };
+  const entries = timeline.tracks
+    .filter(track => track.kind === 'video')
+    .sort((a, b) => a.order - b.order)
+    .flatMap(track => track.clips.map(clip => ({ clip, trackOrder: track.order })));
+  return await Promise.all(entries.map(async ({ clip, trackOrder }) => {
+    if (clip.kind === 'image') return { clip, trackOrder, image: await loadImage(clip.src) };
+    if (clip.kind === 'video') return { clip, trackOrder, video: await loadVideo(clip.src) };
+    return { clip, trackOrder };
   }));
 }
 
@@ -257,7 +261,7 @@ export async function renderPhoenixTimelineWebm(
 
         const active = visuals
           .filter(item => time >= item.clip.start && time <= item.clip.start + timelineClipDuration(item.clip))
-          .sort((a, b) => a.clip.start - b.clip.start);
+          .sort((a, b) => a.trackOrder - b.trackOrder || a.clip.start - b.clip.start);
 
         for (const visual of visuals) {
           const video = visual.video;
