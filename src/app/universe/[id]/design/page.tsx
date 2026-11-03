@@ -97,6 +97,14 @@ function buildSvg(document: PhoenixMediaDocument): string {
       return wrap(`<text x="${tx}" y="${y + layer.fontSize}" fill="${layer.color}" font-size="${layer.fontSize}" font-family="${escapeXml(layer.fontFamily)}" font-weight="${layer.fontWeight}" text-anchor="${anchor}" opacity="${opacity}" transform="${transform}">${escapeXml(layer.text)}</text>`);
     }
 
+    if (layer.type === 'path') {
+      const points = layer.points.map(point => `${x + point.x},${y + point.y}`).join(' ');
+      const element = layer.closed
+        ? `<polygon points="${points}" fill="${layer.fill}" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${transform}" stroke-linejoin="round" stroke-linecap="round" />`
+        : `<polyline points="${points}" fill="none" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${transform}" stroke-linejoin="round" stroke-linecap="round" />`;
+      return wrap(element);
+    }
+
     const preserveAspectRatio = layer.type === 'image'
       ? (layer.fit === 'contain' ? 'xMidYMid meet' : layer.fit === 'cover' ? 'xMidYMid slice' : 'none')
       : 'none';
@@ -227,6 +235,35 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
     setSelectedLayerId(layer.id);
   };
 
+  const addPath = () => {
+    if (!document) return;
+    const width = Math.round(document.width * 0.32);
+    const height = Math.round(document.height * 0.24);
+    const layer: PhoenixMediaLayer = {
+      id: crypto.randomUUID(),
+      type: 'path',
+      name: 'Vector Path',
+      visible: true,
+      locked: false,
+      opacity: 1,
+      blendMode: 'normal',
+      zIndex: nextLayerZIndex(document.layers),
+      transform: { x: 180, y: 260, width, height, rotation: 0 },
+      points: [
+        { x: width / 2, y: 0 },
+        { x: width, y: height / 2 },
+        { x: width / 2, y: height },
+        { x: 0, y: height / 2 },
+      ],
+      closed: true,
+      fill: '#0ea5e9',
+      stroke: '#bae6fd',
+      strokeWidth: 6,
+    };
+    commit(current => ({ ...current, layers: [...current.layers, layer] }));
+    setSelectedLayerId(layer.id);
+  };
+
   const addImage = (asset: ProjectAsset) => {
     if (!document) return;
     const layer: PhoenixMediaLayer = {
@@ -330,6 +367,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
             <div className="grid grid-cols-2 gap-2">
               <Button size="sm" variant="secondary" onClick={addText}>Text</Button>
               <Button size="sm" variant="secondary" onClick={addShape}>Shape</Button>
+              <Button size="sm" variant="secondary" onClick={addPath}>Vector Path</Button>
             </div>
           </div>
 
@@ -403,6 +441,15 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                   <button key={layer.id} type="button" data-media-interactive="true" onClick={() => setSelectedLayerId(layer.id)} style={style} className="block border-0 bg-transparent p-0 text-left">
                     {layer.type === 'shape' && <div className="h-full w-full" style={{ background: layer.fill, border: layer.strokeWidth ? `${Math.max(1, layer.strokeWidth * zoom)}px solid ${layer.stroke}` : undefined }} />}
                     {layer.type === 'text' && <div className="h-full w-full overflow-hidden" style={{ color: layer.color, fontSize: layer.fontSize * zoom, fontFamily: layer.fontFamily, fontWeight: layer.fontWeight, lineHeight: 1.05, textAlign: layer.align }}>{layer.text}</div>}
+                    {layer.type === 'path' && (
+                      <svg viewBox={`0 0 ${layer.transform.width} ${layer.transform.height}`} className="h-full w-full overflow-visible">
+                        {layer.closed ? (
+                          <polygon points={layer.points.map(point => `${point.x},${point.y}`).join(' ')} fill={layer.fill} stroke={layer.stroke} strokeWidth={layer.strokeWidth} strokeLinejoin="round" strokeLinecap="round" />
+                        ) : (
+                          <polyline points={layer.points.map(point => `${point.x},${point.y}`).join(' ')} fill="none" stroke={layer.stroke} strokeWidth={layer.strokeWidth} strokeLinejoin="round" strokeLinecap="round" />
+                        )}
+                      </svg>
+                    )}
                     {layer.type === 'image' && (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={layer.src} alt="" className="h-full w-full" style={{ objectFit: layer.fit }} />
@@ -461,6 +508,51 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                 <label className="block text-[10px] uppercase text-slate-500">Fill
                   <input type="color" value={selected.fill} onChange={event => patchLayer({ fill: event.target.value } as Partial<PhoenixMediaLayer>)} className="mt-1 h-10 w-full" />
                 </label>
+              )}
+              {selected.type === 'path' && (
+                <div className="space-y-3 rounded-lg border border-cyan-400/20 bg-cyan-400/[0.04] p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-cyan-300">Vector Nodes</span>
+                    <Button size="sm" variant="ghost" onClick={() => patchLayer({ points: [...selected.points, { x: selected.transform.width / 2, y: selected.transform.height / 2 }] } as Partial<PhoenixMediaLayer>)}>Add Node</Button>
+                  </div>
+                  <div className="max-h-48 space-y-2 overflow-auto">
+                    {selected.points.map((point, index) => (
+                      <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                        <input
+                          type="number"
+                          value={Math.round(point.x)}
+                          onChange={event => patchLayer({ points: selected.points.map((item, pointIndex) => pointIndex === index ? { ...item, x: Math.max(0, Math.min(selected.transform.width, Number(event.target.value))) } : item) } as Partial<PhoenixMediaLayer>)}
+                          aria-label={`Node ${index + 1} X`}
+                          className="min-w-0 rounded border border-white/10 bg-black/20 p-2 text-xs text-white"
+                        />
+                        <input
+                          type="number"
+                          value={Math.round(point.y)}
+                          onChange={event => patchLayer({ points: selected.points.map((item, pointIndex) => pointIndex === index ? { ...item, y: Math.max(0, Math.min(selected.transform.height, Number(event.target.value))) } : item) } as Partial<PhoenixMediaLayer>)}
+                          aria-label={`Node ${index + 1} Y`}
+                          className="min-w-0 rounded border border-white/10 bg-black/20 p-2 text-xs text-white"
+                        />
+                        <Button size="sm" variant="ghost" disabled={selected.points.length <= 2} onClick={() => patchLayer({ points: selected.points.filter((_, pointIndex) => pointIndex !== index) } as Partial<PhoenixMediaLayer>)}>×</Button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="text-[10px] uppercase text-slate-500">Fill
+                      <input type="color" value={selected.fill} onChange={event => patchLayer({ fill: event.target.value } as Partial<PhoenixMediaLayer>)} className="mt-1 h-10 w-full" />
+                    </label>
+                    <label className="text-[10px] uppercase text-slate-500">Stroke
+                      <input type="color" value={selected.stroke} onChange={event => patchLayer({ stroke: event.target.value } as Partial<PhoenixMediaLayer>)} className="mt-1 h-10 w-full" />
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="text-[10px] uppercase text-slate-500">Stroke px
+                      <input type="number" min={0} max={100} value={selected.strokeWidth} onChange={event => patchLayer({ strokeWidth: Math.max(0, Number(event.target.value)) } as Partial<PhoenixMediaLayer>)} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                    </label>
+                    <Button size="sm" variant={selected.closed ? 'gold' : 'ghost'} className="mt-5" onClick={() => patchLayer({ closed: !selected.closed } as Partial<PhoenixMediaLayer>)}>
+                      {selected.closed ? 'Closed' : 'Open'}
+                    </Button>
+                  </div>
+                </div>
               )}
               <div className="grid grid-cols-2 gap-2">
                 {(['x', 'y', 'width', 'height'] as const).map(key => (
