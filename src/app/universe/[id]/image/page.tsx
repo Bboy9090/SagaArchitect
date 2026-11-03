@@ -81,6 +81,10 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
   const [history, setHistory] = useState<PhoenixDocumentHistory | null>(null);
   const [selectedLayerId, setSelectedLayerId] = useState('');
   const [additionalLayerIds, setAdditionalLayerIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    setAdditionalLayerIds([]);
+  }, [selectedLayerId]);
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [savedAt, setSavedAt] = useState('');
