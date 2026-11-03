@@ -6,6 +6,7 @@ import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
+import { StudioRevisionPanel } from '@/components/media/StudioRevisionPanel';
 import { getScenes, getStoryboardPanels, getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
 import { dbGetProject, dbGetScenes, dbGetStoryboardPanels, dbGetStudioDocument, dbSaveStudioDocument } from '@/lib/db-client';
@@ -195,6 +196,18 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
         actions={
           timeline ? (
             <div className="flex flex-wrap gap-2">
+              <StudioRevisionPanel<PhoenixVideoTimeline>
+                projectId={id}
+                kind="motion_timeline"
+                enabled={isDbMode()}
+                onRestore={restored => {
+                  setTimeline(restored);
+                  setPlaying(false);
+                  setPlayhead(0);
+                  setStatus('Motion timeline restored from Studio Cloud.');
+                }}
+                onError={setStatus}
+              />
               <Button size="sm" variant={timeline.width > timeline.height ? 'gold' : 'ghost'} onClick={() => setCanvasPreset(1920, 1080)}>16:9</Button>
               <Button size="sm" variant={timeline.height > timeline.width ? 'gold' : 'ghost'} onClick={() => setCanvasPreset(1080, 1920)}>9:16</Button>
               <Button size="sm" variant={timeline.height === timeline.width ? 'gold' : 'ghost'} onClick={() => setCanvasPreset(1080, 1080)}>1:1</Button>
