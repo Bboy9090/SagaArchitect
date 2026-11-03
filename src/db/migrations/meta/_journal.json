@@ -50,6 +50,13 @@
       "when": 1793675121289,
       "tag": "0006_rich_warlock",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793692682209,
+      "tag": "0007_redundant_magik",
+      "breakpoints": true
     }
   ]
 }
