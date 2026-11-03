@@ -215,9 +215,6 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
     setAdditionalLayerIds([]);
   };
 
-  useEffect(() => {
-    setAdditionalLayerIds([]);
-  }, [selectedLayerId]);
   const [loading, setLoading] = useState(true);
   const {
     zoom,
