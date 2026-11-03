@@ -155,6 +155,7 @@ export async function createComicIssueCbz(
 ): Promise<Blob> {
   const ordered = sortedPages(pages);
   if (ordered.length === 0) throw new Error('Comic issue has no pages to export.');
+  if (ordered.length > 250) throw new Error('Comic issue exceeds the 250-page in-browser export limit.');
 
   const digits = Math.max(3, String(ordered.length).length);
   const files: Array<{ name: string; bytes: Uint8Array }> = [];
@@ -194,9 +195,11 @@ export async function printComicIssueProof(
 ): Promise<void> {
   const ordered = sortedPages(pages);
   if (ordered.length === 0) throw new Error('Comic issue has no pages to print.');
+  if (ordered.length > 250) throw new Error('Comic issue exceeds the 250-page in-browser proof limit.');
 
-  const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+  const printWindow = window.open('', '_blank');
   if (!printWindow) throw new Error('Browser blocked the print window. Allow pop-ups and try again.');
+  printWindow.opener = null;
 
   try {
     printWindow.document.write('<!doctype html><html><head><title>Preparing comic proof…</title></head><body>Rendering pages…</body></html>');
