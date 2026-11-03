@@ -61,6 +61,7 @@ export interface PhoenixBaseLayer {
   id: string;
   type: PhoenixLayerType;
   groupId?: string;
+  panelId?: string;
   symbolId?: string;
   name: string;
   visible: boolean;
@@ -479,6 +480,7 @@ function instanceBaseFields(layer: PhoenixMediaLayer) {
     zIndex: layer.zIndex,
     transform: { ...layer.transform },
     groupId: layer.groupId,
+    panelId: layer.panelId,
     mask: layer.mask ? { ...layer.mask } : undefined,
     vectorMask: layer.vectorMask ? { points: structuredClone(layer.vectorMask.points) } : undefined,
     shadow: layer.shadow ? { ...layer.shadow } : undefined,
