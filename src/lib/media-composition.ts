@@ -771,3 +771,71 @@ export function createAdjustmentLayer(
     adjustments: { ...DEFAULT_LAYER_ADJUSTMENTS },
   };
 }
+
+
+export type PhoenixSelectionAlignment =
+  | 'left'
+  | 'center-x'
+  | 'right'
+  | 'top'
+  | 'center-y'
+  | 'bottom';
+
+export function alignLayerTransformsToSelection(
+  layers: Pick<PhoenixMediaLayer, 'id' | 'transform'>[],
+  alignment: PhoenixSelectionAlignment,
+): Map<string, PhoenixLayerTransform> {
+  const result = new Map<string, PhoenixLayerTransform>();
+  if (layers.length < 2) return result;
+
+  const left = Math.min(...layers.map(layer => layer.transform.x));
+  const top = Math.min(...layers.map(layer => layer.transform.y));
+  const right = Math.max(...layers.map(layer => layer.transform.x + layer.transform.width));
+  const bottom = Math.max(...layers.map(layer => layer.transform.y + layer.transform.height));
+  const centerX = (left + right) / 2;
+  const centerY = (top + bottom) / 2;
+
+  for (const layer of layers) {
+    const next = { ...layer.transform };
+    if (alignment === 'left') next.x = left;
+    if (alignment === 'center-x') next.x = centerX - next.width / 2;
+    if (alignment === 'right') next.x = right - next.width;
+    if (alignment === 'top') next.y = top;
+    if (alignment === 'center-y') next.y = centerY - next.height / 2;
+    if (alignment === 'bottom') next.y = bottom - next.height;
+    result.set(layer.id, next);
+  }
+  return result;
+}
+
+export function distributeLayerTransforms(
+  layers: Pick<PhoenixMediaLayer, 'id' | 'transform'>[],
+  axis: 'horizontal' | 'vertical',
+): Map<string, PhoenixLayerTransform> {
+  const result = new Map<string, PhoenixLayerTransform>();
+  if (layers.length < 3) return result;
+
+  const ordered = [...layers].sort((a, b) => axis === 'horizontal'
+    ? a.transform.x - b.transform.x
+    : a.transform.y - b.transform.y);
+
+  const first = ordered[0];
+  const last = ordered[ordered.length - 1];
+  const firstCenter = axis === 'horizontal'
+    ? first.transform.x + first.transform.width / 2
+    : first.transform.y + first.transform.height / 2;
+  const lastCenter = axis === 'horizontal'
+    ? last.transform.x + last.transform.width / 2
+    : last.transform.y + last.transform.height / 2;
+  const step = (lastCenter - firstCenter) / (ordered.length - 1);
+
+  ordered.forEach((layer, index) => {
+    const targetCenter = firstCenter + step * index;
+    result.set(layer.id, {
+      ...layer.transform,
+      x: axis === 'horizontal' ? targetCenter - layer.transform.width / 2 : layer.transform.x,
+      y: axis === 'vertical' ? targetCenter - layer.transform.height / 2 : layer.transform.y,
+    });
+  });
+  return result;
+}
