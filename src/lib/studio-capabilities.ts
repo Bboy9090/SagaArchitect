@@ -62,8 +62,8 @@ export const PHOENIX_STUDIOS: PhoenixStudioCapability[] = [
     icon: '✦',
     status: 'foundation',
     summary: 'Drawing and painting workspace for characters, environments, covers, and pages.',
-    capabilities: ['Canvas drawing foundation', 'Asset library', 'Canon-linked characters'],
-    route: id => `/universe/${id}/storyboard`,
+    capabilities: ['Pressure-aware raster painting', 'Brush presets', 'Stabilization', 'Symmetry', 'Reference layers', 'Undo/redo', 'PNG export'],
+    route: id => `/universe/${id}/illustrate`,
     productionTypes: ['illustration', 'comic', 'children_book'],
   },
   {
