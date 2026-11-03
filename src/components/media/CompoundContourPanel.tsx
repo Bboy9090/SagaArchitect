@@ -38,7 +38,12 @@ export function CompoundContourPanel({ layer, onChange }: CompoundContourPanelPr
     <section className="rounded-lg border border-emerald-400/20 bg-emerald-400/[0.04] p-3">
       <div className="flex items-center justify-between gap-2">
         <span className="text-[10px] font-black uppercase tracking-wider text-emerald-300">Compound Contours</span>
-        <Button size="sm" variant="ghost" onClick={() => onChange({ contours: [...contours, defaultInsetContour(layer)], fillRule: 'evenodd' })}>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={!layer.closed}
+          onClick={() => onChange({ contours: [...contours, defaultInsetContour(layer)], fillRule: 'evenodd' })}
+        >
           Add Hole
         </Button>
       </div>
@@ -93,7 +98,13 @@ export function CompoundContourPanel({ layer, onChange }: CompoundContourPanelPr
             </div>
           </div>
         ))}
-        {contours.length === 0 && <p className="text-[11px] leading-5 text-slate-600">Add a secondary closed contour to cut a transparent hole through this vector path.</p>}
+        {contours.length === 0 && (
+          <p className="text-[11px] leading-5 text-slate-600">
+            {layer.closed
+              ? 'Add a secondary closed contour to cut a transparent hole through this vector path.'
+              : 'Close the primary path before adding hole contours.'}
+          </p>
+        )}
       </div>
     </section>
   );
