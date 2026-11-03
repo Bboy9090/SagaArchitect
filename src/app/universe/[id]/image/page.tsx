@@ -22,6 +22,7 @@ import { isDbMode } from '@/lib/storage-mode';
 import { dbGetAssets, dbGetMediaDocument, dbGetProject, dbSaveMediaDocument, type ProjectAsset } from '@/lib/db-client';
 import {
   clampLayerTransform,
+  createAdjustmentLayer,
   createPhoenixMediaDocument,
   createSymbolInstance,
   detachSymbolInstance,
@@ -35,6 +36,7 @@ import {
   isLayerEffectivelyLocked,
   isLayerEffectivelyVisible,
   layerCssEffects,
+  layerCssFilter,
   moveVectorPoint,
   normalizeLayerAdjustments,
   scaleVectorContours,
@@ -349,7 +351,10 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
 
   const commitSelectedTransform = (transform: PhoenixMediaLayer['transform']) => {
     if (!selectedLayer || !document) return;
-    const nextTransform = clampLayerTransform(transform, document);
+    const nextTransform = clampLayerTransform(
+      selectedLayer.type === 'adjustment' ? { ...transform, rotation: 0 } : transform,
+      document,
+    );
     const scaleX = selectedLayer.transform.width > 0 ? nextTransform.width / selectedLayer.transform.width : 1;
     const scaleY = selectedLayer.transform.height > 0 ? nextTransform.height / selectedLayer.transform.height : 1;
     const patch: Partial<PhoenixMediaLayer> = {
@@ -559,6 +564,11 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
             <Button size="sm" variant="secondary" onClick={() => addShapeLayer('rectangle')}>Rectangle</Button>
             <Button size="sm" variant="secondary" onClick={() => addShapeLayer('ellipse')}>Ellipse</Button>
             <Button size="sm" variant="secondary" onClick={addPathLayer}>Vector Path</Button>
+            <Button size="sm" variant="secondary" onClick={() => {
+              const layer = createAdjustmentLayer(document);
+              updateDocument(current => ({ ...current, layers: [...current.layers, layer] }));
+              setSelectedLayerId(layer.id);
+            }}>Adjustment</Button>
             <Button size="sm" variant="secondary" onClick={addRasterLayer}>Paint Layer</Button>
           </div>
 
@@ -674,6 +684,26 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                   clipPath: vectorMaskCssClipPath(layer) || selectedLayerClipPath(layer),
                   filter: layerCssEffects(layer),
                 };
+
+                if (layer.type === 'adjustment') {
+                  return (
+                    <button
+                      key={layer.id}
+                      type="button"
+                      data-media-interactive="true"
+                      onClick={() => setSelectedLayerId(layer.id)}
+                      aria-label={`Select layer ${layer.name}`}
+                      className="absolute block border-0 p-0"
+                      style={{
+                        ...style,
+                        filter: 'none',
+                        backdropFilter: layerCssFilter(layer),
+                        WebkitBackdropFilter: layerCssFilter(layer),
+                        background: 'rgba(0,0,0,0.001)',
+                      }}
+                    />
+                  );
+                }
 
                 return (
                   <button
@@ -1230,10 +1260,12 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                 onChange={patch => patchSelectedLayer(patch)}
               />
 
-              <LayerShadowPanel
-                layer={selectedLayer}
-                onChange={patch => patchSelectedLayer(patch)}
-              />
+              {selectedLayer.type !== 'adjustment' && (
+                <LayerShadowPanel
+                  layer={selectedLayer}
+                  onChange={patch => patchSelectedLayer(patch)}
+                />
+              )}
 
               {selectedLayer.mask && (
                 <div className="rounded-lg border border-cyan-400/20 bg-cyan-400/5 p-3">
