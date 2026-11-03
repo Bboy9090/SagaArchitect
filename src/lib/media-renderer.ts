@@ -1,0 +1,176 @@
+import {
+  layerCssFilter,
+  type PhoenixImageLayer,
+  type PhoenixMediaDocument,
+  type PhoenixMediaLayer,
+} from './media-composition';
+
+export type PhoenixRasterExportFormat = 'png' | 'jpeg' | 'webp';
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    if (/^https?:\/\//i.test(src)) image.crossOrigin = 'anonymous';
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Failed to load media layer image.'));
+    image.src = src;
+  });
+}
+
+function canvasFor(width: number, height: number): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(width));
+  canvas.height = Math.max(1, Math.round(height));
+  return canvas;
+}
+
+function applyCommonLayerState(ctx: CanvasRenderingContext2D, layer: PhoenixMediaLayer) {
+  ctx.globalAlpha = Math.max(0, Math.min(1, layer.opacity));
+  ctx.globalCompositeOperation = layer.blendMode === 'normal' ? 'source-over' : layer.blendMode;
+}
+
+function imageRect(
+  layer: PhoenixImageLayer,
+  image: HTMLImageElement,
+): { sx: number; sy: number; sw: number; sh: number; dx: number; dy: number; dw: number; dh: number } {
+  const width = layer.transform.width;
+  const height = layer.transform.height;
+
+  if (layer.fit === 'fill') {
+    return { sx: 0, sy: 0, sw: image.naturalWidth, sh: image.naturalHeight, dx: 0, dy: 0, dw: width, dh: height };
+  }
+
+  const sourceRatio = image.naturalWidth / image.naturalHeight;
+  const targetRatio = width / height;
+
+  if (layer.fit === 'contain') {
+    let dw = width;
+    let dh = width / sourceRatio;
+    if (dh > height) {
+      dh = height;
+      dw = height * sourceRatio;
+    }
+    return {
+      sx: 0, sy: 0, sw: image.naturalWidth, sh: image.naturalHeight,
+      dx: (width - dw) / 2, dy: (height - dh) / 2, dw, dh,
+    };
+  }
+
+  let sw = image.naturalWidth;
+  let sh = image.naturalHeight;
+  let sx = 0;
+  let sy = 0;
+  if (sourceRatio > targetRatio) {
+    sw = image.naturalHeight * targetRatio;
+    sx = (image.naturalWidth - sw) / 2;
+  } else {
+    sh = image.naturalWidth / targetRatio;
+    sy = (image.naturalHeight - sh) / 2;
+  }
+  return { sx, sy, sw, sh, dx: 0, dy: 0, dw: width, dh: height };
+}
+
+async function renderLayerBitmap(layer: PhoenixMediaLayer): Promise<HTMLCanvasElement> {
+  const width = Math.max(1, Math.round(layer.transform.width));
+  const height = Math.max(1, Math.round(layer.transform.height));
+  const canvas = canvasFor(width, height);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas rendering is unavailable.');
+
+  ctx.filter = layerCssFilter(layer);
+
+  if (layer.type === 'shape') {
+    ctx.fillStyle = layer.fill;
+    ctx.strokeStyle = layer.stroke;
+    ctx.lineWidth = Math.max(0, layer.strokeWidth);
+    if (layer.shape === 'ellipse') {
+      ctx.beginPath();
+      ctx.ellipse(width / 2, height / 2, width / 2, height / 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      if (layer.strokeWidth > 0) ctx.stroke();
+    } else {
+      ctx.fillRect(0, 0, width, height);
+      if (layer.strokeWidth > 0) ctx.strokeRect(0, 0, width, height);
+    }
+  } else if (layer.type === 'text') {
+    ctx.fillStyle = layer.color;
+    ctx.font = `${layer.fontWeight} ${layer.fontSize}px ${layer.fontFamily}`;
+    ctx.textBaseline = 'top';
+    ctx.textAlign = layer.align;
+    const x = layer.align === 'center' ? width / 2 : layer.align === 'right' ? width : 0;
+    const lines = layer.text.split(/\r?\n/);
+    const lineHeight = layer.fontSize * 1.08;
+    lines.forEach((line, index) => ctx.fillText(line, x, index * lineHeight, width));
+  } else if (layer.type === 'image') {
+    const image = await loadImage(layer.src);
+    const r = imageRect(layer, image);
+    ctx.drawImage(image, r.sx, r.sy, r.sw, r.sh, r.dx, r.dy, r.dw, r.dh);
+  } else if (layer.type === 'raster' && layer.src) {
+    const image = await loadImage(layer.src);
+    ctx.drawImage(image, 0, 0, width, height);
+  }
+
+  ctx.filter = 'none';
+
+  if (layer.mask) {
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.fillStyle = '#000';
+    ctx.fillRect(layer.mask.x, layer.mask.y, layer.mask.width, layer.mask.height);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  return canvas;
+}
+
+export async function renderPhoenixMediaDocument(documentModel: PhoenixMediaDocument): Promise<HTMLCanvasElement> {
+  const canvas = canvasFor(documentModel.width, documentModel.height);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas rendering is unavailable.');
+
+  ctx.fillStyle = documentModel.background;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const layers = [...documentModel.layers]
+    .filter(layer => layer.visible)
+    .sort((a, b) => a.zIndex - b.zIndex);
+
+  for (const layer of layers) {
+    const bitmap = await renderLayerBitmap(layer);
+    const { x, y, width, height, rotation } = layer.transform;
+    ctx.save();
+    applyCommonLayerState(ctx, layer);
+    ctx.translate(x + width / 2, y + height / 2);
+    ctx.rotate((rotation * Math.PI) / 180);
+    ctx.drawImage(bitmap, -width / 2, -height / 2, width, height);
+    ctx.restore();
+  }
+
+  return canvas;
+}
+
+export async function exportPhoenixMediaDocument(
+  documentModel: PhoenixMediaDocument,
+  format: PhoenixRasterExportFormat,
+  quality = 0.92,
+): Promise<Blob> {
+  const canvas = await renderPhoenixMediaDocument(documentModel);
+  const mime = format === 'png' ? 'image/png' : format === 'jpeg' ? 'image/jpeg' : 'image/webp';
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      blob => blob ? resolve(blob) : reject(new Error('Failed to encode exported image.')),
+      mime,
+      format === 'png' ? undefined : Math.max(0.1, Math.min(1, quality)),
+    );
+  });
+}
+
+export function downloadMediaBlob(blob: Blob, title: string, format: PhoenixRasterExportFormat): void {
+  const extension = format === 'jpeg' ? 'jpg' : format;
+  const safeName = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'phoenix-media';
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `${safeName}.${extension}`;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
