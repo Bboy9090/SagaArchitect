@@ -6,7 +6,7 @@ export type PhoenixMediaDocumentKind =
   | 'video_frame';
 
 export type PhoenixBlendMode = 'normal' | 'multiply' | 'screen' | 'overlay';
-export type PhoenixLayerType = 'text' | 'shape' | 'image';
+export type PhoenixLayerType = 'text' | 'shape' | 'image' | 'raster';
 
 export interface PhoenixLayerTransform {
   x: number;
@@ -53,7 +53,12 @@ export interface PhoenixImageLayer extends PhoenixBaseLayer {
   fit: 'cover' | 'contain' | 'fill';
 }
 
-export type PhoenixMediaLayer = PhoenixTextLayer | PhoenixShapeLayer | PhoenixImageLayer;
+export interface PhoenixRasterLayer extends PhoenixBaseLayer {
+  type: 'raster';
+  src: string;
+}
+
+export type PhoenixMediaLayer = PhoenixTextLayer | PhoenixShapeLayer | PhoenixImageLayer | PhoenixRasterLayer;
 
 export interface PhoenixMediaDocument {
   id: string;

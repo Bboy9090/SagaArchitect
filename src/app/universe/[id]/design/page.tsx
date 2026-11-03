@@ -68,7 +68,10 @@ function buildSvg(document: PhoenixMediaDocument): string {
       return `<text x="${tx}" y="${y + layer.fontSize}" fill="${layer.color}" font-size="${layer.fontSize}" font-family="${escapeXml(layer.fontFamily)}" font-weight="${layer.fontWeight}" text-anchor="${anchor}" opacity="${opacity}" transform="${transform}">${escapeXml(layer.text)}</text>`;
     }
 
-    return `<image href="${escapeXml(layer.src)}" x="${x}" y="${y}" width="${width}" height="${height}" preserveAspectRatio="${layer.fit === 'contain' ? 'xMidYMid meet' : layer.fit === 'cover' ? 'xMidYMid slice' : 'none'}" opacity="${opacity}" transform="${transform}" />`;
+    const preserveAspectRatio = layer.type === 'image'
+      ? (layer.fit === 'contain' ? 'xMidYMid meet' : layer.fit === 'cover' ? 'xMidYMid slice' : 'none')
+      : 'none';
+    return `<image href="${escapeXml(layer.src)}" x="${x}" y="${y}" width="${width}" height="${height}" preserveAspectRatio="${preserveAspectRatio}" opacity="${opacity}" transform="${transform}" />`;
   }).join('');
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${document.width}" height="${document.height}" viewBox="0 0 ${document.width} ${document.height}"><rect width="100%" height="100%" fill="${document.background}"/>${body}</svg>`;
@@ -325,6 +328,10 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                     {layer.type === 'image' && (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={layer.src} alt="" className="h-full w-full" style={{ objectFit: layer.fit }} />
+                    )}
+                    {layer.type === 'raster' && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={layer.src} alt="" className="h-full w-full" style={{ objectFit: 'fill' }} />
                     )}
                   </button>
                 );
