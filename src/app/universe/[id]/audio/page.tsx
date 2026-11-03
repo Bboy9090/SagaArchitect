@@ -19,6 +19,7 @@ import {
   type PhoenixAudioClip,
   type PhoenixAudioMix,
 } from '@/lib/audio-mix';
+import { downloadAudioBlob, exportPhoenixAudioMixWav } from '@/lib/audio-renderer';
 import type { Universe } from '@/lib/types';
 
 interface AudioStudioPageProps {
@@ -51,6 +52,7 @@ export default function AudioStudioPage({ params }: AudioStudioPageProps) {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState('');
+  const [rendering, setRendering] = useState(false);
   const previewRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -155,6 +157,21 @@ export default function AudioStudioPage({ params }: AudioStudioPageProps) {
     audio.volume = selectedClip.muted ? 0 : Math.max(0, Math.min(1, selectedClip.volume));
   }, [selectedClip]);
 
+  const renderMix = async () => {
+    if (!mix || rendering) return;
+    setRendering(true);
+    setStatus('Rendering WAV mix...');
+    try {
+      const blob = await exportPhoenixAudioMixWav(mix);
+      downloadAudioBlob(blob, mix.title || 'phoenix-audio');
+      setStatus('WAV mix exported.');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Audio render failed.');
+    } finally {
+      setRendering(false);
+    }
+  };
+
   if (loading || !mix) {
     return (
       <Navigation>
@@ -173,6 +190,11 @@ export default function AudioStudioPage({ params }: AudioStudioPageProps) {
       <Header
         title="Audio Studio"
         subtitle={`Voice, music, SFX, and mix timing for ${project?.name || 'Phoenix project'}`}
+        actions={
+          <Button size="sm" variant="gold" loading={rendering} onClick={() => void renderMix()}>
+            Export WAV Mix
+          </Button>
+        }
       />
 
       <div className="grid min-h-[calc(100vh-80px)] grid-cols-1 2xl:grid-cols-[300px_minmax(0,1fr)_320px]">
@@ -327,7 +349,8 @@ export default function AudioStudioPage({ params }: AudioStudioPageProps) {
             <div className="text-xs font-bold text-amber-200">Audio foundation</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
               Real WAV/MP3 ingest, decoded waveforms, Voice/Music/SFX buses, trim, gain, pan metadata, fades, mute/solo, and autosave are active.
-              Synchronized multi-clip Web Audio playback, EQ/compression, recording, noise cleanup, and final mix export are the next tier.
+              Offline multi-track WAV mixdown is active with trim, playback rate, track/clip gain, pan, mute/solo, and fades.
+              EQ/compression, recording, and noise cleanup are the next tier.
             </p>
           </div>
         </aside>
