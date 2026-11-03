@@ -8,7 +8,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { RasterPaintCanvas } from '@/components/media/RasterPaintCanvas';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
-import { dbGetAssets, dbGetProject, type ProjectAsset } from '@/lib/db-client';
+import { dbGetAssets, dbGetMediaDocument, dbGetProject, dbSaveMediaDocument, type ProjectAsset } from '@/lib/db-client';
 import {
   createPhoenixMediaDocument,
   loadPhoenixMediaDocument,
@@ -64,7 +64,9 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
         const loadedProject = isDbMode() ? await dbGetProject(id) : getUniverseById(id) || null;
         if (cancelled) return;
         setProject(loadedProject);
-        const loadedDocument = loadPhoenixMediaDocument(id, 'illustration') || createPhoenixMediaDocument(id, 'illustration');
+        const localDocument = loadPhoenixMediaDocument(id, 'illustration');
+        const cloudDocument = isDbMode() ? await dbGetMediaDocument(id, 'illustration') : null;
+        const loadedDocument = cloudDocument || localDocument || createPhoenixMediaDocument(id, 'illustration');
         setHistory(createDocumentHistory({
           ...loadedDocument,
           title: loadedDocument.title === 'Untitled Composition' ? 'Untitled Illustration' : loadedDocument.title,
@@ -87,9 +89,15 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
 
   useEffect(() => {
     if (!document || loading) return;
-    const handle = window.setTimeout(() => savePhoenixMediaDocument(document), 250);
+    const handle = window.setTimeout(() => {
+      const saved = savePhoenixMediaDocument(document);
+      if (isDbMode()) {
+        void dbSaveMediaDocument(id, saved)
+          .catch(error => console.error('Phoenix cloud media autosave failed:', error));
+      }
+    }, 500);
     return () => window.clearTimeout(handle);
-  }, [document, loading]);
+  }, [document, id, loading]);
 
   const updateDocument = (updater: (current: PhoenixMediaDocument) => PhoenixMediaDocument) => {
     setHistory(current => current ? commitDocumentHistory(current, updater(current.present)) : current);

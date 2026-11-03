@@ -12,7 +12,7 @@ import { LayerTransformControls } from '@/components/media/LayerTransformControl
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
-import { dbGetAssets, dbGetProject, type ProjectAsset } from '@/lib/db-client';
+import { dbGetAssets, dbGetMediaDocument, dbGetProject, dbSaveMediaDocument, type ProjectAsset } from '@/lib/db-client';
 import {
   clampLayerTransform,
   createPhoenixMediaDocument,
@@ -83,7 +83,9 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
         const loadedProject = isDbMode() ? await dbGetProject(id) : getUniverseById(id) || null;
         if (cancelled) return;
         setProject(loadedProject);
-        const loadedDocument = loadPhoenixMediaDocument(id, 'image') || createPhoenixMediaDocument(id, 'image');
+        const localDocument = loadPhoenixMediaDocument(id, 'image');
+        const cloudDocument = isDbMode() ? await dbGetMediaDocument(id, 'image') : null;
+        const loadedDocument = cloudDocument || localDocument || createPhoenixMediaDocument(id, 'image');
         setHistory(createDocumentHistory(loadedDocument));
         if (isDbMode()) setAssets(await dbGetAssets(id));
       } finally {
@@ -100,9 +102,13 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
     const handle = window.setTimeout(() => {
       const saved = savePhoenixMediaDocument(document);
       setSavedAt(saved.updatedAt);
-    }, 250);
+      if (isDbMode()) {
+        void dbSaveMediaDocument(id, saved)
+          .catch(error => setExportError(error instanceof Error ? error.message : 'Cloud autosave failed.'));
+      }
+    }, 500);
     return () => window.clearTimeout(handle);
-  }, [document, loading]);
+  }, [document, id, loading]);
 
   const sortedLayers = useMemo(
     () => [...(document?.layers || [])].sort((a, b) => a.zIndex - b.zIndex),
