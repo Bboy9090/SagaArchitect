@@ -92,6 +92,24 @@ async function renderLayerBitmap(layer: PhoenixMediaLayer): Promise<HTMLCanvasEl
       ctx.fillRect(0, 0, width, height);
       if (layer.strokeWidth > 0) ctx.strokeRect(0, 0, width, height);
     }
+  } else if (layer.type === 'path') {
+    if (layer.points.length > 0) {
+      ctx.beginPath();
+      ctx.moveTo(layer.points[0].x, layer.points[0].y);
+      for (const point of layer.points.slice(1)) ctx.lineTo(point.x, point.y);
+      if (layer.closed) ctx.closePath();
+      if (layer.closed && layer.fill !== 'transparent') {
+        ctx.fillStyle = layer.fill;
+        ctx.fill();
+      }
+      if (layer.strokeWidth > 0) {
+        ctx.strokeStyle = layer.stroke;
+        ctx.lineWidth = layer.strokeWidth;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.stroke();
+      }
+    }
   } else if (layer.type === 'text') {
     ctx.fillStyle = layer.color;
     ctx.font = `${layer.fontWeight} ${layer.fontSize}px ${layer.fontFamily}`;
