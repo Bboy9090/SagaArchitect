@@ -46,8 +46,6 @@ interface ComicTemplate {
 
 const PAGE_WIDTH = 1650;
 const PAGE_HEIGHT = 2550;
-const GUTTER = 48;
-
 const TEMPLATES: ComicTemplate[] = [
   { id: 'single', label: '1 Panel', panels: [{ x: 90, y: 90, width: 1470, height: 2370 }] },
   { id: 'two-row', label: '2 Rows', panels: [
