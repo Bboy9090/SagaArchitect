@@ -182,19 +182,30 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
     commit(current => {
       const nextTransform = patch.transform;
       const balloonGroup = selectedLayer.groupId?.startsWith('balloon:') ? selectedLayer.groupId : null;
+      const movingPanel = isPanelLayer(selectedLayer) ? selectedLayer.panelId : null;
       const dx = nextTransform ? nextTransform.x - selectedLayer.transform.x : 0;
       const dy = nextTransform ? nextTransform.y - selectedLayer.transform.y : 0;
       return {
         ...current,
         layers: current.layers.map(layer => {
           if (layer.id === selectedLayer.id) return { ...layer, ...patch } as PhoenixMediaLayer;
+          if (movingPanel && nextTransform && layer.panelId === movingPanel) {
+            return {
+              ...layer,
+              transform: {
+                ...layer.transform,
+                x: Math.max(0, Math.min(current.width - layer.transform.width, layer.transform.x + dx)),
+                y: Math.max(0, Math.min(current.height - layer.transform.height, layer.transform.y + dy)),
+              },
+            } as PhoenixMediaLayer;
+          }
           if (balloonGroup && nextTransform && layer.groupId === balloonGroup) {
             return {
               ...layer,
               transform: {
                 ...layer.transform,
-                x: layer.transform.x + dx,
-                y: layer.transform.y + dy,
+                x: Math.max(0, Math.min(current.width - layer.transform.width, layer.transform.x + dx)),
+                y: Math.max(0, Math.min(current.height - layer.transform.height, layer.transform.y + dy)),
               },
             } as PhoenixMediaLayer;
           }
@@ -309,9 +320,12 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
 
   const applyTemplate = (template: ComicTemplate) => {
     if (!document) return;
-    const retained = document.layers.filter(layer => !isPanelLayer(layer));
-    const panels: PhoenixMediaLayer[] = template.panels.map((panel, index) => ({
-      id: crypto.randomUUID(),
+    const retained = document.layers.filter(layer => !isPanelLayer(layer)).map(layer => ({ ...layer, panelId: undefined }));
+    const panels: PhoenixMediaLayer[] = template.panels.map((panel, index) => {
+      const panelId = crypto.randomUUID();
+      return ({
+      id: panelId,
+      panelId,
       type: 'shape',
       name: `Panel ${index + 1}`,
       visible: true,
@@ -324,7 +338,8 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
       fill: '#f8fafc',
       stroke: '#111827',
       strokeWidth: 12,
-    }));
+    } as PhoenixMediaLayer);
+    });
     commit(current => ({
       ...current,
       width: PAGE_WIDTH,
@@ -353,6 +368,7 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
       fontFamily: 'Arial, sans-serif',
       fontWeight: 800,
       align: 'left',
+      panelId: selectedLayer?.panelId,
     };
     commit(current => ({ ...current, layers: [...current.layers, layer] }));
     setSelectedLayerId(layer.id);
@@ -377,6 +393,7 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
       fill: '#ffffff',
       stroke: '#111827',
       strokeWidth: 10,
+      panelId: selectedLayer?.panelId,
     };
     const tail: PhoenixMediaLayer = {
       id: crypto.randomUUID(),
@@ -398,6 +415,7 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
       fill: '#ffffff',
       stroke: '#111827',
       strokeWidth: 10,
+      panelId: selectedLayer?.panelId,
     };
     const text: PhoenixMediaLayer = {
       id: crypto.randomUUID(),
@@ -418,6 +436,7 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
       align: 'center',
       lineHeight: 1.05,
       letterSpacing: 0,
+      panelId: selectedLayer?.panelId,
     };
     commit(current => ({
       ...current,
@@ -449,10 +468,31 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
       assetId: asset.id,
       src: asset.serve_url || `/api/db/assets/${asset.id}/serve`,
       fit: 'cover',
+      panelId: selectedLayer.panelId || selectedLayer.id,
       mask: { x: 0, y: 0, width: panel.width, height: panel.height },
     };
     commit(current => ({ ...current, layers: [...current.layers, image] }));
     setSelectedLayerId(image.id);
+  };
+
+  const panelFrames = document?.layers
+    .filter(layer => isPanelLayer(layer) && layer.panelId)
+    .sort((a, b) => a.zIndex - b.zIndex) || [];
+
+  const moveSelectedPanelStack = (direction: 'front' | 'back') => {
+    if (!document || !selectedLayer?.panelId) return;
+    const panelId = selectedLayer.panelId;
+    commit(current => {
+      const members = current.layers.filter(layer => layer.panelId === panelId).sort((a, b) => a.zIndex - b.zIndex);
+      if (members.length === 0) return current;
+      const memberIds = new Set(members.map(layer => layer.id));
+      const others = current.layers.filter(layer => !memberIds.has(layer.id)).sort((a, b) => a.zIndex - b.zIndex);
+      const ordered = direction === 'front' ? [...others, ...members] : [...members, ...others];
+      return {
+        ...current,
+        layers: ordered.map((layer, index) => ({ ...layer, zIndex: index + 1 })),
+      };
+    });
   };
 
   const exportFlattened = async (format: PhoenixRasterExportFormat) => {
@@ -694,6 +734,27 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
               <label className="block text-[10px] uppercase text-slate-500">Name
                 <input value={selectedLayer.name} onChange={event => patchSelected({ name: event.target.value })} className="mt-1 min-h-10 w-full rounded border border-white/10 bg-black/20 px-2 text-white" />
               </label>
+              {!isPanelLayer(selectedLayer) && (
+                <label className="block text-[10px] uppercase text-slate-500">Linked Panel
+                  <select
+                    value={selectedLayer.panelId || ''}
+                    onChange={event => patchSelected({ panelId: event.target.value || undefined } as Partial<PhoenixMediaLayer>)}
+                    className="mt-1 min-h-10 w-full rounded border border-white/10 bg-[#0a0d14] px-2 text-white"
+                  >
+                    <option value="">No panel link</option>
+                    {panelFrames.map((panel, index) => (
+                      <option key={panel.panelId} value={panel.panelId}>{panel.name || `Panel ${index + 1}`}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {selectedLayer.panelId && (
+                <div className="grid grid-cols-2 gap-2">
+                  <Button size="sm" variant="ghost" onClick={() => moveSelectedPanelStack('back')}>Panel to Back</Button>
+                  <Button size="sm" variant="ghost" onClick={() => moveSelectedPanelStack('front')}>Panel to Front</Button>
+                </div>
+              )}
+
               {selectedLayer.type === 'text' && (
                 <>
                   <label className="block text-[10px] uppercase text-slate-500">Text
@@ -722,8 +783,8 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
           <div className="mt-6 rounded-xl border border-amber-400/15 bg-amber-400/[0.04] p-3">
             <div className="text-xs font-bold text-amber-200">Comic foundation</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              Multi-page issues, page duplication/reordering, page templates, panel frames, image placement, grouped speech balloons with vector tails, lettering presets, direct transforms, and raster export are active.
-              Linked panel groups, advanced balloon geometry, issue-level export, and motion-comic handoff are next.
+              Multi-page issues, issue-level CBZ/print export, linked panel groups, page templates, panel frames, image placement, grouped speech balloons with vector tails, lettering presets, direct transforms, and raster export are active.
+              Advanced balloon geometry and issue-level motion-comic handoff are next.
             </p>
           </div>
         </aside>
