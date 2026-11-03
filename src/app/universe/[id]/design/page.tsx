@@ -106,7 +106,7 @@ function buildSvg(document: PhoenixMediaDocument): string {
       if (layer.shape === 'ellipse') {
         return wrap(`<ellipse cx="${x + width / 2}" cy="${y + height / 2}" rx="${width / 2}" ry="${height / 2}" fill="${layerFill}" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${transform}" />`);
       }
-      return wrap(`<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${layer.fill}" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${transform}" />`);
+      return wrap(`<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${layerFill}" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${transform}" />`);
     }
 
     if (layer.type === 'text') {
