@@ -51,6 +51,7 @@ export interface PhoenixBaseLayer {
   id: string;
   type: PhoenixLayerType;
   groupId?: string;
+  symbolId?: string;
   name: string;
   visible: boolean;
   locked: boolean;
@@ -149,6 +150,12 @@ export interface PhoenixLayerGroup {
   opacity: number;
 }
 
+export interface PhoenixSymbolDefinition {
+  id: string;
+  name: string;
+  masterLayerId: string;
+}
+
 export interface PhoenixMediaDocument {
   id: string;
   projectId: string;
@@ -159,6 +166,7 @@ export interface PhoenixMediaDocument {
   background: string;
   layers: PhoenixMediaLayer[];
   groups?: PhoenixLayerGroup[];
+  symbols?: PhoenixSymbolDefinition[];
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -181,6 +189,7 @@ export function createPhoenixMediaDocument(
     background: '#111827',
     layers: [],
     groups: [],
+    symbols: [],
     version: 1,
     createdAt: now,
     updatedAt: now,
@@ -393,4 +402,104 @@ export function textLineHeight(layer: Pick<PhoenixTextLayer, 'fontSize' | 'lineH
 
 export function textLetterSpacing(layer: Pick<PhoenixTextLayer, 'letterSpacing'>): number {
   return Math.max(-20, Math.min(200, layer.letterSpacing ?? 0));
+}
+
+
+function instanceBaseFields(layer: PhoenixMediaLayer) {
+  return {
+    id: layer.id,
+    name: layer.name,
+    visible: layer.visible,
+    locked: layer.locked,
+    opacity: layer.opacity,
+    blendMode: layer.blendMode,
+    zIndex: layer.zIndex,
+    transform: { ...layer.transform },
+    groupId: layer.groupId,
+    mask: layer.mask ? { ...layer.mask } : undefined,
+    adjustments: layer.adjustments ? { ...layer.adjustments } : undefined,
+    symbolId: layer.symbolId,
+  };
+}
+
+export function symbolDefinitionForLayer(
+  document: Pick<PhoenixMediaDocument, 'symbols'>,
+  layer: Pick<PhoenixBaseLayer, 'symbolId'>,
+): PhoenixSymbolDefinition | undefined {
+  if (!layer.symbolId) return undefined;
+  return (document.symbols || []).find(symbol => symbol.id === layer.symbolId);
+}
+
+export function symbolDefinitionForMaster(
+  document: Pick<PhoenixMediaDocument, 'symbols'>,
+  layerId: string,
+): PhoenixSymbolDefinition | undefined {
+  return (document.symbols || []).find(symbol => symbol.masterLayerId === layerId);
+}
+
+export function resolveSymbolLayer(
+  document: Pick<PhoenixMediaDocument, 'layers' | 'symbols'>,
+  layer: PhoenixMediaLayer,
+): PhoenixMediaLayer {
+  const symbol = symbolDefinitionForLayer(document, layer);
+  if (!symbol) return layer;
+  const master = document.layers.find(candidate => candidate.id === symbol.masterLayerId && !candidate.symbolId);
+  if (!master || master.type !== layer.type) return layer;
+  return {
+    ...master,
+    ...instanceBaseFields(layer),
+  } as PhoenixMediaLayer;
+}
+
+export function createSymbolInstance(
+  document: Pick<PhoenixMediaDocument, 'layers' | 'symbols'>,
+  symbolId: string,
+  zIndex: number,
+): PhoenixMediaLayer | null {
+  const symbol = (document.symbols || []).find(candidate => candidate.id === symbolId);
+  if (!symbol) return null;
+  const master = document.layers.find(layer => layer.id === symbol.masterLayerId && !layer.symbolId);
+  if (!master) return null;
+  const offset = 32;
+  return {
+    ...structuredClone(master),
+    id: crypto.randomUUID(),
+    name: `${symbol.name} instance`,
+    zIndex,
+    transform: {
+      ...master.transform,
+      x: master.transform.x + offset,
+      y: master.transform.y + offset,
+    },
+    symbolId,
+  } as PhoenixMediaLayer;
+}
+
+export function detachSymbolInstance(
+  document: Pick<PhoenixMediaDocument, 'layers' | 'symbols'>,
+  layer: PhoenixMediaLayer,
+): PhoenixMediaLayer {
+  const resolved = resolveSymbolLayer(document, layer);
+  return { ...structuredClone(resolved), id: layer.id, symbolId: undefined } as PhoenixMediaLayer;
+}
+
+export function removeLayerPreservingSymbols(
+  document: PhoenixMediaDocument,
+  layerId: string,
+): PhoenixMediaDocument {
+  const masteredSymbols = (document.symbols || []).filter(symbol => symbol.masterLayerId === layerId);
+  if (masteredSymbols.length === 0) {
+    return { ...document, layers: document.layers.filter(layer => layer.id !== layerId) };
+  }
+  const masteredIds = new Set(masteredSymbols.map(symbol => symbol.id));
+  const layers = document.layers
+    .filter(layer => layer.id !== layerId)
+    .map(layer => masteredIds.has(layer.symbolId || '')
+      ? detachSymbolInstance(document, layer)
+      : layer);
+  return {
+    ...document,
+    layers,
+    symbols: (document.symbols || []).filter(symbol => !masteredIds.has(symbol.id)),
+  };
 }
