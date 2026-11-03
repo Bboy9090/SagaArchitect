@@ -21,6 +21,14 @@ import {
   type PhoenixAudioMix,
 } from '@/lib/audio-mix';
 import { downloadAudioBlob, exportPhoenixAudioMixWav } from '@/lib/audio-renderer';
+import { loadMotionComicTimeline, saveMotionComicTimeline } from '@/lib/motion-comic';
+import {
+  createPhoenixVideoTimeline,
+  loadPhoenixVideoTimeline,
+  replaceSyncedAudioMixClip,
+  savePhoenixVideoTimeline,
+  type PhoenixVideoTimeline,
+} from '@/lib/video-timeline';
 import { newestStudioDocument } from '@/lib/studio-document';
 import type { Universe } from '@/lib/types';
 
@@ -55,6 +63,7 @@ export default function AudioStudioPage({ params }: AudioStudioPageProps) {
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState('');
   const [rendering, setRendering] = useState(false);
+  const [syncingTarget, setSyncingTarget] = useState<'video_timeline' | 'motion_timeline' | null>(null);
   const previewRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -182,6 +191,59 @@ export default function AudioStudioPage({ params }: AudioStudioPageProps) {
     }
   };
 
+
+  const syncMixToTimeline = async (target: 'video_timeline' | 'motion_timeline') => {
+    if (!mix || syncingTarget) return;
+    if (!isDbMode()) {
+      setStatus('Send Mix requires Studio Cloud mode so the rendered WAV can become a durable project asset.');
+      return;
+    }
+    setSyncingTarget(target);
+    setStatus(target === 'video_timeline' ? 'Rendering mix for Video Studio…' : 'Rendering mix for Motion Comic…');
+    try {
+      const blob = await exportPhoenixAudioMixWav(mix);
+      const safeTitle = (mix.title || 'phoenix-audio')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '') || 'phoenix-audio';
+      const asset = await dbUploadAsset(id, new File([blob], `${safeTitle}-mix.wav`, { type: 'audio/wav' }));
+      const mixDuration = audioMixDuration(mix);
+
+      let timeline: PhoenixVideoTimeline | null = null;
+      if (target === 'video_timeline') {
+        const local = loadPhoenixVideoTimeline(id);
+        const cloud = await dbGetStudioDocument<PhoenixVideoTimeline>(id, target);
+        timeline = newestStudioDocument(local, cloud) || createPhoenixVideoTimeline(id);
+      } else {
+        const local = loadMotionComicTimeline(id);
+        const cloud = await dbGetStudioDocument<PhoenixVideoTimeline>(id, target);
+        timeline = newestStudioDocument(local, cloud);
+        if (!timeline) {
+          throw new Error('Build a Motion Comic timeline first, then send this audio mix to it.');
+        }
+      }
+
+      const next = replaceSyncedAudioMixClip(timeline, {
+        assetId: asset.id,
+        src: asset.serve_url || `/api/db/assets/${asset.id}/serve`,
+        name: `${mix.title || 'Phoenix Audio'} — Synced Mix`,
+        duration: mixDuration,
+      });
+      const saved = target === 'video_timeline'
+        ? savePhoenixVideoTimeline(next)
+        : saveMotionComicTimeline(next);
+      await dbSaveStudioDocument(id, target, saved);
+      setAssets(await dbGetAssets(id));
+      setStatus(target === 'video_timeline'
+        ? 'Synced rendered mix to Video Studio. The previous synced mix clip was replaced.'
+        : 'Synced rendered mix to Motion Comic Studio. The previous synced mix clip was replaced.');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Failed to sync audio mix.');
+    } finally {
+      setSyncingTarget(null);
+    }
+  };
+
   if (loading || !mix) {
     return (
       <Navigation>
@@ -213,6 +275,12 @@ export default function AudioStudioPage({ params }: AudioStudioPageProps) {
               }}
               onError={setStatus}
             />
+            <Button size="sm" variant="secondary" loading={syncingTarget === 'video_timeline'} onClick={() => void syncMixToTimeline('video_timeline')}>
+              Send Mix to Video
+            </Button>
+            <Button size="sm" variant="secondary" loading={syncingTarget === 'motion_timeline'} onClick={() => void syncMixToTimeline('motion_timeline')}>
+              Send Mix to Motion
+            </Button>
             <Button size="sm" variant="gold" loading={rendering} onClick={() => void renderMix()}>
               Export WAV Mix
             </Button>
@@ -373,6 +441,7 @@ export default function AudioStudioPage({ params }: AudioStudioPageProps) {
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
               Real WAV/MP3 ingest, decoded waveforms, Voice/Music/SFX buses, trim, gain, pan metadata, fades, mute/solo, and autosave are active.
               Offline multi-track WAV mixdown is active with trim, playback rate, track/clip gain, pan, mute/solo, and fades.
+              Rendered mixes can now sync directly into Video or Motion as durable Studio Cloud WAV assets without duplicating prior synced clips.
               EQ/compression, recording, and noise cleanup are the next tier.
             </p>
           </div>
