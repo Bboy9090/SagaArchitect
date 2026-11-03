@@ -19,6 +19,7 @@ import {
   loadPhoenixMediaDocument,
   nextLayerZIndex,
   savePhoenixMediaDocument,
+  gradientFillCss,
   layerCssFilter,
   moveVectorPoint,
   normalizeLayerAdjustments,
@@ -586,7 +587,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                       <div
                         className="h-full w-full"
                         style={{
-                          background: layer.fill,
+                          background: gradientFillCss(layer.gradient, layer.fill),
                           border: layer.strokeWidth ? `${Math.max(1, layer.strokeWidth * scale)}px solid ${layer.stroke}` : undefined,
                           borderRadius: layer.shape === 'ellipse' ? '9999px' : 0,
                         }}
@@ -594,9 +595,24 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                     )}
                     {layer.type === 'path' && (
                       <svg viewBox={`0 0 ${layer.transform.width} ${layer.transform.height}`} className="h-full w-full overflow-visible">
+                        {layer.gradient && (
+                          <defs>
+                            {layer.gradient.kind === 'radial' ? (
+                              <radialGradient id={`image-gradient-${layer.id}`} cx="50%" cy="50%" r="50%">
+                                <stop offset="0%" stopColor={layer.gradient.start} />
+                                <stop offset="100%" stopColor={layer.gradient.end} />
+                              </radialGradient>
+                            ) : (
+                              <linearGradient id={`image-gradient-${layer.id}`} x1="0%" y1="50%" x2="100%" y2="50%" gradientTransform={`rotate(${layer.gradient.angle - 90} .5 .5)`}>
+                                <stop offset="0%" stopColor={layer.gradient.start} />
+                                <stop offset="100%" stopColor={layer.gradient.end} />
+                              </linearGradient>
+                            )}
+                          </defs>
+                        )}
                         <path
                           d={vectorPathSvgD(layer)}
-                          fill={layer.closed ? layer.fill : 'none'}
+                          fill={layer.closed ? (layer.gradient ? `url(#image-gradient-${layer.id})` : layer.fill) : 'none'}
                           stroke={layer.stroke}
                           strokeWidth={layer.strokeWidth}
                           strokeLinejoin="round"
@@ -900,6 +916,55 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                       {selectedLayer.closed ? 'Closed Path' : 'Open Path'}
                     </Button>
                   </div>
+                </div>
+              )}
+
+              {(selectedLayer.type === 'shape' || selectedLayer.type === 'path') && (
+                <div className="rounded-lg border border-fuchsia-400/20 bg-fuchsia-400/[0.04] p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-fuchsia-300">Gradient Fill</span>
+                    <Button
+                      size="sm"
+                      variant={selectedLayer.gradient ? 'gold' : 'ghost'}
+                      onClick={() => patchSelectedLayer({
+                        gradient: selectedLayer.gradient ? undefined : {
+                          kind: 'linear',
+                          angle: 90,
+                          start: selectedLayer.fill,
+                          end: '#111827',
+                        },
+                      } as Partial<PhoenixMediaLayer>)}
+                    >
+                      {selectedLayer.gradient ? 'On' : 'Enable'}
+                    </Button>
+                  </div>
+                  {selectedLayer.gradient && (
+                    <div className="mt-3 space-y-2">
+                      <select
+                        value={selectedLayer.gradient.kind}
+                        onChange={event => patchSelectedLayer({
+                          gradient: { ...selectedLayer.gradient!, kind: event.target.value as 'linear' | 'radial' },
+                        } as Partial<PhoenixMediaLayer>)}
+                        className="min-h-10 w-full rounded border border-white/10 bg-[#0a0d14] px-2 text-xs text-white"
+                      >
+                        <option value="linear">Linear</option>
+                        <option value="radial">Radial</option>
+                      </select>
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="text-[10px] uppercase text-slate-500">Start
+                          <input type="color" value={selectedLayer.gradient.start} onChange={event => patchSelectedLayer({ gradient: { ...selectedLayer.gradient!, start: event.target.value } } as Partial<PhoenixMediaLayer>)} className="mt-1 h-9 w-full" />
+                        </label>
+                        <label className="text-[10px] uppercase text-slate-500">End
+                          <input type="color" value={selectedLayer.gradient.end} onChange={event => patchSelectedLayer({ gradient: { ...selectedLayer.gradient!, end: event.target.value } } as Partial<PhoenixMediaLayer>)} className="mt-1 h-9 w-full" />
+                        </label>
+                      </div>
+                      {selectedLayer.gradient.kind === 'linear' && (
+                        <label className="block text-[10px] uppercase text-slate-500">Angle
+                          <input type="number" min={-360} max={360} value={selectedLayer.gradient.angle} onChange={event => patchSelectedLayer({ gradient: { ...selectedLayer.gradient!, angle: Number(event.target.value) } } as Partial<PhoenixMediaLayer>)} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                        </label>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
