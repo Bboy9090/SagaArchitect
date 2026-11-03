@@ -151,14 +151,18 @@ async function renderLayerBitmap(layer: PhoenixMediaLayer): Promise<HTMLCanvasEl
     };
 
     if (layer.points.length > 0 || (layer.contours?.length || 0) > 0) {
-      ctx.beginPath();
-      traceContour(layer.points, layer.closed);
-      for (const contour of layer.contours || []) traceContour(contour.points, contour.closed);
-      if ((layer.closed || (layer.contours || []).some(contour => contour.closed)) && (layer.gradient || layer.fill !== 'transparent')) {
+      const closedContours = (layer.contours || []).filter(contour => contour.closed);
+      if ((layer.closed || closedContours.length > 0) && (layer.gradient || layer.fill !== 'transparent')) {
+        ctx.beginPath();
+        if (layer.closed) traceContour(layer.points, true);
+        for (const contour of closedContours) traceContour(contour.points, true);
         ctx.fillStyle = layerFillStyle(ctx, layer, width, height);
         ctx.fill(vectorPathFillRule(layer));
       }
       if (layer.strokeWidth > 0) {
+        ctx.beginPath();
+        traceContour(layer.points, layer.closed);
+        for (const contour of layer.contours || []) traceContour(contour.points, contour.closed);
         ctx.strokeStyle = layer.stroke;
         ctx.lineWidth = layer.strokeWidth;
         ctx.lineJoin = 'round';
