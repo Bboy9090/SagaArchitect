@@ -11,13 +11,15 @@ import { LayerTransformControls } from '@/components/media/LayerTransformControl
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
-import { dbGetAssets, dbGetMediaDocument, dbGetProject, dbSaveMediaDocument, type ProjectAsset } from '@/lib/db-client';
+import { dbDeleteComicPage, dbGetAssets, dbGetComicPages, dbGetProject, dbSaveMediaDocument, type ProjectAsset } from '@/lib/db-client';
 import {
   createPhoenixMediaDocument,
-  loadPhoenixMediaDocument,
+  listPhoenixMediaDocuments,
+  mediaDocumentStorageKey,
   nextLayerZIndex,
   savePhoenixMediaDocument,
   type PhoenixMediaDocument,
+  type PhoenixMediaDocumentKind,
   type PhoenixMediaLayer,
 } from '@/lib/media-composition';
 import {
@@ -81,6 +83,8 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
   const { id } = use(params);
   const [project, setProject] = useState<Universe | null>(null);
   const [history, setHistory] = useState<PhoenixDocumentHistory | null>(null);
+  const [pages, setPages] = useState<PhoenixMediaDocument[]>([]);
+  const [activePageKind, setActivePageKind] = useState<PhoenixMediaDocumentKind>('comic_page');
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
   const [selectedLayerId, setSelectedLayerId] = useState('');
   const [loading, setLoading] = useState(true);
@@ -106,18 +110,25 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
     void (async () => {
       try {
         const loadedProject = isDbMode() ? await dbGetProject(id) : getUniverseById(id) || null;
-        const localDocument = loadPhoenixMediaDocument(id, 'comic_page');
-        const cloudDocument = isDbMode() ? await dbGetMediaDocument(id, 'comic_page') : null;
-        const loaded = cloudDocument || localDocument || {
+        const localPages = listPhoenixMediaDocuments(id, 'comic_page');
+        const cloudPages = isDbMode() ? await dbGetComicPages(id) : [];
+        const loadedPages = (cloudPages.length > 0 ? cloudPages : localPages)
+          .sort((a, b) => (a.pageOrder ?? Number.MAX_SAFE_INTEGER) - (b.pageOrder ?? Number.MAX_SAFE_INTEGER)
+            || a.createdAt.localeCompare(b.createdAt));
+        const firstPage = loadedPages[0] || {
           ...createPhoenixMediaDocument(id, 'comic_page'),
           title: 'Comic Page 1',
+          pageOrder: 0,
           width: PAGE_WIDTH,
           height: PAGE_HEIGHT,
           background: '#ffffff',
         };
+        const normalizedPages = loadedPages.length > 0 ? loadedPages : [firstPage];
         if (cancelled) return;
         setProject(loadedProject);
-        setHistory(createDocumentHistory(loaded));
+        setPages(normalizedPages);
+        setActivePageKind(firstPage.kind);
+        setHistory(createDocumentHistory(firstPage));
         if (isDbMode()) setAssets(await dbGetAssets(id));
       } finally {
         if (!cancelled) setLoading(false);
@@ -137,8 +148,14 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
     if (!document || loading) return;
     const handle = window.setTimeout(() => {
       const saved = savePhoenixMediaDocument(document);
+      setPages(current => current
+        .map(page => page.kind === saved.kind ? saved : page)
+        .sort((a, b) => (a.pageOrder ?? 0) - (b.pageOrder ?? 0)));
       if (isDbMode()) {
         void dbSaveMediaDocument(id, saved)
+          .then(cloudSaved => {
+            setPages(current => current.map(page => page.kind === cloudSaved.kind ? cloudSaved : page));
+          })
           .catch(error => console.error('Phoenix cloud media autosave failed:', error));
       }
     }, 500);
@@ -155,6 +172,95 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
       ...current,
       layers: current.layers.map(layer => layer.id === selectedLayer.id ? ({ ...layer, ...patch } as PhoenixMediaLayer) : layer),
     }));
+  };
+
+  const persistPageOrder = (orderedPages: PhoenixMediaDocument[]) => {
+    const normalized = orderedPages.map((page, index) => ({ ...page, pageOrder: index }));
+    setPages(normalized);
+    for (const page of normalized) {
+      const saved = savePhoenixMediaDocument(page);
+      if (isDbMode()) {
+        void dbSaveMediaDocument(id, saved)
+          .catch(error => console.error('Comic page order save failed:', error));
+      }
+    }
+  };
+
+  const openPage = (kind: PhoenixMediaDocumentKind) => {
+    if (document) {
+      setPages(current => current.map(page => page.kind === document.kind ? document : page));
+    }
+    const target = pages.find(page => page.kind === kind);
+    if (!target) return;
+    setActivePageKind(kind);
+    setSelectedLayerId('');
+    setHistory(createDocumentHistory(target));
+  };
+
+  const addPage = () => {
+    const kind = `comic_page:${crypto.randomUUID()}` as PhoenixMediaDocumentKind;
+    const page = {
+      ...createPhoenixMediaDocument(id, kind),
+      title: `Comic Page ${pages.length + 1}`,
+      pageOrder: pages.length,
+      width: PAGE_WIDTH,
+      height: PAGE_HEIGHT,
+      background: '#ffffff',
+    };
+    const next = [...pages.map(existing => existing.kind === document?.kind ? document : existing), page];
+    setPages(next);
+    setActivePageKind(kind);
+    setSelectedLayerId('');
+    setHistory(createDocumentHistory(page));
+    const saved = savePhoenixMediaDocument(page);
+    if (isDbMode()) void dbSaveMediaDocument(id, saved).catch(error => console.error('Comic page create failed:', error));
+  };
+
+  const duplicatePage = () => {
+    if (!document) return;
+    const kind = `comic_page:${crypto.randomUUID()}` as PhoenixMediaDocumentKind;
+    const now = new Date().toISOString();
+    const page: PhoenixMediaDocument = {
+      ...structuredClone(document),
+      id: crypto.randomUUID(),
+      kind,
+      title: `${document.title} Copy`,
+      pageOrder: pages.length,
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const next = [...pages.map(existing => existing.kind === document.kind ? document : existing), page];
+    setPages(next);
+    setActivePageKind(kind);
+    setSelectedLayerId('');
+    setHistory(createDocumentHistory(page));
+    const saved = savePhoenixMediaDocument(page);
+    if (isDbMode()) void dbSaveMediaDocument(id, saved).catch(error => console.error('Comic page duplicate failed:', error));
+  };
+
+  const movePage = (direction: -1 | 1) => {
+    const index = pages.findIndex(page => page.kind === activePageKind);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= pages.length) return;
+    const next = [...pages];
+    [next[index], next[target]] = [next[target], next[index]];
+    persistPageOrder(next);
+  };
+
+  const deletePage = () => {
+    if (!document || pages.length <= 1) return;
+    const index = pages.findIndex(page => page.kind === document.kind);
+    const next = pages.filter(page => page.kind !== document.kind);
+    window.localStorage.removeItem(mediaDocumentStorageKey(id, document.kind));
+    if (isDbMode()) void dbDeleteComicPage(id, document.kind).catch(error => console.error('Comic page delete failed:', error));
+    const normalized = next.map((page, pageIndex) => ({ ...page, pageOrder: pageIndex }));
+    setPages(normalized);
+    const fallback = normalized[Math.min(index, normalized.length - 1)];
+    setActivePageKind(fallback.kind);
+    setSelectedLayerId('');
+    setHistory(createDocumentHistory(fallback));
+    persistPageOrder(normalized);
   };
 
   const applyTemplate = (template: ComicTemplate) => {
@@ -291,7 +397,7 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
     <Navigation>
       <Header
         title="Comic Studio"
-        subtitle={`Panel layout and lettering for ${project?.name || 'Phoenix project'}`}
+        subtitle={`Panel layout and lettering for ${project?.name || 'Phoenix project'} • Page ${Math.max(1, pages.findIndex(page => page.kind === activePageKind) + 1)} of ${Math.max(1, pages.length)}`}
         actions={
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="ghost" disabled={history.past.length === 0} onClick={() => setHistory(current => current ? undoDocumentHistory(current) : current)}>Undo</Button>
@@ -307,6 +413,28 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
 
       <div className="grid min-h-[calc(100vh-80px)] grid-cols-1 2xl:grid-cols-[280px_minmax(0,1fr)_320px]">
         <aside className="border-r border-white/10 bg-[#070b15] p-4">
+          <p className="mb-3 text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Issue Pages</p>
+          <div className="mb-5 space-y-2">
+            {pages.map((page, index) => (
+              <button
+                key={page.kind}
+                type="button"
+                onClick={() => openPage(page.kind)}
+                className={`flex min-h-10 w-full items-center justify-between rounded-lg border px-3 text-left text-xs ${page.kind === activePageKind ? 'border-blue-400/50 bg-blue-400/10 text-blue-100' : 'border-white/5 text-slate-400 hover:border-blue-400/30'}`}
+              >
+                <span className="truncate">{page.title || `Comic Page ${index + 1}`}</span>
+                <span className="text-[10px] text-slate-500">{index + 1}</span>
+              </button>
+            ))}
+            <div className="grid grid-cols-2 gap-2">
+              <Button size="sm" variant="secondary" onClick={addPage}>+ Page</Button>
+              <Button size="sm" variant="secondary" onClick={duplicatePage}>Duplicate</Button>
+              <Button size="sm" variant="ghost" disabled={pages.findIndex(page => page.kind === activePageKind) <= 0} onClick={() => movePage(-1)}>Move Up</Button>
+              <Button size="sm" variant="ghost" disabled={pages.findIndex(page => page.kind === activePageKind) >= pages.length - 1} onClick={() => movePage(1)}>Move Down</Button>
+            </div>
+            <Button size="sm" variant="danger" className="w-full" disabled={pages.length <= 1} onClick={deletePage}>Delete Page</Button>
+          </div>
+
           <p className="mb-3 text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Page Templates</p>
           <div className="grid grid-cols-2 gap-2">
             {TEMPLATES.map(template => (
@@ -440,8 +568,8 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
           <div className="mt-6 rounded-xl border border-amber-400/15 bg-amber-400/[0.04] p-3">
             <div className="text-xs font-bold text-amber-200">Comic foundation</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              Page templates, panel frames, image placement, captions, speech balloons, direct transforms, and raster export are active.
-              Linked panel groups, balloon tails, lettering styles, multi-page issues, and motion-comic handoff are next.
+              Multi-page issues, page duplication/reordering, page templates, panel frames, image placement, captions, speech balloons, direct transforms, and raster export are active.
+              Linked panel groups, balloon tails, lettering styles, issue-level export, and motion-comic handoff are next.
             </p>
           </div>
         </aside>
