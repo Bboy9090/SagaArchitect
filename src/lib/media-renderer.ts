@@ -141,7 +141,7 @@ async function renderLayerBitmap(layer: PhoenixMediaLayer): Promise<HTMLCanvasEl
         }
         ctx.closePath();
       }
-      if (layer.closed && layer.fill !== 'transparent') {
+      if (layer.closed && (layer.gradient || layer.fill !== 'transparent')) {
         ctx.fillStyle = layerFillStyle(ctx, layer, width, height);
         ctx.fill();
       }
