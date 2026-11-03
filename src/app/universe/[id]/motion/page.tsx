@@ -64,10 +64,7 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
   }, [id]);
 
   useEffect(() => {
-    if (!sceneId) {
-      setPanels([]);
-      return;
-    }
+    if (!sceneId) return;
     let cancelled = false;
     void (async () => {
       const loadedPanels = isDbMode() ? await dbGetStoryboardPanels(sceneId) : getStoryboardPanels(sceneId);
@@ -127,8 +124,7 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
   }, [playing, timeline, duration]);
 
   const generateFromStoryboard = () => {
-    const scene = scenes.find(item => item.id === sceneId);
-    if (!scene) return;
+      if (!scene) return;
     const ordered = [...panels].sort((a, b) => a.panel_number - b.panel_number);
     const inputs = ordered.map(panel => ({
       panel,
