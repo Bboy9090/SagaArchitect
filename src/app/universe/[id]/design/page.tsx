@@ -18,11 +18,13 @@ import { LayerAlignmentPanel } from '@/components/media/LayerAlignmentPanel';
 import { AdjustmentLayerPanel } from '@/components/media/AdjustmentLayerPanel';
 import { MultiLayerLayoutPanel } from '@/components/media/MultiLayerLayoutPanel';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
+import { useMediaEditorShortcuts } from '@/hooks/use-media-editor-shortcuts';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
 import { dbGetAssets, dbGetMediaDocument, dbGetProject, dbSaveMediaDocument, type ProjectAsset } from '@/lib/db-client';
 import {
   alignLayerTransformsToSelection,
+  clampLayerTransform,
   createAdjustmentLayer,
   createPhoenixMediaDocument,
   createSymbolInstance,
@@ -485,6 +487,63 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
       layers: current.layers.map(layer => layer.id === selected.id ? ({ ...layer, ...patch } as PhoenixMediaLayer) : layer),
     }));
   };
+
+
+  const deleteSelectedLayers = () => {
+    if (!document || selectedLayerIds.length === 0) return;
+    commit(current => selectedLayerIds.reduce(
+      (nextDocument, layerId) => removeLayerPreservingSymbols(nextDocument, layerId),
+      current,
+    ));
+    focusLayer('');
+  };
+
+  const duplicateSelectedLayers = () => {
+    if (!document || selectedLayerIds.length === 0) return;
+    const selectedLayers = document.layers.filter(layer => selectedLayerIds.includes(layer.id));
+    if (selectedLayers.length === 0) return;
+    const baseZ = nextLayerZIndex(document.layers);
+    const duplicates = selectedLayers.map((layer, index) => {
+      const duplicate = structuredClone(layer) as PhoenixMediaLayer;
+      duplicate.id = crypto.randomUUID();
+      duplicate.name = `${layer.name} copy`;
+      duplicate.zIndex = baseZ + index;
+      duplicate.transform = clampLayerTransform({
+        ...layer.transform,
+        x: layer.transform.x + 24,
+        y: layer.transform.y + 24,
+      }, document);
+      return duplicate;
+    });
+    commit(current => ({ ...current, layers: [...current.layers, ...duplicates] }));
+    focusLayer(duplicates[0].id);
+  };
+
+  const nudgeSelection = (dx: number, dy: number) => {
+    if (!document || selectedLayerIds.length === 0) return;
+    commit(current => ({
+      ...current,
+      layers: current.layers.map(layer => {
+        if (!selectedLayerIds.includes(layer.id) || isLayerEffectivelyLocked(layer, current)) return layer;
+        return {
+          ...layer,
+          transform: clampLayerTransform({
+            ...layer.transform,
+            x: layer.transform.x + dx,
+            y: layer.transform.y + dy,
+          }, current),
+        };
+      }),
+    }));
+  };
+
+  useMediaEditorShortcuts({
+    onUndo: () => setHistory(current => current ? undoDocumentHistory(current) : current),
+    onRedo: () => setHistory(current => current ? redoDocumentHistory(current) : current),
+    onDelete: deleteSelectedLayers,
+    onDuplicate: duplicateSelectedLayers,
+    onNudge: nudgeSelection,
+  });
 
   const commitSelectedTransform = (transform: PhoenixMediaLayer['transform']) => {
     if (!selected) return;
@@ -1043,10 +1102,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                   </label>
                 ))}
               </div>
-              <Button size="sm" variant="danger" className="w-full" onClick={() => {
-                commit(current => removeLayerPreservingSymbols(current, selected.id));
-                focusLayer('');
-              }}>Delete Layer</Button>
+              <Button size="sm" variant="danger" className="w-full" onClick={deleteSelectedLayers}>Delete Selected</Button>
             </div>
           )}
         </aside>
