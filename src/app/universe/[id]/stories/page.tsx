@@ -38,6 +38,12 @@ const PROJECT_TYPE_LABELS: Record<MediaProjectType, { icon: string; label: strin
   film: { icon: '🎬', label: 'Film / Script' },
   short_story: { icon: '📝', label: 'Short Story' },
   script: { icon: '🎭', label: 'Script' },
+  video: { icon: '🎞️', label: 'Video' },
+  short_video: { icon: '📱', label: 'Short Video' },
+  motion_comic: { icon: '💥', label: 'Motion Comic' },
+  illustration: { icon: '🖌️', label: 'Illustration' },
+  design: { icon: '▦', label: 'Design' },
+  audio: { icon: '🎧', label: 'Audio' },
 };
 
 const RICHNESS_LABELS = {

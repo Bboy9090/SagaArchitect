@@ -513,8 +513,11 @@ export default function CanonCorePage({ params }: CanonPageProps) {
         subtitle={`${universe.genre} · ${universe.tone} · ${universe.era}`}
         actions={
           <div className="flex gap-2 flex-wrap items-center">
-            <Button variant="gold" size="sm" onClick={() => router.push(`/universe/${id}/stories`)}>
-              📖 Story Forge
+            <Button variant="gold" size="sm" onClick={() => router.push(`/universe/${id}/studio`)}>
+              ✦ Open Studio Hub
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => router.push(`/universe/${id}/stories`)}>
+              📖 Writing Room
             </Button>
             <Button
               variant="secondary" size="sm"
