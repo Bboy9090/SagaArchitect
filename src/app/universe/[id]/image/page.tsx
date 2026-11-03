@@ -13,6 +13,7 @@ import { LayerGroupPanel } from '@/components/media/LayerGroupPanel';
 import { CompoundContourPanel } from '@/components/media/CompoundContourPanel';
 import { SymbolPanel } from '@/components/media/SymbolPanel';
 import { VectorMaskPanel } from '@/components/media/VectorMaskPanel';
+import { LayerShadowPanel } from '@/components/media/LayerShadowPanel';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
@@ -31,7 +32,7 @@ import {
   gradientFillCss,
   isLayerEffectivelyLocked,
   isLayerEffectivelyVisible,
-  layerCssFilter,
+  layerCssEffects,
   moveVectorPoint,
   normalizeLayerAdjustments,
   scaleVectorContours,
@@ -392,6 +393,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
       },
       mask: selectedLayer.mask ? { ...selectedLayer.mask } : undefined,
       vectorMask: selectedLayer.vectorMask ? { points: structuredClone(selectedLayer.vectorMask.points) } : undefined,
+      shadow: selectedLayer.shadow ? { ...selectedLayer.shadow } : undefined,
       adjustments: selectedLayer.adjustments ? { ...selectedLayer.adjustments } : undefined,
     } as PhoenixMediaLayer;
     updateDocument(current => ({ ...current, layers: [...current.layers, duplicate] }));
@@ -659,7 +661,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                   outlineOffset: 2,
                   cursor: isLayerEffectivelyLocked(layer, document) ? 'not-allowed' : 'pointer',
                   clipPath: vectorMaskCssClipPath(layer) || selectedLayerClipPath(layer),
-                  filter: layerCssFilter(layer),
+                  filter: layerCssEffects(layer),
                 };
 
                 return (
@@ -1207,6 +1209,11 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
               </div>
 
               <VectorMaskPanel
+                layer={selectedLayer}
+                onChange={patch => patchSelectedLayer(patch)}
+              />
+
+              <LayerShadowPanel
                 layer={selectedLayer}
                 onChange={patch => patchSelectedLayer(patch)}
               />
