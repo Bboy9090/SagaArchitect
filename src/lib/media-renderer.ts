@@ -220,6 +220,18 @@ async function renderLayerBitmap(layer: PhoenixMediaLayer): Promise<HTMLCanvasEl
     ctx.globalCompositeOperation = 'source-over';
   }
 
+  if (layer.vectorMask && layer.vectorMask.points.length >= 3) {
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    const [first, ...rest] = layer.vectorMask.points;
+    ctx.moveTo(first.x, first.y);
+    for (const point of rest) ctx.lineTo(point.x, point.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
   return canvas;
 }
 
