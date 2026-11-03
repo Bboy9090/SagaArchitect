@@ -1,5 +1,6 @@
 import type { Universe as Project, Character, Scene, StoryboardPanel, WritingDocument, WritingDocumentRevision } from './types';
 import type { PhoenixMediaDocument, PhoenixMediaDocumentKind } from './media-composition';
+import type { PhoenixStudioDocument, PhoenixStudioDocumentEnvelope, PhoenixStudioDocumentKind } from './studio-document';
 
 async function handleResponse<T>(res: Response): Promise<T> {
   const json = await res.json();
@@ -358,4 +359,52 @@ export async function dbDeleteComicPage(projectId: string, kind: PhoenixMediaDoc
   const key = mediaDocumentKey(projectId, kind);
   mediaDocumentVersions.delete(key);
   mediaDocumentSaveQueues.delete(key);
+}
+
+
+// STUDIO TIMELINE DOCUMENTS
+const studioDocumentVersions = new Map<string, number>();
+const studioDocumentSaveQueues = new Map<string, Promise<PhoenixStudioDocument>>();
+
+function studioDocumentKey(projectId: string, kind: PhoenixStudioDocumentKind): string {
+  return `${projectId}:${kind}`;
+}
+
+export async function dbGetStudioDocument<T extends PhoenixStudioDocument>(
+  projectId: string,
+  kind: PhoenixStudioDocumentKind,
+): Promise<T | null> {
+  const res = await fetch(`/api/db/projects/${projectId}/studio-documents?kind=${encodeURIComponent(kind)}`);
+  const envelope = await handleResponse<PhoenixStudioDocumentEnvelope<T> | null>(res);
+  if (!envelope) {
+    studioDocumentVersions.set(studioDocumentKey(projectId, kind), 0);
+    return null;
+  }
+  studioDocumentVersions.set(studioDocumentKey(projectId, kind), envelope.version);
+  return envelope.document;
+}
+
+export function dbSaveStudioDocument<T extends PhoenixStudioDocument>(
+  projectId: string,
+  kind: PhoenixStudioDocumentKind,
+  document: T,
+): Promise<T> {
+  const key = studioDocumentKey(projectId, kind);
+  const previous = studioDocumentSaveQueues.get(key) || Promise.resolve(document);
+  const next = previous.catch(() => document).then(async () => {
+    const expectedVersion = studioDocumentVersions.get(key) ?? 0;
+    const res = await fetch(`/api/db/projects/${projectId}/studio-documents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind, document, expected_version: expectedVersion }),
+    });
+    const envelope = await handleResponse<PhoenixStudioDocumentEnvelope<T>>(res);
+    studioDocumentVersions.set(key, envelope.version);
+    return envelope.document;
+  });
+  studioDocumentSaveQueues.set(key, next as Promise<PhoenixStudioDocument>);
+  void next.finally(() => {
+    if (studioDocumentSaveQueues.get(key) === next) studioDocumentSaveQueues.delete(key);
+  });
+  return next;
 }
