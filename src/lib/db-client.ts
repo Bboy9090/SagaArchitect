@@ -1,4 +1,5 @@
 import type { Universe as Project, Character, Scene, StoryboardPanel, WritingDocument, WritingDocumentRevision } from './types';
+import type { PhoenixMediaDocument, PhoenixMediaDocumentKind } from './media-composition';
 
 async function handleResponse<T>(res: Response): Promise<T> {
   const json = await res.json();
@@ -255,4 +256,20 @@ export async function dbExportProjectPdf(projectId: string): Promise<Blob> {
     throw new Error(errMsg);
   }
   return res.blob();
+}
+
+
+// MEDIA DOCUMENTS
+export async function dbGetMediaDocument(projectId: string, kind: PhoenixMediaDocumentKind): Promise<PhoenixMediaDocument | null> {
+  const res = await fetch(`/api/db/projects/${projectId}/media-documents?kind=${encodeURIComponent(kind)}`);
+  return handleResponse<PhoenixMediaDocument | null>(res);
+}
+
+export async function dbSaveMediaDocument(projectId: string, document: PhoenixMediaDocument): Promise<PhoenixMediaDocument> {
+  const res = await fetch(`/api/db/projects/${projectId}/media-documents`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind: document.kind, document }),
+  });
+  return handleResponse<PhoenixMediaDocument>(res);
 }
