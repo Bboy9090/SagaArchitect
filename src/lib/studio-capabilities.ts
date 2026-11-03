@@ -2,6 +2,7 @@ export type StudioCapabilityStatus = 'live' | 'foundation' | 'planned';
 
 export type PhoenixStudioId =
   | 'write'
+  | 'book'
   | 'design'
   | 'image'
   | 'illustrate'
@@ -35,6 +36,16 @@ export const PHOENIX_STUDIOS: PhoenixStudioCapability[] = [
     capabilities: ['Writing room', 'Scenes', 'Story generation', 'Project canon'],
     route: id => `/universe/${id}/stories`,
     productionTypes: ['book', 'script', 'short_story'],
+  },
+  {
+    id: 'book',
+    label: 'Book Production',
+    icon: '▥',
+    status: 'foundation',
+    summary: 'Trim-aware manuscript packaging, publishing preflight, metadata, DOCX, EPUB, and print-layout proofing.',
+    capabilities: ['Publishing preflight', 'Trim presets', 'Bleed/gutter/margins', 'DOCX', 'EPUB', 'Print-layout PDF'],
+    route: id => `/universe/${id}/book`,
+    productionTypes: ['book', 'children_book', 'short_story'],
   },
   {
     id: 'design',
