@@ -415,3 +415,55 @@ export function dbSaveStudioDocument<T extends PhoenixStudioDocument>(
   });
   return next;
 }
+
+
+export interface StudioDocumentRevisionSummary {
+  id: string;
+  action: string;
+  version: number;
+  label: string | null;
+  reason: string | null;
+  created_at: string;
+}
+
+export async function dbGetStudioDocumentHistory(
+  projectId: string,
+  kind: PhoenixStudioDocumentKind,
+): Promise<StudioDocumentRevisionSummary[]> {
+  const res = await fetch(`/api/db/projects/${projectId}/studio-documents/history?kind=${encodeURIComponent(kind)}`);
+  return handleResponse<StudioDocumentRevisionSummary[]>(res);
+}
+
+export async function dbCreateStudioDocumentSnapshot(
+  projectId: string,
+  kind: PhoenixStudioDocumentKind,
+  label?: string,
+): Promise<StudioDocumentRevisionSummary> {
+  const res = await fetch(`/api/db/projects/${projectId}/studio-documents/history`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind, label }),
+  });
+  return handleResponse<StudioDocumentRevisionSummary>(res);
+}
+
+export async function dbRestoreStudioDocument<T extends PhoenixStudioDocument>(
+  projectId: string,
+  kind: PhoenixStudioDocumentKind,
+  historyId: string,
+): Promise<T> {
+  const key = studioDocumentKey(projectId, kind);
+  const expectedVersion = studioDocumentVersions.get(key);
+  if (!expectedVersion || expectedVersion < 1) {
+    throw new Error('Studio Cloud version is unavailable. Reload the timeline before restoring.');
+  }
+  const res = await fetch(`/api/db/projects/${projectId}/studio-documents/restore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind, history_id: historyId, expected_version: expectedVersion }),
+  });
+  const envelope = await handleResponse<PhoenixStudioDocumentEnvelope<T>>(res);
+  studioDocumentVersions.set(key, envelope.version);
+  studioDocumentFingerprints.set(key, JSON.stringify(envelope.document));
+  return envelope.document;
+}
