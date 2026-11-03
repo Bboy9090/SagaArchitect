@@ -2,6 +2,7 @@ import {
   effectiveLayerOpacity,
   isLayerEffectivelyVisible,
   layerCssFilter,
+  resolveSymbolLayer,
   textLetterSpacing,
   textLineHeight,
   vectorPathFillRule,
@@ -231,10 +232,11 @@ export async function renderPhoenixMediaDocument(documentModel: PhoenixMediaDocu
     .sort((a, b) => a.zIndex - b.zIndex);
 
   for (const layer of layers) {
-    const bitmap = await renderLayerBitmap(layer);
-    const { x, y, width, height, rotation } = layer.transform;
+    const resolvedLayer = resolveSymbolLayer(documentModel, layer);
+    const bitmap = await renderLayerBitmap(resolvedLayer);
+    const { x, y, width, height, rotation } = resolvedLayer.transform;
     ctx.save();
-    applyCommonLayerState(ctx, layer, documentModel);
+    applyCommonLayerState(ctx, resolvedLayer, documentModel);
     ctx.translate(x + width / 2, y + height / 2);
     ctx.rotate((rotation * Math.PI) / 180);
     ctx.drawImage(bitmap, -width / 2, -height / 2, width, height);
