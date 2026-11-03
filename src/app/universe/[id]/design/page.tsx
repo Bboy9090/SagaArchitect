@@ -10,14 +10,19 @@ import { MediaRulers } from '@/components/media/MediaRulers';
 import { LayerTransformControls } from '@/components/media/LayerTransformControls';
 import { LayerGroupPanel } from '@/components/media/LayerGroupPanel';
 import { CompoundContourPanel } from '@/components/media/CompoundContourPanel';
+import { SymbolPanel } from '@/components/media/SymbolPanel';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
 import { dbGetAssets, dbGetMediaDocument, dbGetProject, dbSaveMediaDocument, type ProjectAsset } from '@/lib/db-client';
 import {
   createPhoenixMediaDocument,
+  createSymbolInstance,
+  detachSymbolInstance,
   loadPhoenixMediaDocument,
   nextLayerZIndex,
+  removeLayerPreservingSymbols,
+  resolveSymbolLayer,
   savePhoenixMediaDocument,
   effectiveLayerOpacity,
   gradientFillCss,
@@ -82,7 +87,8 @@ function cssMaskClipPath(layer: PhoenixMediaLayer): string | undefined {
 
 function buildSvg(document: PhoenixMediaDocument): string {
   const layers = [...document.layers].filter(layer => isLayerEffectivelyVisible(layer, document)).sort((a, b) => a.zIndex - b.zIndex);
-  const body = layers.map(layer => {
+  const body = layers.map(rawLayer => {
+    const layer = resolveSymbolLayer(document, rawLayer);
     const { x, y, width, height, rotation } = layer.transform;
     const transform = `rotate(${rotation} ${x + width / 2} ${y + height / 2})`;
     const opacity = effectiveLayerOpacity(layer, document);
@@ -240,6 +246,38 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
       ...current,
       groups: (current.groups || []).filter(group => group.id !== groupId),
       layers: current.layers.map(layer => layer.groupId === groupId ? { ...layer, groupId: undefined } : layer),
+    }));
+  };
+
+
+  const createSymbolFromSelected = () => {
+    if (!document || !selected || selected.symbolId) return;
+    if ((document.symbols || []).some(symbol => symbol.masterLayerId === selected.id)) return;
+    const symbolId = crypto.randomUUID();
+    commit(current => ({
+      ...current,
+      symbols: [...(current.symbols || []), {
+        id: symbolId,
+        name: selected.name || `Symbol ${(current.symbols || []).length + 1}`,
+        masterLayerId: selected.id,
+      }],
+    }));
+  };
+
+  const insertSymbol = (symbolId: string) => {
+    if (!document) return;
+    const instance = createSymbolInstance(document, symbolId, nextLayerZIndex(document.layers));
+    if (!instance) return;
+    commit(current => ({ ...current, layers: [...current.layers, instance] }));
+    setSelectedLayerId(instance.id);
+  };
+
+  const detachSelectedSymbol = () => {
+    if (!document || !selected?.symbolId) return;
+    const detached = detachSymbolInstance(document, selected);
+    commit(current => ({
+      ...current,
+      layers: current.layers.map(layer => layer.id === selected.id ? detached : layer),
     }));
   };
 
@@ -431,6 +469,16 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
             onPatch={patchGroup}
             onDelete={deleteGroup}
           />
+          <div className="mt-4">
+            <SymbolPanel
+              symbols={document.symbols || []}
+              selectedLayer={selected}
+              onCreateFromSelected={createSymbolFromSelected}
+              onInsert={insertSymbol}
+              onSelectMaster={setSelectedLayerId}
+              onDetachSelected={detachSelectedSymbol}
+            />
+          </div>
           <p className="mb-3 mt-6 text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Presets</p>
           <div className="grid grid-cols-2 gap-2">
             {PRESETS.map(preset => (
@@ -501,8 +549,9 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                 </>
               )}
 
-              {sortedLayers.map(layer => {
-                if (!isLayerEffectivelyVisible(layer, document)) return null;
+              {sortedLayers.map(rawLayer => {
+                if (!isLayerEffectivelyVisible(rawLayer, document)) return null;
+                const layer = resolveSymbolLayer(document, rawLayer);
                 const style: React.CSSProperties = {
                   position: 'absolute',
                   left: layer.transform.x * zoom,
@@ -539,7 +588,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                           </defs>
                         )}
                         <path d={vectorPathSvgD(layer)} fill={layer.closed ? (layer.gradient ? `url(#design-gradient-${layer.id})` : layer.fill) : 'none'} fillRule={vectorPathFillRule(layer)} stroke={layer.stroke} strokeWidth={layer.strokeWidth} strokeLinejoin="round" strokeLinecap="round" />
-                        {selectedLayerId === layer.id && layer.points.map((point, index) => (
+                        {selectedLayerId === layer.id && !layer.symbolId && layer.points.map((point, index) => (
                           <g key={index} className="pointer-events-none">
                             {point.in && (
                               <>
@@ -613,7 +662,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                 </select>
               </label>
 
-              {selected.type === 'text' && (
+              {!selected.symbolId && selected.type === 'text' && (
                 <>
                   <label className="block text-[10px] uppercase text-slate-500">Text
                     <textarea value={selected.text} onChange={event => patchLayer({ text: event.target.value } as Partial<PhoenixMediaLayer>)} className="mt-1 min-h-20 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
@@ -643,12 +692,12 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                   </div>
                 </>
               )}
-              {selected.type === 'shape' && (
+              {!selected.symbolId && selected.type === 'shape' && (
                 <label className="block text-[10px] uppercase text-slate-500">Fill
                   <input type="color" value={selected.fill} onChange={event => patchLayer({ fill: event.target.value } as Partial<PhoenixMediaLayer>)} className="mt-1 h-10 w-full" />
                 </label>
               )}
-              {selected.type === 'path' && (
+              {!selected.symbolId && selected.type === 'path' && (
                 <div className="space-y-3 rounded-lg border border-cyan-400/20 bg-cyan-400/[0.04] p-3">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-black uppercase tracking-wider text-cyan-300">Vector Nodes</span>
@@ -754,14 +803,14 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                   </div>
                 </div>
               )}
-              {selected.type === 'path' && (
+              {!selected.symbolId && selected.type === 'path' && (
                 <CompoundContourPanel
                   layer={selected}
                   onChange={patch => patchLayer(patch as Partial<PhoenixMediaLayer>)}
                 />
               )}
 
-              {(selected.type === 'shape' || selected.type === 'path') && (
+              {!selected.symbolId && (selected.type === 'shape' || selected.type === 'path') && (
                 <div className="rounded-lg border border-fuchsia-400/20 bg-fuchsia-400/[0.04] p-3">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[10px] font-black uppercase tracking-wider text-fuchsia-300">Gradient Fill</span>
@@ -816,7 +865,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                 ))}
               </div>
               <Button size="sm" variant="danger" className="w-full" onClick={() => {
-                commit(current => ({ ...current, layers: current.layers.filter(layer => layer.id !== selected.id) }));
+                commit(current => removeLayerPreservingSymbols(current, selected.id));
                 setSelectedLayerId('');
               }}>Delete Layer</Button>
             </div>
