@@ -68,10 +68,12 @@ function buildSvg(document: PhoenixMediaDocument): string {
     const maskDefinition = layer.mask
       ? `<defs><clipPath id="${clipId}" clipPathUnits="userSpaceOnUse"><rect x="${x + layer.mask.x}" y="${y + layer.mask.y}" width="${layer.mask.width}" height="${layer.mask.height}" transform="${transform}" /></clipPath></defs>`
       : '';
-    const filtered = `<g style="filter:${escapeXml(layerCssFilter(layer))}">${element}</g>`;
-    const wrap = (element: string) => layer.mask
-      ? `${maskDefinition}<g clip-path="url(#${clipId})">${`<g style="filter:${escapeXml(layerCssFilter(layer))}">${element}</g>`}</g>`
-      : `<g style="filter:${escapeXml(layerCssFilter(layer))}">${element}</g>`;
+    const wrap = (element: string) => {
+      const filtered = `<g style="filter:${escapeXml(layerCssFilter(layer))}">${element}</g>`;
+      return layer.mask
+        ? `${maskDefinition}<g clip-path="url(#${clipId})">${filtered}</g>`
+        : filtered;
+    };
 
     if (layer.type === 'shape') {
       if (layer.shape === 'ellipse') {
