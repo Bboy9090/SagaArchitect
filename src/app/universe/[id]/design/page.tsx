@@ -112,7 +112,20 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
   const [selectedLayerId, setSelectedLayerId] = useState('');
   const [loading, setLoading] = useState(true);
-  const viewport = useMediaViewport(0.32);
+  const {
+    zoom,
+    setZoom,
+    showGuides,
+    setShowGuides,
+    snap,
+    setSnap,
+    showRulers,
+    setShowRulers,
+    snapValue,
+    fitToView,
+    scrollRef,
+    panHandlers,
+  } = useMediaViewport(0.32);
   const [exportingFormat, setExportingFormat] = useState<PhoenixRasterExportFormat | null>(null);
   const [exportError, setExportError] = useState('');
 
@@ -154,11 +167,11 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
     });
   };
 
-  const quantize = (value: number) => viewport.snapValue(value);
+  const quantize = (value: number) => snapValue(value);
 
   const applyPreset = (width: number, height: number, title: string) => {
     commit(current => ({ ...current, width, height, title }));
-    viewport.setZoom(Math.min(0.45, 720 / width, 720 / height));
+    setZoom(Math.min(0.45, 720 / width, 720 / height));
   };
 
   const addText = () => {
@@ -329,30 +342,30 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
 
         <main className="overflow-auto bg-[#04060b] p-6">
           <MediaViewportToolbar
-            zoom={viewport.zoom}
-            onZoomChange={viewport.setZoom}
-            onFit={() => viewport.fitToView(document.width, document.height)}
-            showGuides={viewport.showGuides}
-            onToggleGuides={() => viewport.setShowGuides(value => !value)}
-            snap={viewport.snap}
-            onToggleSnap={() => viewport.setSnap(value => !value)}
-            showRulers={viewport.showRulers}
-            onToggleRulers={() => viewport.setShowRulers(value => !value)}
+            zoom={zoom}
+            onZoomChange={setZoom}
+            onFit={() => fitToView(document.width, document.height)}
+            showGuides={showGuides}
+            onToggleGuides={() => setShowGuides(value => !value)}
+            snap={snap}
+            onToggleSnap={() => setSnap(value => !value)}
+            showRulers={showRulers}
+            onToggleRulers={() => setShowRulers(value => !value)}
           />
 
           <div
-            ref={viewport.scrollRef}
-            {...viewport.panHandlers}
+            ref={scrollRef}
+            {...panHandlers}
             className="relative mt-4 min-h-[680px] cursor-grab overflow-auto rounded-lg border border-white/5 bg-[#03050a] p-10 active:cursor-grabbing"
           >
             <div className="relative mx-auto w-max pt-6 pl-6">
-              <MediaRulers width={document.width} height={document.height} zoom={viewport.zoom} visible={viewport.showRulers} />
+              <MediaRulers width={document.width} height={document.height} zoom={zoom} visible={showRulers} />
               <div
                 className="relative shrink-0 overflow-hidden bg-white shadow-2xl"
-                style={{ width: document.width * viewport.zoom, height: document.height * viewport.zoom, background: document.background }}
+                style={{ width: document.width * zoom, height: document.height * zoom, background: document.background }}
                 aria-label="Design composition canvas"
               >
-              {viewport.showGuides && (
+              {showGuides && (
                 <>
                   <div className="pointer-events-none absolute inset-[5%] z-[9999] border border-dashed border-cyan-300/50" />
                   <div className="pointer-events-none absolute inset-[10%] z-[9999] border border-dashed border-fuchsia-300/40" />
@@ -365,10 +378,10 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                 if (!layer.visible) return null;
                 const style: React.CSSProperties = {
                   position: 'absolute',
-                  left: layer.transform.x * viewport.zoom,
-                  top: layer.transform.y * viewport.zoom,
-                  width: layer.transform.width * viewport.zoom,
-                  height: layer.transform.height * viewport.zoom,
+                  left: layer.transform.x * zoom,
+                  top: layer.transform.y * zoom,
+                  width: layer.transform.width * zoom,
+                  height: layer.transform.height * zoom,
                   opacity: layer.opacity,
                   transform: `rotate(${layer.transform.rotation}deg)`,
                   transformOrigin: 'center',
@@ -379,8 +392,8 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                 };
                 return (
                   <button key={layer.id} type="button" data-media-interactive="true" onClick={() => setSelectedLayerId(layer.id)} style={style} className="block border-0 bg-transparent p-0 text-left">
-                    {layer.type === 'shape' && <div className="h-full w-full" style={{ background: layer.fill, border: layer.strokeWidth ? `${Math.max(1, layer.strokeWidth * viewport.zoom)}px solid ${layer.stroke}` : undefined }} />}
-                    {layer.type === 'text' && <div className="h-full w-full overflow-hidden" style={{ color: layer.color, fontSize: layer.fontSize * viewport.zoom, fontFamily: layer.fontFamily, fontWeight: layer.fontWeight, lineHeight: 1.05, textAlign: layer.align }}>{layer.text}</div>}
+                    {layer.type === 'shape' && <div className="h-full w-full" style={{ background: layer.fill, border: layer.strokeWidth ? `${Math.max(1, layer.strokeWidth * zoom)}px solid ${layer.stroke}` : undefined }} />}
+                    {layer.type === 'text' && <div className="h-full w-full overflow-hidden" style={{ color: layer.color, fontSize: layer.fontSize * zoom, fontFamily: layer.fontFamily, fontWeight: layer.fontWeight, lineHeight: 1.05, textAlign: layer.align }}>{layer.text}</div>}
                     {layer.type === 'image' && (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={layer.src} alt="" className="h-full w-full" style={{ objectFit: layer.fit }} />
