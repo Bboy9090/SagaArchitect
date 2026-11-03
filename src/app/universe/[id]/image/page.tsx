@@ -11,6 +11,7 @@ import { MediaRulers } from '@/components/media/MediaRulers';
 import { LayerTransformControls } from '@/components/media/LayerTransformControls';
 import { LayerGroupPanel } from '@/components/media/LayerGroupPanel';
 import { CompoundContourPanel } from '@/components/media/CompoundContourPanel';
+import { SymbolPanel } from '@/components/media/SymbolPanel';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
@@ -18,8 +19,12 @@ import { dbGetAssets, dbGetMediaDocument, dbGetProject, dbSaveMediaDocument, typ
 import {
   clampLayerTransform,
   createPhoenixMediaDocument,
+  createSymbolInstance,
+  detachSymbolInstance,
   loadPhoenixMediaDocument,
   nextLayerZIndex,
+  removeLayerPreservingSymbols,
+  resolveSymbolLayer,
   savePhoenixMediaDocument,
   effectiveLayerOpacity,
   gradientFillCss,
@@ -167,6 +172,38 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
       ...current,
       groups: (current.groups || []).filter(group => group.id !== groupId),
       layers: current.layers.map(layer => layer.groupId === groupId ? { ...layer, groupId: undefined } : layer),
+    }));
+  };
+
+
+  const createSymbolFromSelected = () => {
+    if (!document || !selectedLayer || selectedLayer.symbolId) return;
+    if ((document.symbols || []).some(symbol => symbol.masterLayerId === selectedLayer.id)) return;
+    const symbolId = crypto.randomUUID();
+    updateDocument(current => ({
+      ...current,
+      symbols: [...(current.symbols || []), {
+        id: symbolId,
+        name: selectedLayer.name || `Symbol ${(current.symbols || []).length + 1}`,
+        masterLayerId: selectedLayer.id,
+      }],
+    }));
+  };
+
+  const insertSymbol = (symbolId: string) => {
+    if (!document) return;
+    const instance = createSymbolInstance(document, symbolId, nextLayerZIndex(document.layers));
+    if (!instance) return;
+    updateDocument(current => ({ ...current, layers: [...current.layers, instance] }));
+    setSelectedLayerId(instance.id);
+  };
+
+  const detachSelectedSymbol = () => {
+    if (!document || !selectedLayer?.symbolId) return;
+    const detached = detachSymbolInstance(document, selectedLayer);
+    updateDocument(current => ({
+      ...current,
+      layers: current.layers.map(layer => layer.id === selectedLayer.id ? detached : layer),
     }));
   };
 
@@ -327,10 +364,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
 
   const deleteSelectedLayer = () => {
     if (!selectedLayer) return;
-    updateDocument(current => ({
-      ...current,
-      layers: current.layers.filter(layer => layer.id !== selectedLayer.id),
-    }));
+    updateDocument(current => removeLayerPreservingSymbols(current, selectedLayer.id));
     setSelectedLayerId('');
   };
 
@@ -485,6 +519,16 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
             onPatch={patchGroup}
             onDelete={deleteGroup}
           />
+          <div className="mt-4">
+            <SymbolPanel
+              symbols={document.symbols || []}
+              selectedLayer={selectedLayer}
+              onCreateFromSelected={createSymbolFromSelected}
+              onInsert={insertSymbol}
+              onSelectMaster={setSelectedLayerId}
+              onDetachSelected={detachSelectedSymbol}
+            />
+          </div>
           <p className="mb-3 mt-6 text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Create</p>
           <div className="grid grid-cols-2 gap-2">
             <Button size="sm" variant="secondary" onClick={addTextLayer}>Text</Button>
@@ -587,8 +631,9 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                     <div className="pointer-events-none absolute left-0 top-1/2 z-[9998] w-full border-t border-dashed border-white/20" />
                   </>
                 )}
-              {sortedLayers.map(layer => {
-                if (!isLayerEffectivelyVisible(layer, document)) return null;
+              {sortedLayers.map(rawLayer => {
+                if (!isLayerEffectivelyVisible(rawLayer, document)) return null;
+                const layer = resolveSymbolLayer(document, rawLayer);
                 const style: React.CSSProperties = {
                   position: 'absolute',
                   left: layer.transform.x * scale,
@@ -678,7 +723,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                           strokeLinejoin="round"
                           strokeLinecap="round"
                         />
-                        {selectedLayerId === layer.id && layer.points.map((point, index) => (
+                        {selectedLayerId === layer.id && !layer.symbolId && layer.points.map((point, index) => (
                           <g key={index} className="pointer-events-none">
                             {point.in && (
                               <>
@@ -702,22 +747,27 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                       <img src={layer.src} alt="" className="h-full w-full" style={{ objectFit: layer.fit }} />
                     )}
                     {layer.type === 'raster' && (
-                      <RasterPaintCanvas
-                        layer={layer}
-                        scale={scale}
-                        selected={selectedLayerId === layer.id}
-                        brushColor={brushColor}
-                        brushSize={brushSize}
-                        brushOpacity={brushOpacity}
-                        erase={eraseMode}
-                        onSelect={() => setSelectedLayerId(layer.id)}
-                        onCommit={(src) => {
-                          updateDocument(current => ({
-                            ...current,
-                            layers: current.layers.map(item => item.id === layer.id ? { ...item, src } : item),
-                          }));
-                        }}
-                      />
+                      layer.symbolId ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={layer.src} alt="" className="h-full w-full" style={{ objectFit: 'fill' }} />
+                      ) : (
+                        <RasterPaintCanvas
+                          layer={layer}
+                          scale={scale}
+                          selected={selectedLayerId === layer.id}
+                          brushColor={brushColor}
+                          brushSize={brushSize}
+                          brushOpacity={brushOpacity}
+                          erase={eraseMode}
+                          onSelect={() => setSelectedLayerId(layer.id)}
+                          onCommit={(src) => {
+                            updateDocument(current => ({
+                              ...current,
+                              layers: current.layers.map(item => item.id === layer.id ? { ...item, src } : item),
+                            }));
+                          }}
+                        />
+                      )
                     )}
                   </button>
                 );
@@ -796,7 +846,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                 </select>
               </label>
 
-              {selectedLayer.type === 'text' && (
+              {!selectedLayer.symbolId && selectedLayer.type === 'text' && (
                 <>
                   <div>
                     <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Text</label>
@@ -832,7 +882,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                 </>
               )}
 
-              {selectedLayer.type === 'raster' && (
+              {!selectedLayer.symbolId && selectedLayer.type === 'raster' && (
                 <div className="space-y-3 rounded-lg border border-amber-400/20 bg-amber-400/5 p-3">
                   <div className="grid grid-cols-2 gap-2">
                     <label className="text-[10px] uppercase text-slate-500">Brush
@@ -851,7 +901,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                 </div>
               )}
 
-              {selectedLayer.type === 'image' && (
+              {!selectedLayer.symbolId && selectedLayer.type === 'image' && (
                 <label className="block text-[10px] uppercase text-slate-500">Image fit
                   <select
                     value={selectedLayer.fit}
@@ -865,7 +915,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                 </label>
               )}
 
-              {selectedLayer.type === 'shape' && (
+              {!selectedLayer.symbolId && selectedLayer.type === 'shape' && (
                 <div className="grid grid-cols-2 gap-2">
                   <label className="text-[10px] uppercase text-slate-500">Fill
                     <input type="color" value={selectedLayer.fill} onChange={event => patchSelectedLayer({ fill: event.target.value } as Partial<PhoenixMediaLayer>)} className="mt-1 h-10 w-full rounded border border-white/10 bg-black/20 p-1" />
@@ -876,7 +926,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                 </div>
               )}
 
-              {selectedLayer.type === 'path' && (
+              {!selectedLayer.symbolId && selectedLayer.type === 'path' && (
                 <div className="space-y-3 rounded-lg border border-cyan-400/20 bg-cyan-400/[0.04] p-3">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-black uppercase tracking-wider text-cyan-300">Vector Nodes</span>
@@ -1005,14 +1055,14 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                 </div>
               )}
 
-              {selectedLayer.type === 'path' && (
+              {!selectedLayer.symbolId && selectedLayer.type === 'path' && (
                 <CompoundContourPanel
                   layer={selectedLayer}
                   onChange={patch => patchSelectedLayer(patch as Partial<PhoenixMediaLayer>)}
                 />
               )}
 
-              {(selectedLayer.type === 'shape' || selectedLayer.type === 'path') && (
+              {!selectedLayer.symbolId && (selectedLayer.type === 'shape' || selectedLayer.type === 'path') && (
                 <div className="rounded-lg border border-fuchsia-400/20 bg-fuchsia-400/[0.04] p-3">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[10px] font-black uppercase tracking-wider text-fuchsia-300">Gradient Fill</span>
