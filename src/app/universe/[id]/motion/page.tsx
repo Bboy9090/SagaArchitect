@@ -123,8 +123,10 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
     return () => cancelAnimationFrame(frame);
   }, [playing, timeline, duration]);
 
+  const scene = scenes.find(item => item.id === sceneId);
+
   const generateFromStoryboard = () => {
-      if (!scene) return;
+    if (!scene) return;
     const ordered = [...panels].sort((a, b) => a.panel_number - b.panel_number);
     const inputs = ordered.map(panel => ({
       panel,
@@ -158,7 +160,6 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
     );
   }
 
-  const scene = scenes.find(item => item.id === sceneId);
   const visualPanels = panels.filter(panel => panel.asset_id || panel.image_base64).length;
   const canvasRatio = timeline ? timeline.width / timeline.height : 16 / 9;
 
