@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useMemo, useRef, useState } from 'react';
+import { use, useEffect, useMemo, useState } from 'react';
 import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
@@ -113,7 +113,6 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
   const [selectedLayerId, setSelectedLayerId] = useState('');
   const [loading, setLoading] = useState(true);
-  const cloudVersionRef = useRef(1);
   const {
     zoom,
     setZoom,
@@ -141,7 +140,6 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
         const localDocument = loadPhoenixMediaDocument(id, 'design');
         const cloudDocument = isDbMode() ? await dbGetMediaDocument(id, 'design') : null;
         const loadedDocument = cloudDocument || localDocument || createPhoenixMediaDocument(id, 'design');
-        cloudVersionRef.current = cloudDocument?.version || loadedDocument.version || 1;
         if (cancelled) return;
         setProject(loadedProject);
         setHistory(createDocumentHistory(loadedDocument));
@@ -158,8 +156,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
     const handle = window.setTimeout(() => {
       const saved = savePhoenixMediaDocument(document);
       if (isDbMode()) {
-        void dbSaveMediaDocument(id, { ...saved, version: cloudVersionRef.current })
-          .then(cloudSaved => { cloudVersionRef.current = cloudSaved.version; })
+        void dbSaveMediaDocument(id, saved)
           .catch(error => console.error('Phoenix cloud media autosave failed:', error));
       }
     }, 500);
