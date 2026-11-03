@@ -70,6 +70,10 @@ export interface PhoenixTextLayer extends PhoenixBaseLayer {
   fontFamily: string;
   fontWeight: number;
   align: 'left' | 'center' | 'right';
+  lineHeight?: number;
+  letterSpacing?: number;
+  italic?: boolean;
+  underline?: boolean;
 }
 
 export interface PhoenixGradientFill {
@@ -391,4 +395,13 @@ export function scaleVectorContours(
     ...contour,
     points: scaleVectorPoints(contour.points, scaleX, scaleY),
   }));
+}
+
+
+export function textLineHeight(layer: Pick<PhoenixTextLayer, 'fontSize' | 'lineHeight'>): number {
+  return layer.fontSize * Math.max(0.5, Math.min(4, layer.lineHeight ?? 1.08));
+}
+
+export function textLetterSpacing(layer: Pick<PhoenixTextLayer, 'letterSpacing'>): number {
+  return Math.max(-20, Math.min(200, layer.letterSpacing ?? 0));
 }

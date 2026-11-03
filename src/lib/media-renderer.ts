@@ -2,6 +2,8 @@ import {
   effectiveLayerOpacity,
   isLayerEffectivelyVisible,
   layerCssFilter,
+  textLetterSpacing,
+  textLineHeight,
   vectorPathFillRule,
   type PhoenixImageLayer,
   type PhoenixMediaDocument,
@@ -172,13 +174,33 @@ async function renderLayerBitmap(layer: PhoenixMediaLayer): Promise<HTMLCanvasEl
     }
   } else if (layer.type === 'text') {
     ctx.fillStyle = layer.color;
-    ctx.font = `${layer.fontWeight} ${layer.fontSize}px ${layer.fontFamily}`;
+    ctx.font = `${layer.italic ? 'italic ' : ''}${layer.fontWeight} ${layer.fontSize}px ${layer.fontFamily}`;
     ctx.textBaseline = 'top';
-    ctx.textAlign = layer.align;
-    const x = layer.align === 'center' ? width / 2 : layer.align === 'right' ? width : 0;
-    const lines = layer.text.split(/\r?\n/);
-    const lineHeight = layer.fontSize * 1.08;
-    lines.forEach((line, index) => ctx.fillText(line, x, index * lineHeight, width));
+    const spacing = textLetterSpacing(layer);
+    const lineHeight = textLineHeight(layer);
+    const drawSpacedLine = (line: string, y: number) => {
+      const glyphs = Array.from(line);
+      const baseWidth = ctx.measureText(line).width;
+      const totalWidth = baseWidth + Math.max(0, glyphs.length - 1) * spacing;
+      const startX = layer.align === 'center' ? (width - totalWidth) / 2 : layer.align === 'right' ? width - totalWidth : 0;
+      let cursor = startX;
+      for (const glyph of glyphs) {
+        ctx.fillText(glyph, cursor, y);
+        cursor += ctx.measureText(glyph).width + spacing;
+      }
+      if (layer.underline && totalWidth > 0) {
+        ctx.save();
+        ctx.strokeStyle = layer.color;
+        ctx.lineWidth = Math.max(1, layer.fontSize / 18);
+        const underlineY = y + layer.fontSize * 1.02;
+        ctx.beginPath();
+        ctx.moveTo(startX, underlineY);
+        ctx.lineTo(startX + totalWidth, underlineY);
+        ctx.stroke();
+        ctx.restore();
+      }
+    };
+    layer.text.split(/\r?\n/).forEach((line, index) => drawSpacedLine(line, index * lineHeight));
   } else if (layer.type === 'image') {
     const image = await loadImage(layer.src);
     const r = imageRect(layer, image);

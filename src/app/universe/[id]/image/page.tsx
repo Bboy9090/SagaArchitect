@@ -30,6 +30,8 @@ import {
   normalizeLayerAdjustments,
   scaleVectorContours,
   scaleVectorPoints,
+  textLetterSpacing,
+  textLineHeight,
   vectorPathFillRule,
   vectorPathFillSvgD,
   vectorPathSvgD,
@@ -622,8 +624,12 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                           fontSize: layer.fontSize * scale,
                           fontFamily: layer.fontFamily,
                           fontWeight: layer.fontWeight,
+                          fontStyle: layer.italic ? 'italic' : 'normal',
+                          textDecoration: layer.underline ? 'underline' : 'none',
+                          letterSpacing: textLetterSpacing(layer) * scale,
                           textAlign: layer.align,
-                          lineHeight: 1.05,
+                          lineHeight: `${textLineHeight(layer) * scale}px`,
+                          whiteSpace: 'pre-wrap',
                         }}
                       >
                         {layer.text}
@@ -807,6 +813,21 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                     <label className="text-[10px] uppercase text-slate-500">Color
                       <input type="color" value={selectedLayer.color} onChange={event => patchSelectedLayer({ color: event.target.value } as Partial<PhoenixMediaLayer>)} className="mt-1 h-10 w-full rounded border border-white/10 bg-black/20 p-1" />
                     </label>
+                    <label className="text-[10px] uppercase text-slate-500">Line height
+                      <input type="number" min={0.5} max={4} step={0.05} value={selectedLayer.lineHeight ?? 1.08} onChange={event => patchSelectedLayer({ lineHeight: Number(event.target.value) } as Partial<PhoenixMediaLayer>)} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                    </label>
+                    <label className="text-[10px] uppercase text-slate-500">Tracking px
+                      <input type="number" min={-20} max={200} step={0.5} value={selectedLayer.letterSpacing ?? 0} onChange={event => patchSelectedLayer({ letterSpacing: Number(event.target.value) } as Partial<PhoenixMediaLayer>)} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <select value={selectedLayer.align} onChange={event => patchSelectedLayer({ align: event.target.value as 'left' | 'center' | 'right' } as Partial<PhoenixMediaLayer>)} className="min-h-10 rounded border border-white/10 bg-[#0a0d14] px-2 text-xs text-white">
+                      <option value="left">Left</option>
+                      <option value="center">Center</option>
+                      <option value="right">Right</option>
+                    </select>
+                    <Button size="sm" variant={selectedLayer.italic ? 'gold' : 'ghost'} onClick={() => patchSelectedLayer({ italic: !selectedLayer.italic } as Partial<PhoenixMediaLayer>)}>Italic</Button>
+                    <Button size="sm" variant={selectedLayer.underline ? 'gold' : 'ghost'} onClick={() => patchSelectedLayer({ underline: !selectedLayer.underline } as Partial<PhoenixMediaLayer>)}>Underline</Button>
                   </div>
                 </>
               )}
