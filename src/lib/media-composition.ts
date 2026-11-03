@@ -47,6 +47,14 @@ export interface PhoenixLayerMask {
   inverted?: boolean;
 }
 
+export interface PhoenixLayerShadow {
+  color: string;
+  opacity: number;
+  blur: number;
+  offsetX: number;
+  offsetY: number;
+}
+
 export interface PhoenixBaseLayer {
   id: string;
   type: PhoenixLayerType;
@@ -61,6 +69,7 @@ export interface PhoenixBaseLayer {
   transform: PhoenixLayerTransform;
   mask?: PhoenixLayerMask;
   vectorMask?: PhoenixVectorMask;
+  shadow?: PhoenixLayerShadow;
   adjustments?: PhoenixLayerAdjustments;
 }
 
@@ -434,6 +443,7 @@ function instanceBaseFields(layer: PhoenixMediaLayer) {
     groupId: layer.groupId,
     mask: layer.mask ? { ...layer.mask } : undefined,
     vectorMask: layer.vectorMask ? { points: structuredClone(layer.vectorMask.points) } : undefined,
+    shadow: layer.shadow ? { ...layer.shadow } : undefined,
     adjustments: layer.adjustments ? { ...layer.adjustments } : undefined,
     symbolId: layer.symbolId,
   };
@@ -573,4 +583,35 @@ export function defaultVectorMask(
       { x, y: bottom },
     ],
   };
+}
+
+
+function normalizedHexColor(value: string): string {
+  const hex = value.trim();
+  if (/^#[0-9a-f]{6}$/i.test(hex)) return hex;
+  if (/^#[0-9a-f]{3}$/i.test(hex)) {
+    return `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`;
+  }
+  return '#000000';
+}
+
+export function shadowCssColor(shadow: PhoenixLayerShadow): string {
+  const hex = normalizedHexColor(shadow.color);
+  const r = Number.parseInt(hex.slice(1, 3), 16);
+  const g = Number.parseInt(hex.slice(3, 5), 16);
+  const b = Number.parseInt(hex.slice(5, 7), 16);
+  const alpha = Math.max(0, Math.min(1, shadow.opacity));
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+export function layerCssEffects(
+  layer: Pick<PhoenixBaseLayer, 'adjustments' | 'shadow'>,
+): string {
+  const filters = [layerCssFilter(layer)];
+  if (layer.shadow) {
+    filters.push(
+      `drop-shadow(${layer.shadow.offsetX}px ${layer.shadow.offsetY}px ${Math.max(0, layer.shadow.blur)}px ${shadowCssColor(layer.shadow)})`,
+    );
+  }
+  return filters.join(' ');
 }
