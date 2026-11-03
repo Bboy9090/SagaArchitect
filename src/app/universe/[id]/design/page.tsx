@@ -209,6 +209,10 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
   const [selectedLayerId, setSelectedLayerId] = useState('');
   const [additionalLayerIds, setAdditionalLayerIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    setAdditionalLayerIds([]);
+  }, [selectedLayerId]);
   const [loading, setLoading] = useState(true);
   const {
     zoom,
