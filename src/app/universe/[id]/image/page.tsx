@@ -344,29 +344,31 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
     }));
   };
 
+  const commitSelectedTransform = (transform: PhoenixMediaLayer['transform']) => {
+    if (!selectedLayer || !document) return;
+    const nextTransform = clampLayerTransform(transform, document);
+    const scaleX = selectedLayer.transform.width > 0 ? nextTransform.width / selectedLayer.transform.width : 1;
+    const scaleY = selectedLayer.transform.height > 0 ? nextTransform.height / selectedLayer.transform.height : 1;
+    const patch: Partial<PhoenixMediaLayer> = {
+      transform: nextTransform,
+      vectorMask: scaleVectorMask(selectedLayer.vectorMask, scaleX, scaleY),
+    } as Partial<PhoenixMediaLayer>;
+    if (selectedLayer.type === 'path' && !selectedLayer.symbolId) {
+      Object.assign(patch, {
+        points: scaleVectorPoints(selectedLayer.points, scaleX, scaleY),
+        contours: scaleVectorContours(selectedLayer.contours, scaleX, scaleY),
+      });
+    }
+    patchSelectedLayer(patch);
+  };
+
   const patchTransform = (key: keyof PhoenixMediaLayer['transform'], value: number) => {
     if (!selectedLayer) return;
     const nextValue = key === 'rotation' ? value : snapValue(value);
-    if (key === 'width' || key === 'height') {
-      const previousSize = selectedLayer.transform[key];
-      const safeNext = Math.max(1, nextValue);
-      const ratio = previousSize > 0 ? safeNext / previousSize : 1;
-      const scaleX = key === 'width' ? ratio : 1;
-      const scaleY = key === 'height' ? ratio : 1;
-      const patch: Partial<PhoenixMediaLayer> = {
-        transform: { ...selectedLayer.transform, [key]: safeNext },
-        vectorMask: scaleVectorMask(selectedLayer.vectorMask, scaleX, scaleY),
-      } as Partial<PhoenixMediaLayer>;
-      if (selectedLayer.type === 'path' && !selectedLayer.symbolId) {
-        Object.assign(patch, {
-          points: scaleVectorPoints(selectedLayer.points, scaleX, scaleY),
-          contours: scaleVectorContours(selectedLayer.contours, scaleX, scaleY),
-        });
-      }
-      patchSelectedLayer(patch);
-      return;
-    }
-    patchSelectedLayer({ transform: { ...selectedLayer.transform, [key]: nextValue } } as Partial<PhoenixMediaLayer>);
+    commitSelectedTransform({
+      ...selectedLayer.transform,
+      [key]: key === 'width' || key === 'height' ? Math.max(1, nextValue) : nextValue,
+    });
   };
 
   const deleteSelectedLayer = () => {
@@ -790,7 +792,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                   locked={isLayerEffectivelyLocked(selectedLayer, document)}
                   allowMove={selectedLayer.type !== 'raster'}
                   snapValue={snapValue}
-                  onCommit={transform => patchSelectedLayer({ transform } as Partial<PhoenixMediaLayer>)}
+                  onCommit={commitSelectedTransform}
                 />
               )}
                 <div
