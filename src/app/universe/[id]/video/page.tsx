@@ -24,6 +24,10 @@ import {
   type PhoenixTimelineClipKind,
   type PhoenixVideoTimeline,
 } from '@/lib/video-timeline';
+import {
+  downloadRenderedVideo,
+  renderPhoenixVideoTimeline,
+} from '@/lib/video-renderer';
 import type { Universe } from '@/lib/types';
 
 interface VideoStudioPageProps {
@@ -67,6 +71,9 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState('');
   const [captionText, setCaptionText] = useState('');
+  const [rendering, setRendering] = useState(false);
+  const [renderProgress, setRenderProgress] = useState(0);
+  const [renderError, setRenderError] = useState('');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -264,6 +271,23 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
     setTimeline(current => current ? { ...current, width, height } : current);
   };
 
+  const exportVideo = async () => {
+    if (!timeline || rendering) return;
+    setPlaying(false);
+    setRendering(true);
+    setRenderProgress(0);
+    setRenderError('');
+    try {
+      const result = await renderPhoenixVideoTimeline(timeline, progress => setRenderProgress(progress.progress));
+      downloadRenderedVideo(result, timeline.title);
+      setStatus(`Rendered ${result.extension.toUpperCase()} video (${(result.blob.size / 1024 / 1024).toFixed(2)} MB)`);
+    } catch (error) {
+      setRenderError(error instanceof Error ? error.message : 'Video render failed.');
+    } finally {
+      setRendering(false);
+    }
+  };
+
   const uploadMedia = async (file: File) => {
     if (!isDbMode()) return;
     setUploading(true);
@@ -297,10 +321,23 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
             <Button size="sm" variant={timeline.width > timeline.height ? 'gold' : 'ghost'} onClick={() => setCanvasPreset(1920,1080)}>16:9</Button>
             <Button size="sm" variant={timeline.height > timeline.width ? 'gold' : 'ghost'} onClick={() => setCanvasPreset(1080,1920)}>9:16</Button>
             <Button size="sm" variant={timeline.height === timeline.width ? 'gold' : 'ghost'} onClick={() => setCanvasPreset(1080,1080)}>1:1</Button>
+            <Button size="sm" variant="secondary" loading={rendering} onClick={() => void exportVideo()}>
+              {rendering ? `Rendering ${Math.round(renderProgress * 100)}%` : 'Export Video'}
+            </Button>
           </div>
         }
       />
 
+      {renderError && (
+        <div className="mx-4 mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          Render failed: {renderError}
+        </div>
+      )}
+      {rendering && (
+        <div className="mx-4 mt-4 overflow-hidden rounded-full border border-blue-400/20 bg-black/30">
+          <div className="h-2 bg-blue-400 transition-[width]" style={{ width: `${Math.max(1, renderProgress * 100)}%` }} />
+        </div>
+      )}
       <div className="grid min-h-[calc(100vh-80px)] grid-cols-1 2xl:grid-cols-[280px_minmax(0,1fr)_300px]">
         <aside className="border-r border-white/10 bg-[#070b15] p-4">
           <div className="mb-5">
@@ -557,7 +594,7 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
             <div className="text-xs font-bold text-amber-200">Timeline foundation</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
               Real media ingest, preview, timing, trim, split, speed, volume, and vertical-video canvases are active.
-              Captions, audio waveforms, fade transitions, and transform keyframes are active. Multi-layer compositing, richer transitions, effects, and final MP4 render are the next video-engine tier.
+              Captions, audio waveforms, fades, transform keyframes, and browser video rendering are active. Richer transitions, effects, multi-track compositing controls, and accelerated background rendering are the next tier.
             </p>
           </div>
         </aside>
