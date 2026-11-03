@@ -359,4 +359,3 @@ export async function dbDeleteComicPage(projectId: string, kind: PhoenixMediaDoc
   mediaDocumentVersions.delete(key);
   mediaDocumentSaveQueues.delete(key);
 }
-}
