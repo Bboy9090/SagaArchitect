@@ -12,6 +12,7 @@ import { LayerGroupPanel } from '@/components/media/LayerGroupPanel';
 import { CompoundContourPanel } from '@/components/media/CompoundContourPanel';
 import { SymbolPanel } from '@/components/media/SymbolPanel';
 import { VectorMaskPanel } from '@/components/media/VectorMaskPanel';
+import { LayerShadowPanel } from '@/components/media/LayerShadowPanel';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
@@ -29,7 +30,7 @@ import {
   gradientFillCss,
   isLayerEffectivelyLocked,
   isLayerEffectivelyVisible,
-  layerCssFilter,
+  layerCssEffects,
   moveVectorPoint,
   scaleVectorContours,
   scaleVectorMask,
@@ -112,7 +113,7 @@ function buildSvg(document: PhoenixMediaDocument): string {
         ? `<defs><clipPath id="${clipId}" clipPathUnits="userSpaceOnUse"><rect x="${x + layer.mask.x}" y="${y + layer.mask.y}" width="${layer.mask.width}" height="${layer.mask.height}" transform="${transform}" /></clipPath></defs>`
         : '';
     const wrap = (element: string) => {
-      const filtered = `<g style="filter:${escapeXml(layerCssFilter(layer))}">${element}</g>`;
+      const filtered = `<g style="filter:${escapeXml(layerCssEffects(layer))}">${element}</g>`;
       const definitions = `${gradientDefinition}${maskDefinition}`;
       return layer.mask || (layer.vectorMask && layer.vectorMask.points.length >= 3)
         ? `${definitions}<g clip-path="url(#${clipId})">${filtered}</g>`
@@ -584,7 +585,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                   outline: selectedLayerId === layer.id ? '2px solid #38bdf8' : undefined,
                   outlineOffset: 2,
                   clipPath: vectorMaskCssClipPath(layer) || cssMaskClipPath(layer),
-                  filter: layerCssFilter(layer),
+                  filter: layerCssEffects(layer),
                 };
                 return (
                   <button key={layer.id} type="button" data-media-interactive="true" onClick={() => setSelectedLayerId(layer.id)} style={style} className="block border-0 bg-transparent p-0 text-left">
@@ -686,6 +687,11 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
               </label>
 
               <VectorMaskPanel
+                layer={selected}
+                onChange={patch => patchLayer(patch)}
+              />
+
+              <LayerShadowPanel
                 layer={selected}
                 onChange={patch => patchLayer(patch)}
               />
