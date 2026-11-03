@@ -18,6 +18,9 @@ import {
   nextLayerZIndex,
   savePhoenixMediaDocument,
   layerCssFilter,
+  moveVectorPoint,
+  scaleVectorPoints,
+  vectorPathSvgD,
   type PhoenixMediaDocument,
   type PhoenixMediaLayer,
 } from '@/lib/media-composition';
@@ -98,10 +101,9 @@ function buildSvg(document: PhoenixMediaDocument): string {
     }
 
     if (layer.type === 'path') {
-      const points = layer.points.map(point => `${x + point.x},${y + point.y}`).join(' ');
-      const element = layer.closed
-        ? `<polygon points="${points}" fill="${layer.fill}" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${transform}" stroke-linejoin="round" stroke-linecap="round" />`
-        : `<polyline points="${points}" fill="none" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${transform}" stroke-linejoin="round" stroke-linecap="round" />`;
+      const d = escapeXml(vectorPathSvgD(layer));
+      const localTransform = `translate(${x} ${y}) rotate(${rotation} ${width / 2} ${height / 2})`;
+      const element = `<path d="${d}" fill="${layer.closed ? layer.fill : 'none'}" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${localTransform}" stroke-linejoin="round" stroke-linecap="round" />`;
       return wrap(element);
     }
 
@@ -299,9 +301,11 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
       const previousSize = selected.transform[key];
       const safeNext = Math.max(1, nextValue);
       const ratio = previousSize > 0 ? safeNext / previousSize : 1;
-      const points = selected.points.map(point => key === 'width'
-        ? { ...point, x: point.x * ratio }
-        : { ...point, y: point.y * ratio });
+      const points = scaleVectorPoints(
+        selected.points,
+        key === 'width' ? ratio : 1,
+        key === 'height' ? ratio : 1,
+      );
       patchLayer({
         transform: { ...selected.transform, [key]: safeNext },
         points,
@@ -456,11 +460,24 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                     {layer.type === 'text' && <div className="h-full w-full overflow-hidden" style={{ color: layer.color, fontSize: layer.fontSize * zoom, fontFamily: layer.fontFamily, fontWeight: layer.fontWeight, lineHeight: 1.05, textAlign: layer.align }}>{layer.text}</div>}
                     {layer.type === 'path' && (
                       <svg viewBox={`0 0 ${layer.transform.width} ${layer.transform.height}`} className="h-full w-full overflow-visible">
-                        {layer.closed ? (
-                          <polygon points={layer.points.map(point => `${point.x},${point.y}`).join(' ')} fill={layer.fill} stroke={layer.stroke} strokeWidth={layer.strokeWidth} strokeLinejoin="round" strokeLinecap="round" />
-                        ) : (
-                          <polyline points={layer.points.map(point => `${point.x},${point.y}`).join(' ')} fill="none" stroke={layer.stroke} strokeWidth={layer.strokeWidth} strokeLinejoin="round" strokeLinecap="round" />
-                        )}
+                        <path d={vectorPathSvgD(layer)} fill={layer.closed ? layer.fill : 'none'} stroke={layer.stroke} strokeWidth={layer.strokeWidth} strokeLinejoin="round" strokeLinecap="round" />
+                        {selectedLayerId === layer.id && layer.points.map((point, index) => (
+                          <g key={index} className="pointer-events-none">
+                            {point.in && (
+                              <>
+                                <line x1={point.x} y1={point.y} x2={point.in.x} y2={point.in.y} stroke="#67e8f9" strokeWidth={1.5 / zoom} />
+                                <circle cx={point.in.x} cy={point.in.y} r={5 / zoom} fill="#0e7490" stroke="#cffafe" strokeWidth={1 / zoom} />
+                              </>
+                            )}
+                            {point.out && (
+                              <>
+                                <line x1={point.x} y1={point.y} x2={point.out.x} y2={point.out.y} stroke="#67e8f9" strokeWidth={1.5 / zoom} />
+                                <circle cx={point.out.x} cy={point.out.y} r={5 / zoom} fill="#0e7490" stroke="#cffafe" strokeWidth={1 / zoom} />
+                              </>
+                            )}
+                            <circle cx={point.x} cy={point.y} r={6 / zoom} fill="#0891b2" stroke="#ecfeff" strokeWidth={1.5 / zoom} />
+                          </g>
+                        ))}
                       </svg>
                     )}
                     {layer.type === 'image' && (
@@ -529,25 +546,86 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                     <Button size="sm" variant="ghost" onClick={() => patchLayer({ points: [...selected.points, { x: selected.transform.width / 2, y: selected.transform.height / 2 }] } as Partial<PhoenixMediaLayer>)}>Add Node</Button>
                   </div>
                   <div className="max-h-48 space-y-2 overflow-auto">
-                    {selected.points.map((point, index) => (
-                      <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2">
-                        <input
-                          type="number"
-                          value={Math.round(point.x)}
-                          onChange={event => patchLayer({ points: selected.points.map((item, pointIndex) => pointIndex === index ? { ...item, x: Math.max(0, Math.min(selected.transform.width, Number(event.target.value))) } : item) } as Partial<PhoenixMediaLayer>)}
-                          aria-label={`Node ${index + 1} X`}
-                          className="min-w-0 rounded border border-white/10 bg-black/20 p-2 text-xs text-white"
-                        />
-                        <input
-                          type="number"
-                          value={Math.round(point.y)}
-                          onChange={event => patchLayer({ points: selected.points.map((item, pointIndex) => pointIndex === index ? { ...item, y: Math.max(0, Math.min(selected.transform.height, Number(event.target.value))) } : item) } as Partial<PhoenixMediaLayer>)}
-                          aria-label={`Node ${index + 1} Y`}
-                          className="min-w-0 rounded border border-white/10 bg-black/20 p-2 text-xs text-white"
-                        />
-                        <Button size="sm" variant="ghost" disabled={selected.points.length <= 2} onClick={() => patchLayer({ points: selected.points.filter((_, pointIndex) => pointIndex !== index) } as Partial<PhoenixMediaLayer>)}>×</Button>
-                      </div>
-                    ))}
+                    {selected.points.map((point, index) => {
+                      const curved = Boolean(point.in || point.out);
+                      return (
+                        <div key={index} className="rounded border border-white/10 bg-black/10 p-2">
+                          <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                            <input
+                              type="number"
+                              value={Math.round(point.x)}
+                              onChange={event => {
+                                const x = Math.max(0, Math.min(selected.transform.width, Number(event.target.value)));
+                                patchLayer({ points: selected.points.map((item, pointIndex) => pointIndex === index ? moveVectorPoint(item, x, item.y) : item) } as Partial<PhoenixMediaLayer>);
+                              }}
+                              aria-label={`Node ${index + 1} X`}
+                              className="min-w-0 rounded border border-white/10 bg-black/20 p-2 text-xs text-white"
+                            />
+                            <input
+                              type="number"
+                              value={Math.round(point.y)}
+                              onChange={event => {
+                                const y = Math.max(0, Math.min(selected.transform.height, Number(event.target.value)));
+                                patchLayer({ points: selected.points.map((item, pointIndex) => pointIndex === index ? moveVectorPoint(item, item.x, y) : item) } as Partial<PhoenixMediaLayer>);
+                              }}
+                              aria-label={`Node ${index + 1} Y`}
+                              className="min-w-0 rounded border border-white/10 bg-black/20 p-2 text-xs text-white"
+                            />
+                            <Button size="sm" variant="ghost" disabled={selected.points.length <= 2} onClick={() => patchLayer({ points: selected.points.filter((_, pointIndex) => pointIndex !== index) } as Partial<PhoenixMediaLayer>)}>×</Button>
+                          </div>
+                          <div className="mt-2">
+                            <Button
+                              size="sm"
+                              variant={curved ? 'gold' : 'ghost'}
+                              onClick={() => {
+                                const handle = Math.max(20, Math.min(60, selected.transform.width * 0.1));
+                                const points = selected.points.map((item, pointIndex) => pointIndex !== index ? item : curved
+                                  ? { ...item, in: undefined, out: undefined }
+                                  : {
+                                      ...item,
+                                      in: { x: Math.max(0, item.x - handle), y: item.y },
+                                      out: { x: Math.min(selected.transform.width, item.x + handle), y: item.y },
+                                    });
+                                patchLayer({ points } as Partial<PhoenixMediaLayer>);
+                              }}
+                            >
+                              {curved ? 'Curve' : 'Make Curve'}
+                            </Button>
+                          </div>
+                          {curved && (
+                            <div className="mt-2 grid grid-cols-2 gap-2">
+                              {(['in', 'out'] as const).map(handleKey => {
+                                const handle = point[handleKey] || { x: point.x, y: point.y };
+                                return (
+                                  <div key={handleKey} className="rounded border border-white/5 p-2">
+                                    <div className="mb-1 text-[9px] font-bold uppercase text-slate-500">{handleKey} handle</div>
+                                    <div className="grid grid-cols-2 gap-1">
+                                      {(['x', 'y'] as const).map(axis => (
+                                        <input
+                                          key={axis}
+                                          type="number"
+                                          value={Math.round(handle[axis])}
+                                          aria-label={`Node ${index + 1} ${handleKey} ${axis}`}
+                                          onChange={event => {
+                                            const value = Number(event.target.value);
+                                            patchLayer({
+                                              points: selected.points.map((item, pointIndex) => pointIndex === index
+                                                ? { ...item, [handleKey]: { ...(item[handleKey] || { x: item.x, y: item.y }), [axis]: value } }
+                                                : item),
+                                            } as Partial<PhoenixMediaLayer>);
+                                          }}
+                                          className="min-w-0 rounded border border-white/10 bg-black/20 p-1 text-[10px] text-white"
+                                        />
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <label className="text-[10px] uppercase text-slate-500">Fill
