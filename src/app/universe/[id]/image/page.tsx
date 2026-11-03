@@ -237,6 +237,26 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
     setSelectedLayerId('');
   };
 
+  const duplicateSelectedLayer = () => {
+    if (!document || !selectedLayer) return;
+    const id = crypto.randomUUID();
+    const duplicate = {
+      ...selectedLayer,
+      id,
+      name: `${selectedLayer.name} copy`,
+      zIndex: nextLayerZIndex(document.layers),
+      transform: {
+        ...selectedLayer.transform,
+        x: Math.min(document.width - selectedLayer.transform.width, selectedLayer.transform.x + 24),
+        y: Math.min(document.height - selectedLayer.transform.height, selectedLayer.transform.y + 24),
+      },
+      mask: selectedLayer.mask ? { ...selectedLayer.mask } : undefined,
+      adjustments: selectedLayer.adjustments ? { ...selectedLayer.adjustments } : undefined,
+    } as PhoenixMediaLayer;
+    updateDocument(current => ({ ...current, layers: [...current.layers, duplicate] }));
+    setSelectedLayerId(id);
+  };
+
   const moveLayer = (direction: 1 | -1) => {
     if (!document || !selectedLayer) return;
     const ordered = [...document.layers].sort((a, b) => a.zIndex - b.zIndex);
@@ -421,8 +441,8 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
           <div className="mt-6 rounded-xl border border-violet-400/15 bg-violet-400/[0.04] p-3">
             <p className="text-xs font-bold text-violet-200">Foundation editor</p>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              Layers, raster painting, selections, cropping, masks, and undo/redo now share one persistent document.
-              Adjustment layers, filters, and GPU effects are the next image-engine tier.
+              Layers, raster painting, selections, cropping, masks, undo/redo, richer blend modes, and non-destructive
+              color adjustments now share one persistent document. GPU effects and vector/path tooling are the next image-engine tier.
             </p>
           </div>
         </aside>
@@ -645,6 +665,20 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                 </div>
               )}
 
+              {selectedLayer.type === 'image' && (
+                <label className="block text-[10px] uppercase text-slate-500">Image fit
+                  <select
+                    value={selectedLayer.fit}
+                    onChange={event => patchSelectedLayer({ fit: event.target.value as 'cover' | 'contain' | 'fill' } as Partial<PhoenixMediaLayer>)}
+                    className="mt-1 min-h-10 w-full rounded border border-white/10 bg-[#0a0d14] px-2 text-white"
+                  >
+                    <option value="contain">Contain</option>
+                    <option value="cover">Cover</option>
+                    <option value="fill">Stretch / Fill</option>
+                  </select>
+                </label>
+              )}
+
               {selectedLayer.type === 'shape' && (
                 <div className="grid grid-cols-2 gap-2">
                   <label className="text-[10px] uppercase text-slate-500">Fill
@@ -684,6 +718,14 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                   <option value="multiply">Multiply</option>
                   <option value="screen">Screen</option>
                   <option value="overlay">Overlay</option>
+                  <option value="darken">Darken</option>
+                  <option value="lighten">Lighten</option>
+                  <option value="color-dodge">Color Dodge</option>
+                  <option value="color-burn">Color Burn</option>
+                  <option value="hard-light">Hard Light</option>
+                  <option value="soft-light">Soft Light</option>
+                  <option value="difference">Difference</option>
+                  <option value="exclusion">Exclusion</option>
                 </select>
               </label>
 
@@ -696,6 +738,8 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                     ['saturation', 'Saturation', 0, 200],
                     ['grayscale', 'Grayscale', 0, 100],
                     ['sepia', 'Sepia', 0, 100],
+                    ['invert', 'Invert', 0, 100],
+                    ['hueRotate', 'Hue', -180, 180],
                     ['blur', 'Blur', 0, 30],
                   ] as const).map(([key, label, min, max]) => {
                     const adjustments = normalizeLayerAdjustments(selectedLayer);
@@ -743,6 +787,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
               )}
 
               <div className="grid grid-cols-2 gap-2">
+                <Button size="sm" variant="secondary" onClick={duplicateSelectedLayer}>Duplicate</Button>
                 <Button size="sm" variant="ghost" onClick={() => patchSelectedLayer({ visible: !selectedLayer.visible })}>
                   {selectedLayer.visible ? 'Hide' : 'Show'}
                 </Button>
