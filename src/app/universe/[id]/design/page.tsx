@@ -8,6 +8,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { MediaViewportToolbar } from '@/components/media/MediaViewportToolbar';
 import { MediaRulers } from '@/components/media/MediaRulers';
 import { LayerTransformControls } from '@/components/media/LayerTransformControls';
+import { MediaRevisionPanel } from '@/components/media/MediaRevisionPanel';
 import { LayerGroupPanel } from '@/components/media/LayerGroupPanel';
 import { CompoundContourPanel } from '@/components/media/CompoundContourPanel';
 import { SymbolPanel } from '@/components/media/SymbolPanel';
@@ -619,6 +620,18 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
             <Button size="sm" variant="secondary" loading={exportingFormat === 'jpeg'} onClick={() => void exportFlattened('jpeg')}>JPEG</Button>
             <Button size="sm" variant="secondary" loading={exportingFormat === 'webp'} onClick={() => void exportFlattened('webp')}>WebP</Button>
             <Button size="sm" variant="gold" onClick={exportSvg}>SVG</Button>
+            <MediaRevisionPanel
+              projectId={id}
+              kind={document.kind}
+              currentVersion={document.version}
+              enabled={isDbMode()}
+              onRestore={restored => {
+                setHistory(createDocumentHistory(restored));
+                setSelectedLayerId('');
+                setAdditionalLayerIds([]);
+              }}
+              onError={setExportError}
+            />
             <MediaDocumentIO
               document={document}
               onImport={imported => {

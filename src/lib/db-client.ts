@@ -305,6 +305,52 @@ export function dbSaveMediaDocument(projectId: string, document: PhoenixMediaDoc
 }
 
 
+export interface MediaDocumentRevisionSummary {
+  id: string;
+  action: string;
+  version: number;
+  label: string | null;
+  reason: string | null;
+  created_at: string;
+}
+
+export async function dbGetMediaDocumentHistory(
+  projectId: string,
+  kind: PhoenixMediaDocumentKind,
+): Promise<MediaDocumentRevisionSummary[]> {
+  const res = await fetch(`/api/db/projects/${projectId}/media-documents/history?kind=${encodeURIComponent(kind)}`);
+  return handleResponse<MediaDocumentRevisionSummary[]>(res);
+}
+
+export async function dbCreateMediaDocumentSnapshot(
+  projectId: string,
+  kind: PhoenixMediaDocumentKind,
+  label?: string,
+): Promise<MediaDocumentRevisionSummary> {
+  const res = await fetch(`/api/db/projects/${projectId}/media-documents/history`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind, label }),
+  });
+  return handleResponse<MediaDocumentRevisionSummary>(res);
+}
+
+export async function dbRestoreMediaDocument(
+  projectId: string,
+  kind: PhoenixMediaDocumentKind,
+  historyId: string,
+  expectedVersion: number,
+): Promise<PhoenixMediaDocument> {
+  const res = await fetch(`/api/db/projects/${projectId}/media-documents/restore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind, history_id: historyId, expected_version: expectedVersion }),
+  });
+  const restored = await handleResponse<PhoenixMediaDocument>(res);
+  mediaDocumentVersions.set(mediaDocumentKey(projectId, kind), restored.version || expectedVersion + 1);
+  return restored;
+}
+
 export async function dbDeleteComicPage(projectId: string, kind: PhoenixMediaDocumentKind): Promise<void> {
   const res = await fetch(`/api/db/projects/${projectId}/media-documents?kind=${encodeURIComponent(kind)}`, { method: 'DELETE' });
   const json = await res.json();

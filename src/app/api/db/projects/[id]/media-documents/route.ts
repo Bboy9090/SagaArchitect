@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { and, eq, like, or } from 'drizzle-orm';
+import { and, desc, eq, like, or } from 'drizzle-orm';
 import { db } from '@/db';
-import { mediaDocuments } from '@/db/schema';
+import { mediaDocuments, versionHistory } from '@/db/schema';
 import { AuthError, requireOwnedProject, requireUser } from '@/lib/auth-helpers';
 import type { PhoenixMediaDocument, PhoenixMediaDocumentKind } from '@/lib/media-composition';
 
@@ -110,11 +110,41 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     };
 
     if (existing) {
-      const [updated] = await db.update(mediaDocuments).set({
-        document: stored,
-        version: nextVersion,
-        updatedAt: now,
-      }).where(and(eq(mediaDocuments.id, existing.id), eq(mediaDocuments.version, existing.version))).returning();
+      const [latestCheckpoint] = await db.select({ createdAt: versionHistory.createdAt }).from(versionHistory)
+        .where(and(
+          eq(versionHistory.projectId, projectId),
+          eq(versionHistory.entityType, 'media_document'),
+          eq(versionHistory.entityId, existing.id),
+        ))
+        .orderBy(desc(versionHistory.createdAt))
+        .limit(1);
+      const shouldCheckpoint = !latestCheckpoint
+        || now.getTime() - latestCheckpoint.createdAt.getTime() >= 10 * 60 * 1000;
+
+      const updated = await db.transaction(async tx => {
+        if (shouldCheckpoint) {
+          await tx.insert(versionHistory).values({
+            projectId,
+            userId,
+            action: 'update',
+            entityType: 'media_document',
+            entityId: existing.id,
+            changeData: {
+              kind: payload.kind,
+              version: existing.version,
+              label: 'Automatic checkpoint',
+              reason: 'autosave_checkpoint',
+              document: existing.document,
+            },
+          });
+        }
+        const [row] = await tx.update(mediaDocuments).set({
+          document: stored,
+          version: nextVersion,
+          updatedAt: now,
+        }).where(and(eq(mediaDocuments.id, existing.id), eq(mediaDocuments.version, existing.version))).returning();
+        return row;
+      });
       if (!updated) return NextResponse.json({ ok: false, error: 'Media document version conflict.' }, { status: 409 });
     } else {
       await db.insert(mediaDocuments).values({

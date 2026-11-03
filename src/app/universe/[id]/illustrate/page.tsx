@@ -4,6 +4,7 @@ import { use, useEffect, useMemo, useState } from 'react';
 import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
+import { MediaRevisionPanel } from '@/components/media/MediaRevisionPanel';
 import { Spinner } from '@/components/ui/Spinner';
 import { RasterPaintCanvas } from '@/components/media/RasterPaintCanvas';
 import { getUniverseById } from '@/lib/storage';
@@ -202,6 +203,18 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="ghost" disabled={history.past.length === 0} onClick={() => setHistory(current => current ? undoDocumentHistory(current) : current)}>Undo</Button>
             <Button size="sm" variant="ghost" disabled={history.future.length === 0} onClick={() => setHistory(current => current ? redoDocumentHistory(current) : current)}>Redo</Button>
+            <MediaRevisionPanel
+              projectId={id}
+              kind={document.kind}
+              currentVersion={document.version}
+              enabled={isDbMode()}
+              onRestore={restored => {
+                setHistory(createDocumentHistory(restored));
+                setSelectedLayerId('');
+                
+              }}
+              onError={setStatus}
+            />
             <Button size="sm" variant="gold" loading={exporting} onClick={() => void exportPng()}>Export PNG</Button>
           </div>
         }
