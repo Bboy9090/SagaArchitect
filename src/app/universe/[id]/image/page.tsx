@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useMemo, useRef, useState } from 'react';
+import { use, useEffect, useMemo, useState } from 'react';
 import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
@@ -53,7 +53,6 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
   const [selectedLayerId, setSelectedLayerId] = useState('');
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
   const [loading, setLoading] = useState(true);
-  const cloudVersionRef = useRef(1);
   const [savedAt, setSavedAt] = useState('');
   const [brushColor, setBrushColor] = useState('#ffffff');
   const [brushSize, setBrushSize] = useState(24);
@@ -87,7 +86,6 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
         const localDocument = loadPhoenixMediaDocument(id, 'image');
         const cloudDocument = isDbMode() ? await dbGetMediaDocument(id, 'image') : null;
         const loadedDocument = cloudDocument || localDocument || createPhoenixMediaDocument(id, 'image');
-        cloudVersionRef.current = cloudDocument?.version || loadedDocument.version || 1;
         setHistory(createDocumentHistory(loadedDocument));
         if (isDbMode()) setAssets(await dbGetAssets(id));
       } finally {
@@ -105,8 +103,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
       const saved = savePhoenixMediaDocument(document);
       setSavedAt(saved.updatedAt);
       if (isDbMode()) {
-        void dbSaveMediaDocument(id, { ...saved, version: cloudVersionRef.current })
-          .then(cloudSaved => { cloudVersionRef.current = cloudSaved.version; })
+        void dbSaveMediaDocument(id, saved)
           .catch(error => setExportError(error instanceof Error ? error.message : 'Cloud autosave failed.'));
       }
     }, 500);
