@@ -189,6 +189,36 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
     setSelectedLayerId(id);
   };
 
+  const addPathLayer = () => {
+    if (!document) return;
+    const id = crypto.randomUUID();
+    const width = 420;
+    const height = 420;
+    const layer: PhoenixMediaLayer = {
+      id,
+      type: 'path',
+      name: 'Vector Path',
+      visible: true,
+      locked: false,
+      opacity: 1,
+      blendMode: 'normal',
+      zIndex: nextLayerZIndex(document.layers),
+      transform: { x: 260, y: 260, width, height, rotation: 0 },
+      points: [
+        { x: width / 2, y: 0 },
+        { x: width, y: height / 2 },
+        { x: width / 2, y: height },
+        { x: 0, y: height / 2 },
+      ],
+      closed: true,
+      fill: '#7c3aed',
+      stroke: '#c4b5fd',
+      strokeWidth: 8,
+    };
+    updateDocument(current => ({ ...current, layers: [...current.layers, layer] }));
+    setSelectedLayerId(id);
+  };
+
   const addAssetLayer = (asset: ProjectAsset) => {
     if (!document) return;
     const layerId = crypto.randomUUID();
@@ -231,6 +261,19 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
   const patchTransform = (key: keyof PhoenixMediaLayer['transform'], value: number) => {
     if (!selectedLayer) return;
     const nextValue = key === 'rotation' ? value : snapValue(value);
+    if (selectedLayer.type === 'path' && (key === 'width' || key === 'height')) {
+      const previousSize = selectedLayer.transform[key];
+      const safeNext = Math.max(1, nextValue);
+      const ratio = previousSize > 0 ? safeNext / previousSize : 1;
+      const points = selectedLayer.points.map(point => key === 'width'
+        ? { ...point, x: point.x * ratio }
+        : { ...point, y: point.y * ratio });
+      patchSelectedLayer({
+        transform: { ...selectedLayer.transform, [key]: safeNext },
+        points,
+      } as Partial<PhoenixMediaLayer>);
+      return;
+    }
     patchSelectedLayer({ transform: { ...selectedLayer.transform, [key]: nextValue } } as Partial<PhoenixMediaLayer>);
   };
 
@@ -393,6 +436,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
             <Button size="sm" variant="secondary" onClick={addTextLayer}>Text</Button>
             <Button size="sm" variant="secondary" onClick={() => addShapeLayer('rectangle')}>Rectangle</Button>
             <Button size="sm" variant="secondary" onClick={() => addShapeLayer('ellipse')}>Ellipse</Button>
+            <Button size="sm" variant="secondary" onClick={addPathLayer}>Vector Path</Button>
             <Button size="sm" variant="secondary" onClick={addRasterLayer}>Paint Layer</Button>
           </div>
 
@@ -447,8 +491,8 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
           <div className="mt-6 rounded-xl border border-violet-400/15 bg-violet-400/[0.04] p-3">
             <p className="text-xs font-bold text-violet-200">Foundation editor</p>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              Layers, raster painting, selections, cropping, masks, undo/redo, richer blend modes, and non-destructive
-              color adjustments now share one persistent document. GPU effects and vector/path tooling are the next image-engine tier.
+              Layers, raster painting, editable vector paths, selections, cropping, masks, undo/redo, richer blend modes,
+              and non-destructive color adjustments share one persistent cloud-capable document. GPU effects and Bezier handles are the next image-engine tier.
             </p>
           </div>
         </aside>
@@ -542,6 +586,29 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                           borderRadius: layer.shape === 'ellipse' ? '9999px' : 0,
                         }}
                       />
+                    )}
+                    {layer.type === 'path' && (
+                      <svg viewBox={`0 0 ${layer.transform.width} ${layer.transform.height}`} className="h-full w-full overflow-visible">
+                        {layer.closed ? (
+                          <polygon
+                            points={layer.points.map(point => `${point.x},${point.y}`).join(' ')}
+                            fill={layer.fill}
+                            stroke={layer.stroke}
+                            strokeWidth={layer.strokeWidth}
+                            strokeLinejoin="round"
+                            strokeLinecap="round"
+                          />
+                        ) : (
+                          <polyline
+                            points={layer.points.map(point => `${point.x},${point.y}`).join(' ')}
+                            fill="none"
+                            stroke={layer.stroke}
+                            strokeWidth={layer.strokeWidth}
+                            strokeLinejoin="round"
+                            strokeLinecap="round"
+                          />
+                        )}
+                      </svg>
                     )}
                     {layer.type === 'image' && (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -696,6 +763,79 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                 </div>
               )}
 
+              {selectedLayer.type === 'path' && (
+                <div className="space-y-3 rounded-lg border border-cyan-400/20 bg-cyan-400/[0.04] p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-cyan-300">Vector Nodes</span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => patchSelectedLayer({
+                        points: [...selectedLayer.points, { x: selectedLayer.transform.width / 2, y: selectedLayer.transform.height / 2 }],
+                      } as Partial<PhoenixMediaLayer>)}
+                    >
+                      Add Node
+                    </Button>
+                  </div>
+                  <div className="max-h-56 space-y-2 overflow-auto">
+                    {selectedLayer.points.map((point, index) => (
+                      <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                        <input
+                          type="number"
+                          value={Math.round(point.x)}
+                          onChange={event => {
+                            const points = selectedLayer.points.map((item, pointIndex) => pointIndex === index
+                              ? { ...item, x: Math.max(0, Math.min(selectedLayer.transform.width, Number(event.target.value))) }
+                              : item);
+                            patchSelectedLayer({ points } as Partial<PhoenixMediaLayer>);
+                          }}
+                          aria-label={`Node ${index + 1} X`}
+                          className="min-w-0 rounded border border-white/10 bg-black/20 p-2 text-xs text-white"
+                        />
+                        <input
+                          type="number"
+                          value={Math.round(point.y)}
+                          onChange={event => {
+                            const points = selectedLayer.points.map((item, pointIndex) => pointIndex === index
+                              ? { ...item, y: Math.max(0, Math.min(selectedLayer.transform.height, Number(event.target.value))) }
+                              : item);
+                            patchSelectedLayer({ points } as Partial<PhoenixMediaLayer>);
+                          }}
+                          aria-label={`Node ${index + 1} Y`}
+                          className="min-w-0 rounded border border-white/10 bg-black/20 p-2 text-xs text-white"
+                        />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={selectedLayer.points.length <= 2}
+                          onClick={() => patchSelectedLayer({
+                            points: selectedLayer.points.filter((_, pointIndex) => pointIndex !== index),
+                          } as Partial<PhoenixMediaLayer>)}
+                        >
+                          ×
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="text-[10px] uppercase text-slate-500">Fill
+                      <input type="color" value={selectedLayer.fill} onChange={event => patchSelectedLayer({ fill: event.target.value } as Partial<PhoenixMediaLayer>)} className="mt-1 h-10 w-full rounded border border-white/10 bg-black/20 p-1" />
+                    </label>
+                    <label className="text-[10px] uppercase text-slate-500">Stroke
+                      <input type="color" value={selectedLayer.stroke} onChange={event => patchSelectedLayer({ stroke: event.target.value } as Partial<PhoenixMediaLayer>)} className="mt-1 h-10 w-full rounded border border-white/10 bg-black/20 p-1" />
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="text-[10px] uppercase text-slate-500">Stroke px
+                      <input type="number" min={0} max={100} value={selectedLayer.strokeWidth} onChange={event => patchSelectedLayer({ strokeWidth: Math.max(0, Number(event.target.value)) } as Partial<PhoenixMediaLayer>)} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                    </label>
+                    <Button size="sm" variant={selectedLayer.closed ? 'gold' : 'ghost'} className="mt-5" onClick={() => patchSelectedLayer({ closed: !selectedLayer.closed } as Partial<PhoenixMediaLayer>)}>
+                      {selectedLayer.closed ? 'Closed Path' : 'Open Path'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-2">
                 {(['x', 'y', 'width', 'height'] as const).map(key => (
                   <label key={key} className="text-[10px] uppercase text-slate-500">{key}
@@ -782,11 +922,30 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
 
               {selectedLayer.mask && (
                 <div className="rounded-lg border border-cyan-400/20 bg-cyan-400/5 p-3">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-cyan-300">Layer Mask Active</div>
-                  <div className="mt-1 text-[10px] text-slate-500">
-                    {Math.round(selectedLayer.mask.width)} × {Math.round(selectedLayer.mask.height)}
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-cyan-300">Editable Layer Mask</div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    {(['x', 'y', 'width', 'height'] as const).map(key => (
+                      <label key={key} className="text-[10px] uppercase text-slate-500">{key}
+                        <input
+                          type="number"
+                          min={key === 'width' || key === 'height' ? 1 : 0}
+                          value={Math.round(selectedLayer.mask?.[key] || 0)}
+                          onChange={event => {
+                            if (!selectedLayer.mask) return;
+                            const value = Number(event.target.value);
+                            const nextMask = { ...selectedLayer.mask, [key]: Math.max(key === 'width' || key === 'height' ? 1 : 0, value) };
+                            nextMask.x = Math.min(nextMask.x, selectedLayer.transform.width - 1);
+                            nextMask.y = Math.min(nextMask.y, selectedLayer.transform.height - 1);
+                            nextMask.width = Math.min(nextMask.width, selectedLayer.transform.width - nextMask.x);
+                            nextMask.height = Math.min(nextMask.height, selectedLayer.transform.height - nextMask.y);
+                            patchSelectedLayer({ mask: nextMask } as Partial<PhoenixMediaLayer>);
+                          }}
+                          className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white"
+                        />
+                      </label>
+                    ))}
                   </div>
-                  <Button size="sm" variant="ghost" className="mt-2 w-full" onClick={() => patchSelectedLayer({ mask: undefined })}>
+                  <Button size="sm" variant="ghost" className="mt-3 w-full" onClick={() => patchSelectedLayer({ mask: undefined })}>
                     Clear Mask
                   </Button>
                 </div>

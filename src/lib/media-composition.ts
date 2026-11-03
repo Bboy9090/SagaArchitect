@@ -18,7 +18,7 @@ export type PhoenixBlendMode =
   | 'soft-light'
   | 'difference'
   | 'exclusion';
-export type PhoenixLayerType = 'text' | 'shape' | 'image' | 'raster';
+export type PhoenixLayerType = 'text' | 'shape' | 'image' | 'raster' | 'path';
 
 export interface PhoenixLayerTransform {
   x: number;
@@ -91,7 +91,26 @@ export interface PhoenixRasterLayer extends PhoenixBaseLayer {
   src: string;
 }
 
-export type PhoenixMediaLayer = PhoenixTextLayer | PhoenixShapeLayer | PhoenixImageLayer | PhoenixRasterLayer;
+export interface PhoenixVectorPoint {
+  x: number;
+  y: number;
+}
+
+export interface PhoenixPathLayer extends PhoenixBaseLayer {
+  type: 'path';
+  points: PhoenixVectorPoint[];
+  closed: boolean;
+  fill: string;
+  stroke: string;
+  strokeWidth: number;
+}
+
+export type PhoenixMediaLayer =
+  | PhoenixTextLayer
+  | PhoenixShapeLayer
+  | PhoenixImageLayer
+  | PhoenixRasterLayer
+  | PhoenixPathLayer;
 
 export interface PhoenixMediaDocument {
   id: string;
