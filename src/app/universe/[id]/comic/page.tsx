@@ -92,6 +92,23 @@ function isPanelLayer(layer: PhoenixMediaLayer | null): boolean {
   return Boolean(layer?.type === 'shape' && layer.name.startsWith('Panel '));
 }
 
+function burstBalloonPoints(width: number, height: number, spikes = 18): Array<{ x: number; y: number }> {
+  const cx = width / 2;
+  const cy = height / 2;
+  const outerX = width / 2;
+  const outerY = height / 2;
+  const innerX = outerX * 0.72;
+  const innerY = outerY * 0.72;
+  return Array.from({ length: spikes * 2 }, (_, index) => {
+    const angle = -Math.PI / 2 + (index * Math.PI) / spikes;
+    const outer = index % 2 === 0;
+    return {
+      x: cx + Math.cos(angle) * (outer ? outerX : innerX),
+      y: cy + Math.sin(angle) * (outer ? outerY : innerY),
+    };
+  });
+}
+
 export default function ComicStudioPage({ params }: ComicStudioPageProps) {
   const { id } = use(params);
   const router = useRouter();
@@ -458,6 +475,199 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
     setSelectedLayerId(text.id);
   };
 
+
+  const addThoughtBalloon = () => {
+    if (!document) return;
+    const z = nextLayerZIndex(document.layers);
+    const groupId = `balloon:${crypto.randomUUID()}`;
+    const panelId = selectedLayer?.panelId;
+    const layers: PhoenixMediaLayer[] = [
+      {
+        id: crypto.randomUUID(),
+        type: 'shape',
+        groupId,
+        panelId,
+        name: 'Thought Balloon',
+        visible: true,
+        locked: false,
+        opacity: 1,
+        blendMode: 'normal',
+        zIndex: z,
+        transform: { x: 240, y: 240, width: 580, height: 300, rotation: 0 },
+        shape: 'ellipse',
+        fill: '#ffffff',
+        stroke: '#111827',
+        strokeWidth: 10,
+      },
+      {
+        id: crypto.randomUUID(),
+        type: 'shape',
+        groupId,
+        panelId,
+        name: 'Thought Bubble 1',
+        visible: true,
+        locked: false,
+        opacity: 1,
+        blendMode: 'normal',
+        zIndex: z + 1,
+        transform: { x: 690, y: 500, width: 64, height: 64, rotation: 0 },
+        shape: 'ellipse',
+        fill: '#ffffff',
+        stroke: '#111827',
+        strokeWidth: 8,
+      },
+      {
+        id: crypto.randomUUID(),
+        type: 'shape',
+        groupId,
+        panelId,
+        name: 'Thought Bubble 2',
+        visible: true,
+        locked: false,
+        opacity: 1,
+        blendMode: 'normal',
+        zIndex: z + 2,
+        transform: { x: 755, y: 565, width: 42, height: 42, rotation: 0 },
+        shape: 'ellipse',
+        fill: '#ffffff',
+        stroke: '#111827',
+        strokeWidth: 7,
+      },
+      {
+        id: crypto.randomUUID(),
+        type: 'shape',
+        groupId,
+        panelId,
+        name: 'Thought Bubble 3',
+        visible: true,
+        locked: false,
+        opacity: 1,
+        blendMode: 'normal',
+        zIndex: z + 3,
+        transform: { x: 805, y: 615, width: 24, height: 24, rotation: 0 },
+        shape: 'ellipse',
+        fill: '#ffffff',
+        stroke: '#111827',
+        strokeWidth: 6,
+      },
+      {
+        id: crypto.randomUUID(),
+        type: 'text',
+        groupId,
+        panelId,
+        name: 'Thought Text',
+        visible: true,
+        locked: false,
+        opacity: 1,
+        blendMode: 'normal',
+        zIndex: z + 4,
+        transform: { x: 320, y: 310, width: 420, height: 155, rotation: 0 },
+        text: 'Thinking…',
+        color: '#111827',
+        fontSize: 42,
+        fontFamily: 'Georgia, serif',
+        fontWeight: 500,
+        align: 'center',
+        italic: true,
+        lineHeight: 1.12,
+        letterSpacing: 0.5,
+      },
+    ];
+    commit(current => ({
+      ...current,
+      groups: [...(current.groups || []), { id: groupId, name: 'Thought Balloon', visible: true, locked: false, opacity: 1 }],
+      layers: [...current.layers, ...layers],
+    }));
+    setSelectedLayerId(layers[layers.length - 1].id);
+  };
+
+  const addBurstBalloon = () => {
+    if (!document) return;
+    const z = nextLayerZIndex(document.layers);
+    const groupId = `balloon:${crypto.randomUUID()}`;
+    const panelId = selectedLayer?.panelId;
+    const width = 620;
+    const height = 360;
+    const burst: PhoenixMediaLayer = {
+      id: crypto.randomUUID(),
+      type: 'path',
+      groupId,
+      panelId,
+      name: 'Burst Balloon',
+      visible: true,
+      locked: false,
+      opacity: 1,
+      blendMode: 'normal',
+      zIndex: z,
+      transform: { x: 220, y: 220, width, height, rotation: 0 },
+      points: burstBalloonPoints(width, height),
+      closed: true,
+      fill: '#ffffff',
+      stroke: '#111827',
+      strokeWidth: 12,
+    };
+    const text: PhoenixMediaLayer = {
+      id: crypto.randomUUID(),
+      type: 'text',
+      groupId,
+      panelId,
+      name: 'Burst Text',
+      visible: true,
+      locked: false,
+      opacity: 1,
+      blendMode: 'normal',
+      zIndex: z + 1,
+      transform: { x: 325, y: 325, width: 410, height: 150, rotation: 0 },
+      text: 'BOOM!',
+      color: '#111827',
+      fontSize: 58,
+      fontFamily: 'Arial Black, Arial, sans-serif',
+      fontWeight: 900,
+      align: 'center',
+      lineHeight: 1,
+      letterSpacing: 1,
+    };
+    commit(current => ({
+      ...current,
+      groups: [...(current.groups || []), { id: groupId, name: 'Burst Balloon', visible: true, locked: false, opacity: 1 }],
+      layers: [...current.layers, burst, text],
+    }));
+    setSelectedLayerId(text.id);
+  };
+
+  const reshapeSelectedBalloonTail = (direction: 'left' | 'down' | 'right', length?: number) => {
+    if (!document || !selectedLayer || selectedLayer.type !== 'path' || selectedLayer.name !== 'Balloon Tail' || !selectedLayer.groupId) return;
+    const body = document.layers.find(layer =>
+      layer.groupId === selectedLayer.groupId
+      && layer.type === 'shape'
+      && layer.name === 'Speech Balloon'
+    );
+    if (!body) return;
+    const tailLength = Math.max(60, Math.min(360, length ?? selectedLayer.transform.height));
+    const width = 150;
+    const y = body.transform.y + body.transform.height - 20;
+    const x = direction === 'left'
+      ? body.transform.x + 45
+      : direction === 'right'
+        ? body.transform.x + body.transform.width - width - 45
+        : body.transform.x + body.transform.width / 2 - width / 2;
+    const points = direction === 'left'
+      ? [{ x: width, y: 0 }, { x: 52, y: 0 }, { x: 0, y: tailLength }]
+      : direction === 'right'
+        ? [{ x: 0, y: 0 }, { x: width - 52, y: 0 }, { x: width, y: tailLength }]
+        : [{ x: 20, y: 0 }, { x: width - 20, y: 0 }, { x: width / 2, y: tailLength }];
+    commit(current => ({
+      ...current,
+      layers: current.layers.map(layer => layer.id === selectedLayer.id
+        ? {
+            ...layer,
+            transform: { ...layer.transform, x, y, width, height: tailLength, rotation: 0 },
+            points,
+          } as PhoenixMediaLayer
+        : layer),
+    }));
+  };
+
   const placeAssetInPanel = (asset: ProjectAsset) => {
     if (!document || !selectedLayer || !isPanelLayer(selectedLayer)) return;
     const panel = selectedLayer.transform;
@@ -673,8 +883,10 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
             ))}
           </div>
 
-          <div className="mt-6 grid grid-cols-1 gap-2">
-            <Button size="sm" variant="secondary" onClick={addSpeechBalloon}>+ Speech Balloon</Button>
+          <div className="mt-6 grid grid-cols-2 gap-2">
+            <Button size="sm" variant="secondary" onClick={addSpeechBalloon}>+ Speech</Button>
+            <Button size="sm" variant="secondary" onClick={addThoughtBalloon}>+ Thought</Button>
+            <Button size="sm" variant="secondary" onClick={addBurstBalloon}>+ Burst</Button>
             <Button size="sm" variant="secondary" onClick={addCaption}>+ Caption</Button>
           </div>
 
@@ -812,6 +1024,27 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
                 </div>
               )}
 
+              {selectedLayer.type === 'path' && selectedLayer.name === 'Balloon Tail' && (
+                <div className="rounded-lg border border-amber-400/20 bg-amber-400/[0.04] p-3">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-amber-200">Speech Tail</div>
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => reshapeSelectedBalloonTail('left')}>Left</Button>
+                    <Button size="sm" variant="ghost" onClick={() => reshapeSelectedBalloonTail('down')}>Down</Button>
+                    <Button size="sm" variant="ghost" onClick={() => reshapeSelectedBalloonTail('right')}>Right</Button>
+                  </div>
+                  <label className="mt-3 block text-[10px] uppercase text-slate-500">Tail length
+                    <input
+                      type="range"
+                      min={60}
+                      max={360}
+                      value={Math.round(selectedLayer.transform.height)}
+                      onChange={event => reshapeSelectedBalloonTail('down', Number(event.target.value))}
+                      className="mt-1 w-full"
+                    />
+                  </label>
+                </div>
+              )}
+
               {selectedLayer.type === 'text' && (
                 <>
                   <label className="block text-[10px] uppercase text-slate-500">Text
@@ -841,7 +1074,7 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
             <div className="text-xs font-bold text-amber-200">Comic foundation</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
               Multi-page issues, issue-level CBZ/print export, linked panel groups, page templates, panel frames, image placement, grouped speech balloons with vector tails, lettering presets, direct transforms, and raster export are active.
-              Issue-to-Motion Comic handoff is active with durable Studio Cloud panel assets and a bounded Personal Vault fallback. Advanced balloon geometry and deeper parallax/SFX automation are next.
+              Issue-to-Motion Comic handoff, linked panels, editable speech tails, thought balloons, and vector burst balloons are active. Deeper parallax, SFX automation, and pose/mouth swaps are next.
             </p>
           </div>
         </aside>
