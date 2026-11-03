@@ -445,14 +445,21 @@ export function resolveSymbolLayer(
   if (!symbol) return layer;
   const master = document.layers.find(candidate => candidate.id === symbol.masterLayerId && !candidate.symbolId);
   if (!master || master.type !== layer.type) return layer;
-  return {
+  const resolved = {
     ...master,
     ...instanceBaseFields(layer),
   } as PhoenixMediaLayer;
+  if (master.type === 'path' && resolved.type === 'path') {
+    const scaleX = master.transform.width > 0 ? resolved.transform.width / master.transform.width : 1;
+    const scaleY = master.transform.height > 0 ? resolved.transform.height / master.transform.height : 1;
+    resolved.points = scaleVectorPoints(master.points, scaleX, scaleY);
+    resolved.contours = scaleVectorContours(master.contours, scaleX, scaleY);
+  }
+  return resolved;
 }
 
 export function createSymbolInstance(
-  document: Pick<PhoenixMediaDocument, 'layers' | 'symbols'>,
+  document: Pick<PhoenixMediaDocument, 'layers' | 'symbols' | 'width' | 'height'>,
   symbolId: string,
   zIndex: number,
 ): PhoenixMediaLayer | null {
@@ -466,11 +473,11 @@ export function createSymbolInstance(
     id: crypto.randomUUID(),
     name: `${symbol.name} instance`,
     zIndex,
-    transform: {
+    transform: clampLayerTransform({
       ...master.transform,
       x: master.transform.x + offset,
       y: master.transform.y + offset,
-    },
+    }, document),
     symbolId,
   } as PhoenixMediaLayer;
 }
