@@ -20,6 +20,19 @@ export interface PhoenixAudioClip {
   createdAt: string;
 }
 
+export interface PhoenixAudioTrackProcessing {
+  highpassHz: number;
+  lowpassHz: number;
+  lowGainDb: number;
+  midGainDb: number;
+  highGainDb: number;
+  compressorEnabled: boolean;
+  compressorThresholdDb: number;
+  compressorRatio: number;
+  compressorAttack: number;
+  compressorRelease: number;
+}
+
 export interface PhoenixAudioTrack {
   id: string;
   name: string;
@@ -28,6 +41,7 @@ export interface PhoenixAudioTrack {
   volume: number;
   muted: boolean;
   solo: boolean;
+  processing: PhoenixAudioTrackProcessing;
   clips: PhoenixAudioClip[];
 }
 
@@ -42,6 +56,44 @@ export interface PhoenixAudioMix {
 
 const STORAGE_PREFIX = 'phoenix_audio_mix:';
 
+export const DEFAULT_AUDIO_TRACK_PROCESSING: PhoenixAudioTrackProcessing = {
+  highpassHz: 20,
+  lowpassHz: 20000,
+  lowGainDb: 0,
+  midGainDb: 0,
+  highGainDb: 0,
+  compressorEnabled: false,
+  compressorThresholdDb: -18,
+  compressorRatio: 3,
+  compressorAttack: 0.01,
+  compressorRelease: 0.25,
+};
+
+export function normalizeAudioTrackProcessing(
+  processing?: Partial<PhoenixAudioTrackProcessing>,
+): PhoenixAudioTrackProcessing {
+  return { ...DEFAULT_AUDIO_TRACK_PROCESSING, ...(processing || {}) };
+}
+
+function createAudioTrack(
+  name: string,
+  role: PhoenixAudioTrackRole,
+  order: number,
+  volume: number,
+): PhoenixAudioTrack {
+  return {
+    id: crypto.randomUUID(),
+    name,
+    role,
+    order,
+    volume,
+    muted: false,
+    solo: false,
+    processing: { ...DEFAULT_AUDIO_TRACK_PROCESSING },
+    clips: [],
+  };
+}
+
 export function createPhoenixAudioMix(projectId: string): PhoenixAudioMix {
   const now = new Date().toISOString();
   return {
@@ -49,9 +101,9 @@ export function createPhoenixAudioMix(projectId: string): PhoenixAudioMix {
     projectId,
     title: 'Untitled Audio Mix',
     tracks: [
-      { id: crypto.randomUUID(), name: 'Voice', role: 'voice', order: 0, volume: 1, muted: false, solo: false, clips: [] },
-      { id: crypto.randomUUID(), name: 'Music', role: 'music', order: 1, volume: 0.8, muted: false, solo: false, clips: [] },
-      { id: crypto.randomUUID(), name: 'SFX', role: 'sfx', order: 2, volume: 1, muted: false, solo: false, clips: [] },
+      createAudioTrack('Voice', 'voice', 0, 1),
+      createAudioTrack('Music', 'music', 1, 0.8),
+      createAudioTrack('SFX', 'sfx', 2, 1),
     ],
     createdAt: now,
     updatedAt: now,
@@ -69,7 +121,13 @@ export function loadPhoenixAudioMix(projectId: string): PhoenixAudioMix | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PhoenixAudioMix;
     if (!parsed || parsed.projectId !== projectId || !Array.isArray(parsed.tracks)) return null;
-    return parsed;
+    return {
+      ...parsed,
+      tracks: parsed.tracks.map(track => ({
+        ...track,
+        processing: normalizeAudioTrackProcessing(track.processing),
+      })),
+    };
   } catch {
     return null;
   }
