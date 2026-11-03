@@ -216,9 +216,10 @@ export async function renderPhoenixVideoTimeline(
   const prepared = await prepareClips(timeline, audioContext, audioDestination);
 
   const canvasStream = canvas.captureStream(Math.max(1, Math.min(60, timeline.fps)));
+  const hasMediaAudio = prepared.some(item => item.media);
   const outputStream = new MediaStream([
     ...canvasStream.getVideoTracks(),
-    ...audioDestination.stream.getAudioTracks(),
+    ...(hasMediaAudio ? audioDestination.stream.getAudioTracks() : []),
   ]);
 
   const format = supportedRecorderMime();
