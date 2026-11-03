@@ -43,6 +43,13 @@
       "when": 1785686113000,
       "tag": "0005_enterprise_foundation_sprint_3",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793675121289,
+      "tag": "0006_rich_warlock",
+      "breakpoints": true
     }
   ]
 }
