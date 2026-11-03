@@ -1,6 +1,7 @@
 'use client';
 
 import { use, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
@@ -12,7 +13,7 @@ import { MediaRevisionPanel } from '@/components/media/MediaRevisionPanel';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
-import { dbDeleteComicPage, dbGetAssets, dbGetComicPages, dbGetProject, dbSaveMediaDocument, type ProjectAsset } from '@/lib/db-client';
+import { dbDeleteComicPage, dbGetAssets, dbGetComicPages, dbGetProject, dbSaveMediaDocument, dbUploadAsset, type ProjectAsset } from '@/lib/db-client';
 import {
   createPhoenixMediaDocument,
   listPhoenixMediaDocuments,
@@ -37,6 +38,8 @@ import {
   type PhoenixRasterExportFormat,
 } from '@/lib/media-renderer';
 import { createComicIssueCbz, downloadComicIssueCbz, printComicIssueProof } from '@/lib/comic-issue-export';
+import { blobToDataUrl, renderComicIssueForMotion } from '@/lib/comic-motion-handoff';
+import { buildMotionComicTimeline, saveMotionComicTimeline } from '@/lib/motion-comic';
 import type { Universe } from '@/lib/types';
 
 interface ComicStudioPageProps {
@@ -91,6 +94,7 @@ function isPanelLayer(layer: PhoenixMediaLayer | null): boolean {
 
 export default function ComicStudioPage({ params }: ComicStudioPageProps) {
   const { id } = use(params);
+  const router = useRouter();
   const [project, setProject] = useState<Universe | null>(null);
   const [history, setHistory] = useState<PhoenixDocumentHistory | null>(null);
   const [pages, setPages] = useState<PhoenixMediaDocument[]>([]);
@@ -101,6 +105,8 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
   const [exportingFormat, setExportingFormat] = useState<PhoenixRasterExportFormat | null>(null);
   const [exportError, setExportError] = useState('');
   const [issueExporting, setIssueExporting] = useState<'cbz' | 'print' | null>(null);
+  const [motionHandoffBusy, setMotionHandoffBusy] = useState(false);
+  const [motionHandoffStatus, setMotionHandoffStatus] = useState('');
   const {
     zoom,
     setZoom,
@@ -546,6 +552,53 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
     }
   };
 
+  const sendIssueToMotionComic = async () => {
+    if (!document || motionHandoffBusy) return;
+    setMotionHandoffBusy(true);
+    setMotionHandoffStatus('');
+    setExportError('');
+    try {
+      const cloudMode = isDbMode();
+      const rendered = await renderComicIssueForMotion(currentIssuePages(), cloudMode
+        ? { maxPanels: 120, maxDimension: 1600, quality: 0.88 }
+        : { maxPanels: 12, maxDimension: 960, quality: 0.72 });
+
+      const inputs = [];
+      for (let index = 0; index < rendered.length; index += 1) {
+        const item = rendered[index];
+        setMotionHandoffStatus(`Preparing panel ${index + 1} of ${rendered.length}…`);
+        if (cloudMode) {
+          const file = new File([item.blob], item.filename, { type: 'image/jpeg' });
+          const asset = await dbUploadAsset(id, file);
+          inputs.push({
+            panel: { ...item.panel, asset_id: asset.id },
+            imageSrc: asset.serve_url || `/api/db/assets/${asset.id}/serve`,
+          });
+        } else {
+          const dataUrl = await blobToDataUrl(item.blob);
+          inputs.push({
+            panel: { ...item.panel, image_base64: dataUrl },
+            imageSrc: dataUrl,
+          });
+        }
+      }
+
+      const timeline = buildMotionComicTimeline(id, issueTitle(), inputs, 4);
+      saveMotionComicTimeline({
+        ...timeline,
+        title: `${issueTitle()} Motion Comic`,
+      });
+      setMotionHandoffStatus(`Built ${rendered.length} motion panels. Opening Motion Comic Studio…`);
+      router.push(`/universe/${id}/motion`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Comic-to-motion handoff failed.';
+      setExportError(message);
+      setMotionHandoffStatus('');
+    } finally {
+      setMotionHandoffBusy(false);
+    }
+  };
+
   if (loading || !document || !history) {
     return <Navigation><div className="flex min-h-[60vh] items-center justify-center"><Spinner text="Opening Comic Studio..." /></div></Navigation>;
   }
@@ -576,11 +629,15 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
             <Button size="sm" variant="secondary" loading={exportingFormat === 'webp'} onClick={() => void exportFlattened('webp')}>WebP</Button>
             <Button size="sm" variant="gold" loading={issueExporting === 'cbz'} onClick={() => void exportIssueCbz()}>Issue CBZ</Button>
             <Button size="sm" variant="secondary" loading={issueExporting === 'print'} onClick={() => void printIssueProof()}>Print/PDF</Button>
+            <Button size="sm" variant="gold" loading={motionHandoffBusy} onClick={() => void sendIssueToMotionComic()}>
+              Send to Motion →
+            </Button>
           </div>
         }
       />
 
       {exportError && <div className="mx-4 mt-4 rounded border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{exportError}</div>}
+      {motionHandoffStatus && <div className="mx-4 mt-4 rounded border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-sm text-violet-100">{motionHandoffStatus}</div>}
 
       <div className="grid min-h-[calc(100vh-80px)] grid-cols-1 2xl:grid-cols-[280px_minmax(0,1fr)_320px]">
         <aside className="border-r border-white/10 bg-[#070b15] p-4">
@@ -784,7 +841,7 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
             <div className="text-xs font-bold text-amber-200">Comic foundation</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
               Multi-page issues, issue-level CBZ/print export, linked panel groups, page templates, panel frames, image placement, grouped speech balloons with vector tails, lettering presets, direct transforms, and raster export are active.
-              Advanced balloon geometry and issue-level motion-comic handoff are next.
+              Issue-to-Motion Comic handoff is active with durable Studio Cloud panel assets and a bounded Personal Vault fallback. Advanced balloon geometry and deeper parallax/SFX automation are next.
             </p>
           </div>
         </aside>
