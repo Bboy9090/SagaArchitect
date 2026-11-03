@@ -70,7 +70,7 @@ export default function StudioHubPage({ params }: StudioHubPageProps) {
     <Navigation>
       <Header
         title="Phoenix Studio Hub"
-        subtitle={\`Unified production floor for \${project.name}\`}
+        subtitle={`Unified production floor for ${project.name}`}
       />
 
       <div className="mx-auto max-w-7xl px-6 py-8">
@@ -106,15 +106,15 @@ export default function StudioHubPage({ params }: StudioHubPageProps) {
             const href = studio.route?.(id);
             const card = (
               <article
-                className={\`group h-full rounded-2xl border p-5 transition-all \${href
+                className={`group h-full rounded-2xl border p-5 transition-all ${href
                   ? 'border-white/10 bg-[#0a1020] hover:-translate-y-0.5 hover:border-blue-300/30 hover:bg-[#0d1529]'
-                  : 'border-white/5 bg-[#080b13]'}\`}
+                  : 'border-white/5 bg-[#080b13]'}`}
               >
                 <div className="mb-4 flex items-start justify-between gap-4">
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-blue-400/15 bg-blue-400/5 text-xl text-blue-200">
                     {studio.icon}
                   </div>
-                  <span className={\`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider \${statusClasses[studio.status]}\`}>
+                  <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${statusClasses[studio.status]}`}>
                     {STUDIO_STATUS_LABELS[studio.status]}
                   </span>
                 </div>
