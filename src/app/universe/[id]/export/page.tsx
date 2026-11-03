@@ -322,6 +322,104 @@ export default function ExportPage({ params }: ExportPageProps) {
           </Card>
         </div>
 
+
+        {/* Creative Deliverables */}
+        <section className="space-y-4">
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-widest text-blue-300/70">
+              Creative Deliverables
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-gray-400">
+              Phoenix keeps finished media production tied to this project. Open the responsible studio to make the
+              final export with the project&apos;s current layers, timeline, captions, audio mix, and canon context.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {[
+              {
+                title: 'Image & Illustration',
+                icon: '◫',
+                formats: 'PNG · JPEG · WebP',
+                detail: 'Flatten layered image or illustration compositions with masks, adjustments, blend modes, raster paint, and references.',
+                href: `/universe/${id}/image`,
+                action: 'Open Image Studio',
+              },
+              {
+                title: 'Design & Covers',
+                icon: '▦',
+                formats: 'PNG · JPEG · WebP · SVG',
+                detail: 'Export covers, thumbnails, posters, social graphics, and layout compositions from Design Studio.',
+                href: `/universe/${id}/design`,
+                action: 'Open Design Studio',
+              },
+              {
+                title: 'Comic Pages',
+                icon: '▤',
+                formats: 'PNG · JPEG · WebP',
+                detail: 'Render panel layouts, lettering, balloons, captions, and page artwork from Comic Studio.',
+                href: `/universe/${id}/comic`,
+                action: 'Open Comic Studio',
+              },
+              {
+                title: 'Audio Mix',
+                icon: '♫',
+                formats: 'WAV',
+                detail: 'Render the Voice, Music, and SFX buses into a finished stereo WAV with trim, pan, gain, fades, mute, and solo respected.',
+                href: `/universe/${id}/audio`,
+                action: 'Open Audio Studio',
+              },
+              {
+                title: 'Video / Shorts',
+                icon: '▷',
+                formats: 'WebM',
+                detail: 'Render timeline clips, transforms, captions, fades, and timeline audio into a finished browser-encoded WebM.',
+                href: `/universe/${id}/video`,
+                action: 'Open Video Studio',
+              },
+              {
+                title: 'Motion Comics',
+                icon: '⌁',
+                formats: 'Storyboard → Video Studio',
+                detail: 'Build animated panel timing, camera moves, captions, and fades, then hand the result losslessly into Video Studio for final rendering.',
+                href: `/universe/${id}/motion`,
+                action: 'Open Motion Comic',
+              },
+            ].map(item => (
+              <div key={item.title} className="rounded-xl border border-white/10 bg-[#0b101c] p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-blue-400/15 bg-blue-400/5 text-lg text-blue-200">
+                      {item.icon}
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-white">{item.title}</h4>
+                      <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300/80">{item.formats}</p>
+                    </div>
+                  </div>
+                </div>
+                <p className="mt-3 text-xs leading-5 text-gray-500">{item.detail}</p>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="mt-4 w-full"
+                  onClick={() => router.push(item.href)}
+                >
+                  {item.action}
+                </Button>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-4">
+            <div className="text-xs font-bold text-amber-200">Format truth boundary</div>
+            <p className="mt-1 text-[11px] leading-5 text-gray-500">
+              Phoenix currently exports browser-native WebM for final video. MP4/H.264 is not presented as available until a
+              verified server/native transcode path lands. WAV is the authoritative finished audio mix format today.
+            </p>
+          </div>
+        </section>
+
         {/* Detailed Content Preview */}
         <div className="space-y-4">
           <h3 className="text-xs font-bold uppercase tracking-widest text-[#c9a84c]/70">
