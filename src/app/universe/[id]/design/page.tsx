@@ -399,29 +399,35 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
     }));
   };
 
+  const commitSelectedTransform = (transform: PhoenixMediaLayer['transform']) => {
+    if (!selected) return;
+    const nextTransform = {
+      ...transform,
+      width: Math.max(1, transform.width),
+      height: Math.max(1, transform.height),
+    };
+    const scaleX = selected.transform.width > 0 ? nextTransform.width / selected.transform.width : 1;
+    const scaleY = selected.transform.height > 0 ? nextTransform.height / selected.transform.height : 1;
+    const patch: Partial<PhoenixMediaLayer> = {
+      transform: nextTransform,
+      vectorMask: scaleVectorMask(selected.vectorMask, scaleX, scaleY),
+    } as Partial<PhoenixMediaLayer>;
+    if (selected.type === 'path' && !selected.symbolId) {
+      Object.assign(patch, {
+        points: scaleVectorPoints(selected.points, scaleX, scaleY),
+        contours: scaleVectorContours(selected.contours, scaleX, scaleY),
+      });
+    }
+    patchLayer(patch);
+  };
+
   const patchTransform = (key: keyof PhoenixMediaLayer['transform'], value: number) => {
     if (!selected) return;
     const nextValue = key === 'rotation' ? value : quantize(value);
-    if (key === 'width' || key === 'height') {
-      const previousSize = selected.transform[key];
-      const safeNext = Math.max(1, nextValue);
-      const ratio = previousSize > 0 ? safeNext / previousSize : 1;
-      const scaleX = key === 'width' ? ratio : 1;
-      const scaleY = key === 'height' ? ratio : 1;
-      const patch: Partial<PhoenixMediaLayer> = {
-        transform: { ...selected.transform, [key]: safeNext },
-        vectorMask: scaleVectorMask(selected.vectorMask, scaleX, scaleY),
-      } as Partial<PhoenixMediaLayer>;
-      if (selected.type === 'path' && !selected.symbolId) {
-        Object.assign(patch, {
-          points: scaleVectorPoints(selected.points, scaleX, scaleY),
-          contours: scaleVectorContours(selected.contours, scaleX, scaleY),
-        });
-      }
-      patchLayer(patch);
-      return;
-    }
-    patchLayer({ transform: { ...selected.transform, [key]: nextValue } } as Partial<PhoenixMediaLayer>);
+    commitSelectedTransform({
+      ...selected.transform,
+      [key]: key === 'width' || key === 'height' ? Math.max(1, nextValue) : nextValue,
+    });
   };
 
   const exportFlattened = async (format: PhoenixRasterExportFormat) => {
@@ -644,7 +650,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                   locked={isLayerEffectivelyLocked(selected, document)}
                   allowMove={selected.type !== 'raster'}
                   snapValue={snapValue}
-                  onCommit={transform => patchLayer({ transform } as Partial<PhoenixMediaLayer>)}
+                  onCommit={commitSelectedTransform}
                 />
               )}
               </div>
