@@ -15,6 +15,7 @@ import { SymbolPanel } from '@/components/media/SymbolPanel';
 import { VectorMaskPanel } from '@/components/media/VectorMaskPanel';
 import { LayerShadowPanel } from '@/components/media/LayerShadowPanel';
 import { MediaDocumentIO } from '@/components/media/MediaDocumentIO';
+import { LayerAlignmentPanel } from '@/components/media/LayerAlignmentPanel';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
@@ -1133,6 +1134,12 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                   )}
                 </div>
               )}
+
+              <LayerAlignmentPanel
+                transform={selectedLayer.transform}
+                document={document}
+                onCommit={commitSelectedTransform}
+              />
 
               <div className="grid grid-cols-2 gap-2">
                 {(['x', 'y', 'width', 'height'] as const).map(key => (
