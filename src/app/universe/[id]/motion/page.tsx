@@ -201,7 +201,19 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
         : panel.image_base64 || undefined,
     }));
     const next = buildMotionComicTimeline(id, scene.title, inputs, secondsPerPanel);
-    setTimeline(next);
+    setTimeline(current => {
+      if (!current) return next;
+      const videoTracks = next.tracks.filter(track => track.kind === 'video');
+      const audioTracks = current.tracks
+        .filter(track => track.kind === 'audio')
+        .map((track, index) => ({ ...track, order: videoTracks.length + index }));
+      return {
+        ...next,
+        tracks: [...videoTracks, ...audioTracks],
+      };
+    });
+    setSelectedClipId('');
+    setSelectedTrackId('');
     setPlayhead(0);
     setPlaying(false);
     const visualCount = inputs.filter(item => item.imageSrc).length;
@@ -415,21 +427,45 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
                 className="relative flex max-h-[520px] w-full items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-black"
                 style={{ aspectRatio: canvasRatio }}
               >
-                {!activeClip && <div className="text-sm text-slate-600">Build a motion timeline to preview storyboard animation.</div>}
-                {activeClip && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={activeClip.src}
-                    alt=""
-                    className="h-full w-full object-contain"
-                    style={{
-                      opacity: activeOpacity,
-                      transform: activeTransform
-                        ? `translate(${activeTransform.x}px, ${activeTransform.y}px) scale(${activeTransform.scale}) rotate(${activeTransform.rotation}deg)`
-                        : undefined,
-                    }}
-                  />
-                )}
+                {activeVisualLayers.length === 0 && <div className="text-sm text-slate-600">Build a motion timeline to preview storyboard animation.</div>}
+                {activeVisualLayers.map(({ clip, trackOrder }) => {
+                  const transform = clipTransformAt(clip, playhead);
+                  const opacity = clipTransitionOpacity(clip, playhead);
+                  const layerStyle: React.CSSProperties = {
+                    position: 'absolute',
+                    inset: 0,
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    opacity,
+                    zIndex: trackOrder + 1,
+                    transform: `translate(${(transform.x / Math.max(1, timeline?.width || 1920)) * 100}%, ${(transform.y / Math.max(1, timeline?.height || 1080)) * 100}%) scale(${transform.scale}) rotate(${transform.rotation}deg)`,
+                    transformOrigin: 'center',
+                  };
+                  if (clip.kind === 'image') {
+                    return (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img key={clip.id} src={clip.src} alt="" style={layerStyle} />
+                    );
+                  }
+                  if (clip.kind === 'video') {
+                    return (
+                      <video
+                        key={clip.id}
+                        ref={element => {
+                          if (element) visualVideoRefs.current.set(clip.id, element);
+                          else visualVideoRefs.current.delete(clip.id);
+                        }}
+                        src={clip.src}
+                        muted
+                        playsInline
+                        preload="metadata"
+                        style={layerStyle}
+                      />
+                    );
+                  }
+                  return null;
+                })}
                 {activeCaption && (
                   <div
                     className={`pointer-events-none absolute left-1/2 z-20 max-w-[88%] -translate-x-1/2 rounded px-4 py-2 text-center font-bold ${activeCaption.position === 'top' ? 'top-[8%]' : activeCaption.position === 'center' ? 'top-1/2 -translate-y-1/2' : 'bottom-[8%]'}`}
@@ -442,6 +478,17 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
                     {activeCaption.text}
                   </div>
                 )}
+                {activeAudioClips.map(clip => (
+                  <audio
+                    key={clip.id}
+                    ref={element => {
+                      if (element) audioRefs.current.set(clip.id, element);
+                      else audioRefs.current.delete(clip.id);
+                    }}
+                    src={clip.src}
+                    preload="metadata"
+                  />
+                ))}
               </div>
 
               {timeline && (
@@ -491,28 +538,101 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
               <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
                 <div className="text-sm font-black text-white">{timeline.title}</div>
                 <div className="mt-1 text-[10px] text-slate-500">{timeline.width} × {timeline.height} · {timeline.fps} fps</div>
-                <div className="mt-1 text-[10px] text-slate-500">{timeline.tracks[0]?.clips.length || 0} visual clips · {timeline.captions.length} dialogue captions</div>
+                <div className="mt-1 text-[10px] text-slate-500">{timeline.tracks.filter(track => track.kind === 'video').reduce((sum, track) => sum + track.clips.length, 0)} visual clips · {timeline.captions.length} dialogue captions</div>
               </div>
 
-              <div className="mt-4 space-y-2">
-                {(timeline.tracks[0]?.clips || []).map(clip => (
-                  <button
-                    key={clip.id}
-                    type="button"
-                    onClick={() => setPlayhead(clip.start)}
-                    className="min-h-12 w-full rounded-lg border border-white/10 bg-white/[0.02] px-3 text-left hover:border-violet-400/40"
-                  >
-                    <span className="block truncate text-xs font-bold text-white">{clip.name}</span>
-                    <span className="block text-[9px] uppercase text-slate-500">{clip.start.toFixed(1)}s · {timelineClipDuration(clip).toFixed(1)}s</span>
-                  </button>
-                ))}
+              <div className="mt-5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-black uppercase tracking-[.25em] text-violet-300/70">Visual Tracks</p>
+                  <Button size="sm" variant="ghost" onClick={addOverlayTrack}>+ Overlay</Button>
+                </div>
+                <div className="mt-2 space-y-2">
+                  {[...timeline.tracks].filter(track => track.kind === 'video').sort((a, b) => a.order - b.order).map((track, index, ordered) => {
+                    const canRemove = track.clips.length === 0 && ordered.length > 1;
+                    return (
+                      <div key={track.id} className={`rounded-lg border p-2 ${selectedTrackId === track.id ? 'border-violet-400/50 bg-violet-400/10' : 'border-white/10 bg-white/[0.02]'}`}>
+                        <button type="button" onClick={() => setSelectedTrackId(track.id)} className="flex w-full items-center justify-between gap-2 text-left">
+                          <span className="truncate text-xs font-bold text-white">{track.name}</span>
+                          <span className="text-[9px] text-slate-500">{track.clips.length} clips</span>
+                        </button>
+                        <div className="mt-2 grid grid-cols-3 gap-1">
+                          <Button size="sm" variant="ghost" disabled={index === 0} onClick={() => shiftTrack(track.id, -1)}>↑</Button>
+                          <Button size="sm" variant="ghost" disabled={index === ordered.length - 1} onClick={() => shiftTrack(track.id, 1)}>↓</Button>
+                          <Button size="sm" variant="ghost" disabled={!canRemove} onClick={() => deleteEmptyTrack(track.id)}>×</Button>
+                        </div>
+                        <div className="mt-2 space-y-1">
+                          {track.clips.map(clip => (
+                            <button
+                              key={clip.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedTrackId(track.id);
+                                setSelectedClipId(clip.id);
+                                setPlayhead(clip.start);
+                              }}
+                              className={`min-h-10 w-full rounded border px-2 text-left ${selectedClipId === clip.id ? 'border-violet-300 bg-violet-500/20' : 'border-white/5 bg-black/10'}`}
+                            >
+                              <span className="block truncate text-[10px] font-bold text-white">{clip.name}</span>
+                              <span className="block text-[9px] text-slate-500">{clip.start.toFixed(1)}s · {timelineClipDuration(clip).toFixed(1)}s</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
+
+              {isDbMode() && assets.some(asset => asset.mime_type.startsWith('image/')) && (
+                <div className="mt-5">
+                  <p className="mb-2 text-[10px] font-black uppercase tracking-[.25em] text-violet-300/70">Overlay Assets</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {assets.filter(asset => asset.mime_type.startsWith('image/')).slice(0, 20).map(asset => (
+                      <button
+                        key={asset.id}
+                        type="button"
+                        onClick={() => addOverlayAsset(asset)}
+                        className="overflow-hidden rounded-lg border border-white/10 bg-black/20 text-left hover:border-violet-400/40"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={asset.serve_url || `/api/db/assets/${asset.id}/serve`} alt="" className="aspect-square w-full object-cover" />
+                        <span className="block truncate px-2 py-1 text-[9px] text-slate-400">{asset.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedClip && selectedClip.kind !== 'audio' && (
+                <div className="mt-5 rounded-xl border border-violet-400/15 bg-violet-400/[0.04] p-3">
+                  <div className="text-xs font-bold text-violet-100">Motion Layer</div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    {(['scale', 'x', 'y', 'rotation'] as const).map(key => (
+                      <label key={key} className="text-[9px] uppercase text-slate-500">{key}
+                        <input
+                          type="number"
+                          step={key === 'scale' ? 0.05 : 1}
+                          value={selectedClip.transform[key]}
+                          onChange={event => patchClip(selectedClip.id, {
+                            transform: { ...selectedClip.transform, [key]: Number(event.target.value) },
+                          })}
+                          className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-xs text-white"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <Button size="sm" variant="secondary" className="mt-3 w-full" onClick={addTransformKeyframe}>
+                    Keyframe Transform Here
+                  </Button>
+                  <div className="mt-2 text-[9px] text-slate-500">{selectedClip.keyframes.length} transform keyframes</div>
+                </div>
+              )}
 
               <div className="mt-5 rounded-xl border border-amber-400/15 bg-amber-400/[0.04] p-3">
                 <div className="text-xs font-bold text-amber-200">Next motion tier</div>
                 <p className="mt-1 text-[11px] leading-5 text-slate-500">
-                  The generated motion timeline is real and persistent. Next additions are layered parallax,
-                  speech balloons, SFX overlays, mouth/pose swaps, synchronized Audio Studio tracks, and final video rendering.
+                  Layered overlay tracks, project-image FX, transform keyframes, synchronized Audio Studio mixes, and cloud-safe Video promotion are active.
+                  Next additions are depth-assisted parallax, SFX automation, mouth/pose swaps, and richer easing controls.
                 </p>
               </div>
             </>
