@@ -420,7 +420,7 @@ export default function CanonCorePage({ params }: CanonPageProps) {
           {!isDbMode() ? (
             <div className="bg-[#121217] border border-[#c9a84c]/20 rounded-lg p-4 text-center">
               <p className="text-gray-400 text-sm">
-                🗄️ The Asset Library is available in **PostgreSQL Database Mode**. Switch to DB Mode on the dashboard to upload and serve reference images.
+                🗄️ The Asset Library is available in **PostgreSQL Database Mode**. Switch to DB Mode on the dashboard to upload and serve production media.
               </p>
             </div>
           ) : (
@@ -429,7 +429,7 @@ export default function CanonCorePage({ params }: CanonPageProps) {
                 <input
                   type="file"
                   id="asset-upload-input"
-                  accept="image/png, image/jpeg, image/gif, image/webp"
+                  accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,audio/wav,audio/mpeg"
                   className="hidden"
                   onChange={async (e) => {
                     const file = e.target.files?.[0];
@@ -453,9 +453,9 @@ export default function CanonCorePage({ params }: CanonPageProps) {
                   loading={genLoading === 'asset-upload'}
                   onClick={() => document.getElementById('asset-upload-input')?.click()}
                 >
-                  📤 Upload Reference Image
+                  📤 Upload Media
                 </Button>
-                <span className="text-xs text-gray-500">Max size: 5MB. PNG, JPG, GIF, WEBP.</span>
+                <span className="text-xs text-gray-500">Images: 5MB max. MP4/WebM/WAV/MP3: 64MB max.</span>
               </div>
 
               {assetsList.length === 0 ? (
@@ -464,13 +464,30 @@ export default function CanonCorePage({ params }: CanonPageProps) {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   {assetsList.map((asset) => (
                     <div key={asset.id} className="relative group bg-[#121217] border border-[#c9a84c]/10 hover:border-[#c9a84c]/30 rounded-lg p-2 flex flex-col justify-between overflow-hidden">
-                      <div className="aspect-video w-full relative bg-black/40 rounded overflow-hidden mb-2">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={asset.serve_url}
-                          alt={asset.name}
-                          className="w-full h-full object-cover"
-                        />
+                      <div className="aspect-video w-full relative bg-black/40 rounded overflow-hidden mb-2 flex items-center justify-center">
+                        {asset.mime_type.startsWith('image/') ? (
+                          <>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={asset.serve_url}
+                              alt={asset.name}
+                              className="w-full h-full object-cover"
+                            />
+                          </>
+                        ) : asset.mime_type.startsWith('video/') ? (
+                          <video
+                            src={asset.serve_url}
+                            className="w-full h-full object-cover"
+                            preload="metadata"
+                            muted
+                            playsInline
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center gap-1 text-violet-300">
+                            <span className="text-3xl">♫</span>
+                            <span className="text-[9px] uppercase tracking-wider">{asset.mime_type}</span>
+                          </div>
+                        )}
                       </div>
                       <div className="flex flex-col min-w-0">
                         <span className="text-xs font-bold text-white truncate" title={asset.name}>{asset.name}</span>
