@@ -533,6 +533,9 @@ export default function CanonCorePage({ params }: CanonPageProps) {
             <Button variant="gold" size="sm" onClick={() => router.push(`/universe/${id}/studio`)}>
               ✦ Open Studio Hub
             </Button>
+            <Button variant="secondary" size="sm" onClick={() => router.push(`/universe/${id}/director`)}>
+              ◆ AI Director
+            </Button>
             <Button variant="secondary" size="sm" onClick={() => router.push(`/universe/${id}/stories`)}>
               📖 Writing Room
             </Button>
