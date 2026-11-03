@@ -5,7 +5,19 @@ export type PhoenixMediaDocumentKind =
   | 'comic_page'
   | 'video_frame';
 
-export type PhoenixBlendMode = 'normal' | 'multiply' | 'screen' | 'overlay';
+export type PhoenixBlendMode =
+  | 'normal'
+  | 'multiply'
+  | 'screen'
+  | 'overlay'
+  | 'darken'
+  | 'lighten'
+  | 'color-dodge'
+  | 'color-burn'
+  | 'hard-light'
+  | 'soft-light'
+  | 'difference'
+  | 'exclusion';
 export type PhoenixLayerType = 'text' | 'shape' | 'image' | 'raster';
 
 export interface PhoenixLayerTransform {
@@ -22,6 +34,8 @@ export interface PhoenixLayerAdjustments {
   saturation: number;
   grayscale: number;
   sepia: number;
+  invert: number;
+  hueRotate: number;
   blur: number;
 }
 
@@ -174,6 +188,8 @@ export const DEFAULT_LAYER_ADJUSTMENTS: PhoenixLayerAdjustments = {
   saturation: 100,
   grayscale: 0,
   sepia: 0,
+  invert: 0,
+  hueRotate: 0,
   blur: 0,
 };
 
@@ -189,6 +205,8 @@ export function layerCssFilter(layer: Pick<PhoenixBaseLayer, 'adjustments'>): st
     `saturate(${Math.max(0, a.saturation)}%)`,
     `grayscale(${Math.max(0, Math.min(100, a.grayscale))}%)`,
     `sepia(${Math.max(0, Math.min(100, a.sepia))}%)`,
+    `invert(${Math.max(0, Math.min(100, a.invert))}%)`,
+    `hue-rotate(${Math.max(-180, Math.min(180, a.hueRotate))}deg)`,
     `blur(${Math.max(0, a.blur)}px)`,
   ].join(' ');
 }
