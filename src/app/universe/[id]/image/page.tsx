@@ -16,6 +16,7 @@ import { VectorMaskPanel } from '@/components/media/VectorMaskPanel';
 import { LayerShadowPanel } from '@/components/media/LayerShadowPanel';
 import { MediaDocumentIO } from '@/components/media/MediaDocumentIO';
 import { LayerAlignmentPanel } from '@/components/media/LayerAlignmentPanel';
+import { MultiLayerLayoutPanel } from '@/components/media/MultiLayerLayoutPanel';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
@@ -81,6 +82,11 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
   const [history, setHistory] = useState<PhoenixDocumentHistory | null>(null);
   const [selectedLayerId, setSelectedLayerId] = useState('');
   const [additionalLayerIds, setAdditionalLayerIds] = useState<string[]>([]);
+
+  const focusLayer = (layerId: string) => {
+    setSelectedLayerId(layerId);
+    setAdditionalLayerIds([]);
+  };
 
   useEffect(() => {
     setAdditionalLayerIds([]);
@@ -158,7 +164,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
 
   const selectLayer = (layerId: string, additive = false) => {
     if (!additive || !selectedLayerId) {
-      setSelectedLayerId(layerId);
+      focusLayer(layerId);
       setAdditionalLayerIds([]);
       return;
     }
@@ -245,7 +251,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
     const instance = createSymbolInstance(document, symbolId, nextLayerZIndex(document.layers));
     if (!instance) return;
     updateDocument(current => ({ ...current, layers: [...current.layers, instance] }));
-    setSelectedLayerId(instance.id);
+    focusLayer(instance.id);
   };
 
   const detachSelectedSymbol = () => {
@@ -278,7 +284,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
       align: 'left',
     };
     updateDocument(current => ({ ...current, layers: [...current.layers, layer] }));
-    setSelectedLayerId(id);
+    focusLayer(id);
   };
 
   const addRasterLayer = () => {
@@ -297,7 +303,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
       src: '',
     };
     updateDocument(current => ({ ...current, layers: [...current.layers, layer] }));
-    setSelectedLayerId(id);
+    focusLayer(id);
   };
 
   const addShapeLayer = (shape: 'rectangle' | 'ellipse') => {
@@ -319,7 +325,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
       strokeWidth: 0,
     };
     updateDocument(current => ({ ...current, layers: [...current.layers, layer] }));
-    setSelectedLayerId(id);
+    focusLayer(id);
   };
 
   const addPathLayer = () => {
@@ -349,7 +355,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
       strokeWidth: 8,
     };
     updateDocument(current => ({ ...current, layers: [...current.layers, layer] }));
-    setSelectedLayerId(id);
+    focusLayer(id);
   };
 
   const addAssetLayer = (asset: ProjectAsset) => {
@@ -370,7 +376,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
       fit: 'contain',
     };
     updateDocument(current => ({ ...current, layers: [...current.layers, layer] }));
-    setSelectedLayerId(layerId);
+    focusLayer(layerId);
   };
 
   const patchSelectedLayer = (patch: Partial<PhoenixMediaLayer>) => {
@@ -424,7 +430,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
   const deleteSelectedLayer = () => {
     if (!selectedLayer) return;
     updateDocument(current => removeLayerPreservingSymbols(current, selectedLayer.id));
-    setSelectedLayerId('');
+    focusLayer('');
   };
 
   const duplicateSelectedLayer = () => {
@@ -446,7 +452,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
       adjustments: selectedLayer.adjustments ? { ...selectedLayer.adjustments } : undefined,
     } as PhoenixMediaLayer;
     updateDocument(current => ({ ...current, layers: [...current.layers, duplicate] }));
-    setSelectedLayerId(id);
+    focusLayer(id);
   };
 
   const moveLayer = (direction: 1 | -1) => {
@@ -563,7 +569,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
               document={document}
               onImport={imported => {
                 setHistory(createDocumentHistory(imported));
-                setSelectedLayerId('');
+                focusLayer('');
                 setExportError('');
               }}
               onError={setExportError}
@@ -596,7 +602,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
               selectedLayer={selectedLayer}
               onCreateFromSelected={createSymbolFromSelected}
               onInsert={insertSymbol}
-              onSelectMaster={setSelectedLayerId}
+              onSelectMaster={focusLayer}
               onDetachSelected={detachSelectedSymbol}
             />
           </div>
@@ -609,7 +615,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
             <Button size="sm" variant="secondary" onClick={() => {
               const layer = createAdjustmentLayer(document);
               updateDocument(current => ({ ...current, layers: [...current.layers, layer] }));
-              setSelectedLayerId(layer.id);
+              focusLayer(layer.id);
             }}>Adjustment</Button>
             <Button size="sm" variant="secondary" onClick={addRasterLayer}>Paint Layer</Button>
           </div>
@@ -855,7 +861,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                           brushSize={brushSize}
                           brushOpacity={brushOpacity}
                           erase={eraseMode}
-                          onSelect={() => setSelectedLayerId(layer.id)}
+                          onSelect={() => focusLayer(layer.id)}
                           onCommit={(src) => {
                             updateDocument(current => ({
                               ...current,
