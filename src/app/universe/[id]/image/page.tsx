@@ -18,6 +18,13 @@ import {
   type PhoenixMediaDocument,
   type PhoenixMediaLayer,
 } from '@/lib/media-composition';
+import {
+  commitDocumentHistory,
+  createDocumentHistory,
+  redoDocumentHistory,
+  undoDocumentHistory,
+  type PhoenixDocumentHistory,
+} from '@/lib/media-history';
 import type { Universe } from '@/lib/types';
 
 interface ImageStudioPageProps {
@@ -31,7 +38,7 @@ function layerMixBlendMode(mode: PhoenixMediaLayer['blendMode']): React.CSSPrope
 export default function ImageStudioPage({ params }: ImageStudioPageProps) {
   const { id } = use(params);
   const [project, setProject] = useState<Universe | null>(null);
-  const [document, setDocument] = useState<PhoenixMediaDocument | null>(null);
+  const [history, setHistory] = useState<PhoenixDocumentHistory | null>(null);
   const [selectedLayerId, setSelectedLayerId] = useState('');
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,7 +56,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
         if (cancelled) return;
         setProject(loadedProject);
         const loadedDocument = loadPhoenixMediaDocument(id, 'image') || createPhoenixMediaDocument(id, 'image');
-        setDocument(loadedDocument);
+        setHistory(createDocumentHistory(loadedDocument));
         if (isDbMode()) setAssets(await dbGetAssets(id));
       } finally {
         if (!cancelled) setLoading(false);
@@ -67,6 +74,8 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
     return () => window.clearTimeout(handle);
   }, [document, loading]);
 
+  const document = history?.present || null;
+
   const sortedLayers = useMemo(
     () => [...(document?.layers || [])].sort((a, b) => a.zIndex - b.zIndex),
     [document?.layers],
@@ -75,7 +84,10 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
   const selectedLayer = document?.layers.find(layer => layer.id === selectedLayerId) || null;
 
   const updateDocument = (updater: (current: PhoenixMediaDocument) => PhoenixMediaDocument) => {
-    setDocument(current => current ? updater(current) : current);
+    setHistory(current => {
+      if (!current) return current;
+      return commitDocumentHistory(current, updater(current.present));
+    });
   };
 
   const addTextLayer = () => {
@@ -226,10 +238,18 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
         title="Image Studio"
         subtitle={`Layered image composition for ${project?.name || 'Phoenix production'}`}
         actions={
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span>{document.width} × {document.height}</span>
-            <span>•</span>
-            <span>{savedAt ? 'Autosaved' : 'Ready'}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="ghost" disabled={!history || history.past.length === 0} onClick={() => setHistory(current => current ? undoDocumentHistory(current) : current)}>
+              Undo
+            </Button>
+            <Button size="sm" variant="ghost" disabled={!history || history.future.length === 0} onClick={() => setHistory(current => current ? redoDocumentHistory(current) : current)}>
+              Redo
+            </Button>
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <span>{document.width} × {document.height}</span>
+              <span>•</span>
+              <span>{savedAt ? 'Autosaved' : 'Ready'}</span>
+            </div>
           </div>
         }
       />
