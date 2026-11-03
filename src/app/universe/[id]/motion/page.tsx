@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { getScenes, getStoryboardPanels, getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
-import { dbGetProject, dbGetScenes, dbGetStoryboardPanels } from '@/lib/db-client';
+import { dbGetProject, dbGetScenes, dbGetStoryboardPanels, dbGetStudioDocument, dbSaveStudioDocument } from '@/lib/db-client';
 import {
   buildMotionComicTimeline,
   loadMotionComicTimeline,
@@ -24,6 +24,7 @@ import {
   type PhoenixVideoTimeline,
 } from '@/lib/video-timeline';
 import type { Scene, StoryboardPanel, Universe } from '@/lib/types';
+import { newestStudioDocument } from '@/lib/studio-document';
 
 interface MotionComicPageProps {
   params: Promise<{ id: string }>;
@@ -58,7 +59,9 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
           const loadedPanels = isDbMode() ? await dbGetStoryboardPanels(firstScene) : getStoryboardPanels(firstScene);
           setPanels(loadedPanels);
         }
-        setTimeline(loadMotionComicTimeline(id));
+        const localTimeline = loadMotionComicTimeline(id);
+        const cloudTimeline = isDbMode() ? await dbGetStudioDocument<PhoenixVideoTimeline>(id, 'motion_timeline') : null;
+        setTimeline(newestStudioDocument(localTimeline, cloudTimeline));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -78,9 +81,15 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
 
   useEffect(() => {
     if (!timeline) return;
-    const handle = window.setTimeout(() => saveMotionComicTimeline(timeline), 250);
+    const handle = window.setTimeout(() => {
+      const saved = saveMotionComicTimeline(timeline);
+      if (isDbMode()) {
+        void dbSaveStudioDocument(id, 'motion_timeline', saved)
+          .catch(error => setStatus(error instanceof Error ? error.message : 'Studio Cloud motion autosave failed.'));
+      }
+    }, 500);
     return () => window.clearTimeout(handle);
-  }, [timeline]);
+  }, [timeline, id]);
 
   const duration = useMemo(() => timeline ? timelineDuration(timeline) : 1, [timeline]);
   const activeClip = useMemo(() => {

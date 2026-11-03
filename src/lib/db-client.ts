@@ -1,5 +1,6 @@
 import type { Universe as Project, Character, Scene, StoryboardPanel, WritingDocument, WritingDocumentRevision } from './types';
 import type { PhoenixMediaDocument, PhoenixMediaDocumentKind } from './media-composition';
+import type { PhoenixStudioDocument, PhoenixStudioDocumentEnvelope, PhoenixStudioDocumentKind } from './studio-document';
 
 async function handleResponse<T>(res: Response): Promise<T> {
   const json = await res.json();
@@ -358,4 +359,59 @@ export async function dbDeleteComicPage(projectId: string, kind: PhoenixMediaDoc
   const key = mediaDocumentKey(projectId, kind);
   mediaDocumentVersions.delete(key);
   mediaDocumentSaveQueues.delete(key);
+}
+
+
+// STUDIO TIMELINE DOCUMENTS
+const studioDocumentVersions = new Map<string, number>();
+const studioDocumentSaveQueues = new Map<string, Promise<PhoenixStudioDocument>>();
+const studioDocumentFingerprints = new Map<string, string>();
+
+function studioDocumentKey(projectId: string, kind: PhoenixStudioDocumentKind): string {
+  return `${projectId}:${kind}`;
+}
+
+export async function dbGetStudioDocument<T extends PhoenixStudioDocument>(
+  projectId: string,
+  kind: PhoenixStudioDocumentKind,
+): Promise<T | null> {
+  const res = await fetch(`/api/db/projects/${projectId}/studio-documents?kind=${encodeURIComponent(kind)}`);
+  const envelope = await handleResponse<PhoenixStudioDocumentEnvelope<T> | null>(res);
+  const key = studioDocumentKey(projectId, kind);
+  if (!envelope) {
+    studioDocumentVersions.set(key, 0);
+    studioDocumentFingerprints.delete(key);
+    return null;
+  }
+  studioDocumentVersions.set(key, envelope.version);
+  studioDocumentFingerprints.set(key, JSON.stringify(envelope.document));
+  return envelope.document;
+}
+
+export function dbSaveStudioDocument<T extends PhoenixStudioDocument>(
+  projectId: string,
+  kind: PhoenixStudioDocumentKind,
+  document: T,
+): Promise<T> {
+  const key = studioDocumentKey(projectId, kind);
+  const fingerprint = JSON.stringify(document);
+  if (studioDocumentFingerprints.get(key) === fingerprint) return Promise.resolve(document);
+  const previous = studioDocumentSaveQueues.get(key) || Promise.resolve(document);
+  const next = previous.catch(() => document).then(async () => {
+    const expectedVersion = studioDocumentVersions.get(key) ?? 0;
+    const res = await fetch(`/api/db/projects/${projectId}/studio-documents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind, document, expected_version: expectedVersion }),
+    });
+    const envelope = await handleResponse<PhoenixStudioDocumentEnvelope<T>>(res);
+    studioDocumentVersions.set(key, envelope.version);
+    studioDocumentFingerprints.set(key, fingerprint);
+    return envelope.document;
+  });
+  studioDocumentSaveQueues.set(key, next as Promise<PhoenixStudioDocument>);
+  void next.finally(() => {
+    if (studioDocumentSaveQueues.get(key) === next) studioDocumentSaveQueues.delete(key);
+  });
+  return next;
 }
