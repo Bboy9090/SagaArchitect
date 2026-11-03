@@ -24,6 +24,7 @@ import {
   type PhoenixTimelineClipKind,
   type PhoenixVideoTimeline,
 } from '@/lib/video-timeline';
+import { downloadVideoBlob, renderPhoenixTimelineWebm } from '@/lib/video-renderer';
 import type { Universe } from '@/lib/types';
 
 interface VideoStudioPageProps {
@@ -67,6 +68,8 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState('');
   const [captionText, setCaptionText] = useState('');
+  const [rendering, setRendering] = useState(false);
+  const [renderProgress, setRenderProgress] = useState(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -264,6 +267,26 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
     setTimeline(current => current ? { ...current, width, height } : current);
   };
 
+  const renderWebm = async () => {
+    if (!timeline || rendering) return;
+    setRendering(true);
+    setRenderProgress(0);
+    setStatus('Rendering WebM in real time...');
+    setPlaying(false);
+    try {
+      const blob = await renderPhoenixTimelineWebm(timeline, progress => {
+        setRenderProgress(Math.round(progress.ratio * 100));
+      });
+      downloadVideoBlob(blob, timeline.title || 'phoenix-video');
+      setStatus('WebM video exported.');
+      setRenderProgress(100);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Video render failed.');
+    } finally {
+      setRendering(false);
+    }
+  };
+
   const uploadMedia = async (file: File) => {
     if (!isDbMode()) return;
     setUploading(true);
@@ -297,6 +320,9 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
             <Button size="sm" variant={timeline.width > timeline.height ? 'gold' : 'ghost'} onClick={() => setCanvasPreset(1920,1080)}>16:9</Button>
             <Button size="sm" variant={timeline.height > timeline.width ? 'gold' : 'ghost'} onClick={() => setCanvasPreset(1080,1920)}>9:16</Button>
             <Button size="sm" variant={timeline.height === timeline.width ? 'gold' : 'ghost'} onClick={() => setCanvasPreset(1080,1080)}>1:1</Button>
+            <Button size="sm" variant="gold" loading={rendering} onClick={() => void renderWebm()}>
+              {rendering ? `Rendering ${renderProgress}%` : 'Export WebM'}
+            </Button>
           </div>
         }
       />
@@ -557,7 +583,8 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
             <div className="text-xs font-bold text-amber-200">Timeline foundation</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
               Real media ingest, preview, timing, trim, split, speed, volume, and vertical-video canvases are active.
-              Captions, audio waveforms, fade transitions, and transform keyframes are active. Multi-layer compositing, richer transitions, effects, and final MP4 render are the next video-engine tier.
+              Captions, audio waveforms, fade transitions, transform keyframes, and browser-native WebM rendering are active.
+              Richer compositing/effects and server-side MP4/H.264 transcode are the next video-engine tier.
             </p>
           </div>
         </aside>
