@@ -3,6 +3,7 @@ import {
   isLayerEffectivelyVisible,
   layerCssFilter,
   resolveSymbolLayer,
+  shadowCssColor,
   textLetterSpacing,
   textLineHeight,
   vectorPathFillRule,
@@ -253,6 +254,12 @@ export async function renderPhoenixMediaDocument(documentModel: PhoenixMediaDocu
     const { x, y, width, height, rotation } = resolvedLayer.transform;
     ctx.save();
     applyCommonLayerState(ctx, resolvedLayer, documentModel);
+    if (resolvedLayer.shadow) {
+      ctx.shadowColor = shadowCssColor(resolvedLayer.shadow);
+      ctx.shadowBlur = Math.max(0, resolvedLayer.shadow.blur);
+      ctx.shadowOffsetX = resolvedLayer.shadow.offsetX;
+      ctx.shadowOffsetY = resolvedLayer.shadow.offsetY;
+    }
     ctx.translate(x + width / 2, y + height / 2);
     ctx.rotate((rotation * Math.PI) / 180);
     ctx.drawImage(bitmap, -width / 2, -height / 2, width, height);
