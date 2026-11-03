@@ -1,4 +1,6 @@
 import {
+  effectiveLayerOpacity,
+  isLayerEffectivelyVisible,
   layerCssFilter,
   type PhoenixImageLayer,
   type PhoenixMediaDocument,
@@ -24,8 +26,12 @@ function canvasFor(width: number, height: number): HTMLCanvasElement {
   return canvas;
 }
 
-function applyCommonLayerState(ctx: CanvasRenderingContext2D, layer: PhoenixMediaLayer) {
-  ctx.globalAlpha = Math.max(0, Math.min(1, layer.opacity));
+function applyCommonLayerState(
+  ctx: CanvasRenderingContext2D,
+  layer: PhoenixMediaLayer,
+  documentModel: PhoenixMediaDocument,
+) {
+  ctx.globalAlpha = effectiveLayerOpacity(layer, documentModel);
   ctx.globalCompositeOperation = layer.blendMode === 'normal' ? 'source-over' : layer.blendMode;
 }
 
@@ -192,14 +198,14 @@ export async function renderPhoenixMediaDocument(documentModel: PhoenixMediaDocu
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   const layers = [...documentModel.layers]
-    .filter(layer => layer.visible)
+    .filter(layer => isLayerEffectivelyVisible(layer, documentModel))
     .sort((a, b) => a.zIndex - b.zIndex);
 
   for (const layer of layers) {
     const bitmap = await renderLayerBitmap(layer);
     const { x, y, width, height, rotation } = layer.transform;
     ctx.save();
-    applyCommonLayerState(ctx, layer);
+    applyCommonLayerState(ctx, layer, documentModel);
     ctx.translate(x + width / 2, y + height / 2);
     ctx.rotate((rotation * Math.PI) / 180);
     ctx.drawImage(bitmap, -width / 2, -height / 2, width, height);
