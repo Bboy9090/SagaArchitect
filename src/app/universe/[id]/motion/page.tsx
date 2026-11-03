@@ -1,6 +1,7 @@
 'use client';
 
 import { use, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
@@ -19,6 +20,7 @@ import {
   clipTransformAt,
   timelineClipDuration,
   timelineDuration,
+  savePhoenixVideoTimeline,
   type PhoenixVideoTimeline,
 } from '@/lib/video-timeline';
 import type { Scene, StoryboardPanel, Universe } from '@/lib/types';
@@ -29,6 +31,7 @@ interface MotionComicPageProps {
 
 export default function MotionComicPage({ params }: MotionComicPageProps) {
   const { id } = use(params);
+  const router = useRouter();
   const [project, setProject] = useState<Universe | null>(null);
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [sceneId, setSceneId] = useState('');
@@ -144,6 +147,19 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
     );
   };
 
+  const continueInVideoStudio = () => {
+    if (!timeline) return;
+    const promoted: PhoenixVideoTimeline = {
+      ...timeline,
+      id: crypto.randomUUID(),
+      title: timeline.title.replace(/\s+Motion Comic$/i, '') + ' — Video Edit',
+      updatedAt: new Date().toISOString(),
+    };
+    savePhoenixVideoTimeline(promoted);
+    setStatus('Motion timeline promoted to Video Studio without flattening.');
+    router.push(`/universe/${id}/video`);
+  };
+
   const setCanvasPreset = (width: number, height: number) => {
     setTimeline(current => current ? { ...current, width, height } : current);
   };
@@ -173,6 +189,7 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
               <Button size="sm" variant={timeline.width > timeline.height ? 'gold' : 'ghost'} onClick={() => setCanvasPreset(1920, 1080)}>16:9</Button>
               <Button size="sm" variant={timeline.height > timeline.width ? 'gold' : 'ghost'} onClick={() => setCanvasPreset(1080, 1920)}>9:16</Button>
               <Button size="sm" variant={timeline.height === timeline.width ? 'gold' : 'ghost'} onClick={() => setCanvasPreset(1080, 1080)}>1:1</Button>
+              <Button size="sm" variant="secondary" onClick={continueInVideoStudio}>Continue in Video Studio →</Button>
             </div>
           ) : null
         }
