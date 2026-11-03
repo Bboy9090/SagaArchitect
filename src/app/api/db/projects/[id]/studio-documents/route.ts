@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
-import { studioDocuments } from '@/db/schema';
+import { studioDocuments, versionHistory } from '@/db/schema';
 import { AuthError, requireOwnedProject, requireUser } from '@/lib/auth-helpers';
 import {
   isPhoenixStudioDocumentKind,
@@ -85,11 +85,41 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     };
 
     if (existing) {
-      const [updated] = await db.update(studioDocuments).set({
-        document,
-        version: nextVersion,
-        updatedAt: now,
-      }).where(and(eq(studioDocuments.id, existing.id), eq(studioDocuments.version, existing.version))).returning();
+      const [latestCheckpoint] = await db.select({ createdAt: versionHistory.createdAt }).from(versionHistory)
+        .where(and(
+          eq(versionHistory.projectId, projectId),
+          eq(versionHistory.entityType, 'studio_document'),
+          eq(versionHistory.entityId, existing.id),
+        ))
+        .orderBy(desc(versionHistory.createdAt))
+        .limit(1);
+      const shouldCheckpoint = !latestCheckpoint
+        || now.getTime() - latestCheckpoint.createdAt.getTime() >= 10 * 60 * 1000;
+
+      const updated = await db.transaction(async tx => {
+        if (shouldCheckpoint) {
+          await tx.insert(versionHistory).values({
+            projectId,
+            userId,
+            action: 'update',
+            entityType: 'studio_document',
+            entityId: existing.id,
+            changeData: {
+              kind: payload.kind,
+              version: existing.version,
+              label: 'Automatic checkpoint',
+              reason: 'autosave_checkpoint',
+              document: existing.document,
+            },
+          });
+        }
+        const [row] = await tx.update(studioDocuments).set({
+          document,
+          version: nextVersion,
+          updatedAt: now,
+        }).where(and(eq(studioDocuments.id, existing.id), eq(studioDocuments.version, existing.version))).returning();
+        return row;
+      });
       if (!updated) return NextResponse.json({ ok: false, error: 'Studio timeline version conflict.' }, { status: 409 });
     } else {
       await db.insert(studioDocuments).values({
