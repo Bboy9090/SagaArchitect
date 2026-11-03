@@ -15,6 +15,8 @@ import {
   loadPhoenixMediaDocument,
   nextLayerZIndex,
   savePhoenixMediaDocument,
+  layerCssFilter,
+  normalizeLayerAdjustments,
   type PhoenixMediaDocument,
   type PhoenixMediaLayer,
 } from '@/lib/media-composition';
@@ -404,6 +406,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                   outlineOffset: 2,
                   cursor: layer.locked ? 'not-allowed' : 'pointer',
                   clipPath: selectedLayerClipPath(layer),
+                  filter: layerCssFilter(layer),
                 };
 
                 return (
@@ -596,6 +599,49 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                   <option value="overlay">Overlay</option>
                 </select>
               </label>
+
+              <div className="rounded-lg border border-violet-400/20 bg-violet-400/5 p-3">
+                <div className="mb-3 text-[10px] font-bold uppercase tracking-wider text-violet-300">Adjustments</div>
+                <div className="space-y-2">
+                  {([
+                    ['brightness', 'Brightness', 0, 200],
+                    ['contrast', 'Contrast', 0, 200],
+                    ['saturation', 'Saturation', 0, 200],
+                    ['grayscale', 'Grayscale', 0, 100],
+                    ['sepia', 'Sepia', 0, 100],
+                    ['blur', 'Blur', 0, 30],
+                  ] as const).map(([key, label, min, max]) => {
+                    const adjustments = normalizeLayerAdjustments(selectedLayer);
+                    return (
+                      <label key={key} className="block text-[10px] uppercase text-slate-500">
+                        <span className="flex items-center justify-between"><span>{label}</span><span>{Math.round(adjustments[key])}</span></span>
+                        <input
+                          type="range"
+                          min={min}
+                          max={max}
+                          step={key === 'blur' ? 0.5 : 1}
+                          value={adjustments[key]}
+                          onChange={event => patchSelectedLayer({
+                            adjustments: {
+                              ...adjustments,
+                              [key]: Number(event.target.value),
+                            },
+                          } as Partial<PhoenixMediaLayer>)}
+                          className="mt-1 w-full"
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="mt-3 w-full"
+                  onClick={() => patchSelectedLayer({ adjustments: undefined })}
+                >
+                  Reset Adjustments
+                </Button>
+              </div>
 
               {selectedLayer.mask && (
                 <div className="rounded-lg border border-cyan-400/20 bg-cyan-400/5 p-3">
