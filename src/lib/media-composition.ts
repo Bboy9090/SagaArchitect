@@ -112,10 +112,18 @@ export interface PhoenixVectorPoint {
   out?: PhoenixVectorHandle;
 }
 
+export interface PhoenixVectorContour {
+  id: string;
+  points: PhoenixVectorPoint[];
+  closed: boolean;
+}
+
 export interface PhoenixPathLayer extends PhoenixBaseLayer {
   type: 'path';
   points: PhoenixVectorPoint[];
   closed: boolean;
+  contours?: PhoenixVectorContour[];
+  fillRule?: 'nonzero' | 'evenodd';
   fill: string;
   gradient?: PhoenixGradientFill;
   stroke: string;
@@ -267,20 +275,40 @@ function vectorSegmentCommand(from: PhoenixVectorPoint, to: PhoenixVectorPoint):
   return `L ${to.x} ${to.y}`;
 }
 
-export function vectorPathSvgD(layer: Pick<PhoenixPathLayer, 'points' | 'closed'>): string {
-  if (layer.points.length === 0) return '';
-  const [first, ...rest] = layer.points;
+function vectorContourSvgD(points: PhoenixVectorPoint[], closed: boolean): string {
+  if (points.length === 0) return '';
+  const [first, ...rest] = points;
   const commands = [`M ${first.x} ${first.y}`];
   let previous = first;
   for (const point of rest) {
     commands.push(vectorSegmentCommand(previous, point));
     previous = point;
   }
-  if (layer.closed && layer.points.length > 1) {
+  if (closed && points.length > 1) {
     commands.push(vectorSegmentCommand(previous, first));
     commands.push('Z');
   }
   return commands.join(' ');
+}
+
+export function vectorPathSvgD(
+  layer: Pick<PhoenixPathLayer, 'points' | 'closed' | 'contours'>,
+): string {
+  return [
+    vectorContourSvgD(layer.points, layer.closed),
+    ...(layer.contours || []).map(contour => vectorContourSvgD(contour.points, contour.closed)),
+  ].filter(Boolean).join(' ');
+}
+
+export function vectorPathFillSvgD(
+  layer: Pick<PhoenixPathLayer, 'points' | 'closed' | 'contours'>,
+): string {
+  return [
+    layer.closed ? vectorContourSvgD(layer.points, true) : '',
+    ...(layer.contours || [])
+      .filter(contour => contour.closed)
+      .map(contour => vectorContourSvgD(contour.points, true)),
+  ].filter(Boolean).join(' ');
 }
 
 
@@ -347,4 +375,20 @@ export function isLayerEffectivelyLocked(
 ): boolean {
   const group = layerGroupFor(document, layer);
   return layer.locked || (group?.locked ?? false);
+}
+
+
+export function vectorPathFillRule(layer: Pick<PhoenixPathLayer, 'fillRule' | 'contours'>): CanvasFillRule {
+  return layer.fillRule || ((layer.contours?.length || 0) > 0 ? 'evenodd' : 'nonzero');
+}
+
+export function scaleVectorContours(
+  contours: PhoenixVectorContour[] | undefined,
+  scaleX: number,
+  scaleY: number,
+): PhoenixVectorContour[] | undefined {
+  return contours?.map(contour => ({
+    ...contour,
+    points: scaleVectorPoints(contour.points, scaleX, scaleY),
+  }));
 }

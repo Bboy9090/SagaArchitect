@@ -9,6 +9,7 @@ import { MediaViewportToolbar } from '@/components/media/MediaViewportToolbar';
 import { MediaRulers } from '@/components/media/MediaRulers';
 import { LayerTransformControls } from '@/components/media/LayerTransformControls';
 import { LayerGroupPanel } from '@/components/media/LayerGroupPanel';
+import { CompoundContourPanel } from '@/components/media/CompoundContourPanel';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
@@ -24,7 +25,10 @@ import {
   isLayerEffectivelyVisible,
   layerCssFilter,
   moveVectorPoint,
+  scaleVectorContours,
   scaleVectorPoints,
+  vectorPathFillRule,
+  vectorPathFillSvgD,
   vectorPathSvgD,
   type PhoenixMediaDocument,
   type PhoenixMediaLayer,
@@ -116,10 +120,14 @@ function buildSvg(document: PhoenixMediaDocument): string {
     }
 
     if (layer.type === 'path') {
-      const d = escapeXml(vectorPathSvgD(layer));
+      const fillD = escapeXml(vectorPathFillSvgD(layer));
+      const strokeD = escapeXml(vectorPathSvgD(layer));
       const localTransform = `translate(${x} ${y}) rotate(${rotation} ${width / 2} ${height / 2})`;
-      const element = `<path d="${d}" fill="${layer.closed ? layerFill : 'none'}" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${localTransform}" stroke-linejoin="round" stroke-linecap="round" />`;
-      return wrap(element);
+      const fillElement = fillD
+        ? `<path d="${fillD}" fill="${layerFill}" fill-rule="${vectorPathFillRule(layer)}" stroke="none" opacity="${opacity}" transform="${localTransform}" />`
+        : '';
+      const strokeElement = `<path d="${strokeD}" fill="none" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${localTransform}" stroke-linejoin="round" stroke-linecap="round" />`;
+      return wrap(`${fillElement}${strokeElement}`);
     }
 
     const preserveAspectRatio = layer.type === 'image'
@@ -348,14 +356,14 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
       const previousSize = selected.transform[key];
       const safeNext = Math.max(1, nextValue);
       const ratio = previousSize > 0 ? safeNext / previousSize : 1;
-      const points = scaleVectorPoints(
-        selected.points,
-        key === 'width' ? ratio : 1,
-        key === 'height' ? ratio : 1,
-      );
+      const scaleX = key === 'width' ? ratio : 1;
+      const scaleY = key === 'height' ? ratio : 1;
+      const points = scaleVectorPoints(selected.points, scaleX, scaleY);
+      const contours = scaleVectorContours(selected.contours, scaleX, scaleY);
       patchLayer({
         transform: { ...selected.transform, [key]: safeNext },
         points,
+        contours,
       } as Partial<PhoenixMediaLayer>);
       return;
     }
@@ -528,7 +536,10 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                             )}
                           </defs>
                         )}
-                        <path d={vectorPathSvgD(layer)} fill={layer.closed ? (layer.gradient ? `url(#design-gradient-${layer.id})` : layer.fill) : 'none'} stroke={layer.stroke} strokeWidth={layer.strokeWidth} strokeLinejoin="round" strokeLinecap="round" />
+                        {vectorPathFillSvgD(layer) && (
+                          <path d={vectorPathFillSvgD(layer)} fill={layer.gradient ? `url(#design-gradient-${layer.id})` : layer.fill} fillRule={vectorPathFillRule(layer)} stroke="none" />
+                        )}
+                        <path d={vectorPathSvgD(layer)} fill="none" stroke={layer.stroke} strokeWidth={layer.strokeWidth} strokeLinejoin="round" strokeLinecap="round" />
                         {selectedLayerId === layer.id && layer.points.map((point, index) => (
                           <g key={index} className="pointer-events-none">
                             {point.in && (
@@ -724,6 +735,13 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                   </div>
                 </div>
               )}
+              {selected.type === 'path' && (
+                <CompoundContourPanel
+                  layer={selected}
+                  onChange={patch => patchLayer(patch as Partial<PhoenixMediaLayer>)}
+                />
+              )}
+
               {(selected.type === 'shape' || selected.type === 'path') && (
                 <div className="rounded-lg border border-fuchsia-400/20 bg-fuchsia-400/[0.04] p-3">
                   <div className="flex items-center justify-between gap-2">

@@ -2,6 +2,7 @@ import {
   effectiveLayerOpacity,
   isLayerEffectivelyVisible,
   layerCssFilter,
+  vectorPathFillRule,
   type PhoenixImageLayer,
   type PhoenixMediaDocument,
   type PhoenixMediaLayer,
@@ -124,12 +125,12 @@ async function renderLayerBitmap(layer: PhoenixMediaLayer): Promise<HTMLCanvasEl
       if (layer.strokeWidth > 0) ctx.strokeRect(0, 0, width, height);
     }
   } else if (layer.type === 'path') {
-    if (layer.points.length > 0) {
-      ctx.beginPath();
-      const first = layer.points[0];
+    const traceContour = (points: typeof layer.points, closed: boolean) => {
+      if (points.length === 0) return;
+      const first = points[0];
       ctx.moveTo(first.x, first.y);
       let previous = first;
-      for (const point of layer.points.slice(1)) {
+      for (const point of points.slice(1)) {
         if (previous.out || point.in) {
           const out = previous.out || { x: previous.x, y: previous.y };
           const incoming = point.in || { x: point.x, y: point.y };
@@ -139,7 +140,7 @@ async function renderLayerBitmap(layer: PhoenixMediaLayer): Promise<HTMLCanvasEl
         }
         previous = point;
       }
-      if (layer.closed && layer.points.length > 1) {
+      if (closed && points.length > 1) {
         if (previous.out || first.in) {
           const out = previous.out || { x: previous.x, y: previous.y };
           const incoming = first.in || { x: first.x, y: first.y };
@@ -147,11 +148,21 @@ async function renderLayerBitmap(layer: PhoenixMediaLayer): Promise<HTMLCanvasEl
         }
         ctx.closePath();
       }
-      if (layer.closed && (layer.gradient || layer.fill !== 'transparent')) {
+    };
+
+    if (layer.points.length > 0 || (layer.contours?.length || 0) > 0) {
+      const closedContours = (layer.contours || []).filter(contour => contour.closed);
+      if ((layer.closed || closedContours.length > 0) && (layer.gradient || layer.fill !== 'transparent')) {
+        ctx.beginPath();
+        if (layer.closed) traceContour(layer.points, true);
+        for (const contour of closedContours) traceContour(contour.points, true);
         ctx.fillStyle = layerFillStyle(ctx, layer, width, height);
-        ctx.fill();
+        ctx.fill(vectorPathFillRule(layer));
       }
       if (layer.strokeWidth > 0) {
+        ctx.beginPath();
+        traceContour(layer.points, layer.closed);
+        for (const contour of layer.contours || []) traceContour(contour.points, contour.closed);
         ctx.strokeStyle = layer.stroke;
         ctx.lineWidth = layer.strokeWidth;
         ctx.lineJoin = 'round';

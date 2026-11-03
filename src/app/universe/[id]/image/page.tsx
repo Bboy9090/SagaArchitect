@@ -10,6 +10,7 @@ import { MediaViewportToolbar } from '@/components/media/MediaViewportToolbar';
 import { MediaRulers } from '@/components/media/MediaRulers';
 import { LayerTransformControls } from '@/components/media/LayerTransformControls';
 import { LayerGroupPanel } from '@/components/media/LayerGroupPanel';
+import { CompoundContourPanel } from '@/components/media/CompoundContourPanel';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
@@ -27,7 +28,10 @@ import {
   layerCssFilter,
   moveVectorPoint,
   normalizeLayerAdjustments,
+  scaleVectorContours,
   scaleVectorPoints,
+  vectorPathFillRule,
+  vectorPathFillSvgD,
   vectorPathSvgD,
   type PhoenixMediaDocument,
   type PhoenixMediaLayer,
@@ -305,14 +309,14 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
       const previousSize = selectedLayer.transform[key];
       const safeNext = Math.max(1, nextValue);
       const ratio = previousSize > 0 ? safeNext / previousSize : 1;
-      const points = scaleVectorPoints(
-        selectedLayer.points,
-        key === 'width' ? ratio : 1,
-        key === 'height' ? ratio : 1,
-      );
+      const scaleX = key === 'width' ? ratio : 1;
+      const scaleY = key === 'height' ? ratio : 1;
+      const points = scaleVectorPoints(selectedLayer.points, scaleX, scaleY);
+      const contours = scaleVectorContours(selectedLayer.contours, scaleX, scaleY);
       patchSelectedLayer({
         transform: { ...selectedLayer.transform, [key]: safeNext },
         points,
+        contours,
       } as Partial<PhoenixMediaLayer>);
       return;
     }
@@ -652,9 +656,17 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                             )}
                           </defs>
                         )}
+                        {vectorPathFillSvgD(layer) && (
+                          <path
+                            d={vectorPathFillSvgD(layer)}
+                            fill={layer.gradient ? `url(#image-gradient-${layer.id})` : layer.fill}
+                            fillRule={vectorPathFillRule(layer)}
+                            stroke="none"
+                          />
+                        )}
                         <path
                           d={vectorPathSvgD(layer)}
-                          fill={layer.closed ? (layer.gradient ? `url(#image-gradient-${layer.id})` : layer.fill) : 'none'}
+                          fill="none"
                           stroke={layer.stroke}
                           strokeWidth={layer.strokeWidth}
                           strokeLinejoin="round"
@@ -970,6 +982,13 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                     </Button>
                   </div>
                 </div>
+              )}
+
+              {selectedLayer.type === 'path' && (
+                <CompoundContourPanel
+                  layer={selectedLayer}
+                  onChange={patch => patchSelectedLayer(patch as Partial<PhoenixMediaLayer>)}
+                />
               )}
 
               {(selectedLayer.type === 'shape' || selectedLayer.type === 'path') && (
