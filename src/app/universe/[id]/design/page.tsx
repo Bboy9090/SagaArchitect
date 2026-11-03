@@ -24,6 +24,11 @@ import {
   undoDocumentHistory,
   type PhoenixDocumentHistory,
 } from '@/lib/media-history';
+import {
+  downloadMediaBlob,
+  exportPhoenixMediaDocument,
+  type PhoenixRasterExportFormat,
+} from '@/lib/media-renderer';
 import type { Universe } from '@/lib/types';
 
 interface DesignStudioPageProps {
@@ -107,6 +112,8 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
   const [zoom, setZoom] = useState(0.32);
   const [showGuides, setShowGuides] = useState(true);
   const [snap, setSnap] = useState(true);
+  const [exportingFormat, setExportingFormat] = useState<PhoenixRasterExportFormat | null>(null);
+  const [exportError, setExportError] = useState('');
 
   const document = history?.present || null;
 
@@ -231,6 +238,20 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
     patchLayer({ transform: next } as Partial<PhoenixMediaLayer>);
   };
 
+  const exportFlattened = async (format: PhoenixRasterExportFormat) => {
+    if (!document || exportingFormat) return;
+    setExportingFormat(format);
+    setExportError('');
+    try {
+      const blob = await exportPhoenixMediaDocument(document, format);
+      downloadMediaBlob(blob, document.title, format);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : 'Design export failed.');
+    } finally {
+      setExportingFormat(null);
+    }
+  };
+
   const exportSvg = () => {
     if (!document) return;
     const blob = new Blob([buildSvg(document)], { type: 'image/svg+xml;charset=utf-8' });
@@ -255,11 +276,19 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" variant="ghost" disabled={history.past.length === 0} onClick={() => setHistory(current => current ? undoDocumentHistory(current) : current)}>Undo</Button>
             <Button size="sm" variant="ghost" disabled={history.future.length === 0} onClick={() => setHistory(current => current ? redoDocumentHistory(current) : current)}>Redo</Button>
-            <Button size="sm" variant="gold" onClick={exportSvg}>Export SVG</Button>
+            <Button size="sm" variant="secondary" loading={exportingFormat === 'png'} onClick={() => void exportFlattened('png')}>PNG</Button>
+            <Button size="sm" variant="secondary" loading={exportingFormat === 'jpeg'} onClick={() => void exportFlattened('jpeg')}>JPEG</Button>
+            <Button size="sm" variant="secondary" loading={exportingFormat === 'webp'} onClick={() => void exportFlattened('webp')}>WebP</Button>
+            <Button size="sm" variant="gold" onClick={exportSvg}>SVG</Button>
           </div>
         }
       />
 
+      {exportError && (
+        <div className="mx-4 mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          Export failed: {exportError}
+        </div>
+      )}
       <div className="grid min-h-[calc(100vh-80px)] grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)_300px]">
         <aside className="border-r border-white/10 bg-[#070b15] p-4">
           <p className="mb-3 text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Presets</p>
