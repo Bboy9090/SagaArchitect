@@ -91,9 +91,16 @@ export interface PhoenixRasterLayer extends PhoenixBaseLayer {
   src: string;
 }
 
+export interface PhoenixVectorHandle {
+  x: number;
+  y: number;
+}
+
 export interface PhoenixVectorPoint {
   x: number;
   y: number;
+  in?: PhoenixVectorHandle;
+  out?: PhoenixVectorHandle;
 }
 
 export interface PhoenixPathLayer extends PhoenixBaseLayer {
@@ -228,4 +235,53 @@ export function layerCssFilter(layer: Pick<PhoenixBaseLayer, 'adjustments'>): st
     `hue-rotate(${Math.max(-180, Math.min(180, a.hueRotate))}deg)`,
     `blur(${Math.max(0, a.blur)}px)`,
   ].join(' ');
+}
+
+
+function vectorSegmentCommand(from: PhoenixVectorPoint, to: PhoenixVectorPoint): string {
+  if (from.out || to.in) {
+    const out = from.out || { x: from.x, y: from.y };
+    const incoming = to.in || { x: to.x, y: to.y };
+    return `C ${out.x} ${out.y} ${incoming.x} ${incoming.y} ${to.x} ${to.y}`;
+  }
+  return `L ${to.x} ${to.y}`;
+}
+
+export function vectorPathSvgD(layer: Pick<PhoenixPathLayer, 'points' | 'closed'>): string {
+  if (layer.points.length === 0) return '';
+  const [first, ...rest] = layer.points;
+  const commands = [`M ${first.x} ${first.y}`];
+  let previous = first;
+  for (const point of rest) {
+    commands.push(vectorSegmentCommand(previous, point));
+    previous = point;
+  }
+  if (layer.closed && layer.points.length > 1) {
+    commands.push(vectorSegmentCommand(previous, first));
+    commands.push('Z');
+  }
+  return commands.join(' ');
+}
+
+
+export function moveVectorPoint(point: PhoenixVectorPoint, x: number, y: number): PhoenixVectorPoint {
+  const dx = x - point.x;
+  const dy = y - point.y;
+  return {
+    ...point,
+    x,
+    y,
+    in: point.in ? { x: point.in.x + dx, y: point.in.y + dy } : undefined,
+    out: point.out ? { x: point.out.x + dx, y: point.out.y + dy } : undefined,
+  };
+}
+
+export function scaleVectorPoints(points: PhoenixVectorPoint[], scaleX: number, scaleY: number): PhoenixVectorPoint[] {
+  return points.map(point => ({
+    ...point,
+    x: point.x * scaleX,
+    y: point.y * scaleY,
+    in: point.in ? { x: point.in.x * scaleX, y: point.in.y * scaleY } : undefined,
+    out: point.out ? { x: point.out.x * scaleX, y: point.out.y * scaleY } : undefined,
+  }));
 }

@@ -95,9 +95,27 @@ async function renderLayerBitmap(layer: PhoenixMediaLayer): Promise<HTMLCanvasEl
   } else if (layer.type === 'path') {
     if (layer.points.length > 0) {
       ctx.beginPath();
-      ctx.moveTo(layer.points[0].x, layer.points[0].y);
-      for (const point of layer.points.slice(1)) ctx.lineTo(point.x, point.y);
-      if (layer.closed) ctx.closePath();
+      const first = layer.points[0];
+      ctx.moveTo(first.x, first.y);
+      let previous = first;
+      for (const point of layer.points.slice(1)) {
+        if (previous.out || point.in) {
+          const out = previous.out || { x: previous.x, y: previous.y };
+          const incoming = point.in || { x: point.x, y: point.y };
+          ctx.bezierCurveTo(out.x, out.y, incoming.x, incoming.y, point.x, point.y);
+        } else {
+          ctx.lineTo(point.x, point.y);
+        }
+        previous = point;
+      }
+      if (layer.closed && layer.points.length > 1) {
+        if (previous.out || first.in) {
+          const out = previous.out || { x: previous.x, y: previous.y };
+          const incoming = first.in || { x: first.x, y: first.y };
+          ctx.bezierCurveTo(out.x, out.y, incoming.x, incoming.y, first.x, first.y);
+        }
+        ctx.closePath();
+      }
       if (layer.closed && layer.fill !== 'transparent') {
         ctx.fillStyle = layer.fill;
         ctx.fill();
