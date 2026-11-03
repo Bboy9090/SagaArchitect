@@ -129,7 +129,7 @@ async function prepareClips(
     const media = document.createElement(clip.kind === 'audio' ? 'audio' : 'video');
     media.src = clip.src;
     media.preload = 'auto';
-    media.playsInline = true;
+    if (media instanceof HTMLVideoElement) media.playsInline = true;
     media.crossOrigin = 'anonymous';
     await waitForMediaMetadata(media);
 
