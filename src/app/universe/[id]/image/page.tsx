@@ -27,6 +27,11 @@ import {
   undoDocumentHistory,
   type PhoenixDocumentHistory,
 } from '@/lib/media-history';
+import {
+  downloadMediaBlob,
+  exportPhoenixMediaDocument,
+  type PhoenixRasterExportFormat,
+} from '@/lib/media-renderer';
 import type { Universe } from '@/lib/types';
 
 interface ImageStudioPageProps {
@@ -50,6 +55,8 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
   const [brushOpacity, setBrushOpacity] = useState(1);
   const [eraseMode, setEraseMode] = useState(false);
   const [selection, setSelection] = useState({ x: 120, y: 120, width: 600, height: 600 });
+  const [exportingFormat, setExportingFormat] = useState<PhoenixRasterExportFormat | null>(null);
+  const [exportError, setExportError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -269,6 +276,20 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
     } as Partial<PhoenixMediaLayer>);
   };
 
+  const exportFlattened = async (format: PhoenixRasterExportFormat) => {
+    if (!document || exportingFormat) return;
+    setExportingFormat(format);
+    setExportError('');
+    try {
+      const blob = await exportPhoenixMediaDocument(document, format);
+      downloadMediaBlob(blob, document.title, format);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : 'Image export failed.');
+    } finally {
+      setExportingFormat(null);
+    }
+  };
+
   const selectedLayerClipPath = (layer: PhoenixMediaLayer): string | undefined => {
     if (!layer.mask) return undefined;
     const top = Math.max(0, (layer.mask.y / layer.transform.height) * 100);
@@ -303,6 +324,9 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
             <Button size="sm" variant="ghost" disabled={!history || history.future.length === 0} onClick={() => setHistory(current => current ? redoDocumentHistory(current) : current)}>
               Redo
             </Button>
+            <Button size="sm" variant="secondary" loading={exportingFormat === 'png'} onClick={() => void exportFlattened('png')}>PNG</Button>
+            <Button size="sm" variant="secondary" loading={exportingFormat === 'jpeg'} onClick={() => void exportFlattened('jpeg')}>JPEG</Button>
+            <Button size="sm" variant="secondary" loading={exportingFormat === 'webp'} onClick={() => void exportFlattened('webp')}>WebP</Button>
             <div className="flex items-center gap-2 text-xs text-slate-500">
               <span>{document.width} × {document.height}</span>
               <span>•</span>
@@ -312,6 +336,11 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
         }
       />
 
+      {exportError && (
+        <div className="mx-4 mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          Export failed: {exportError}
+        </div>
+      )}
       <div className="grid min-h-[calc(100vh-80px)] grid-cols-1 xl:grid-cols-[260px_minmax(0,1fr)_300px]">
         <aside className="border-r border-white/10 bg-[#070b15] p-4">
           <p className="mb-3 text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Create</p>
