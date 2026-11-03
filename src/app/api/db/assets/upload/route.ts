@@ -4,7 +4,7 @@ import { logVersion } from '@/lib/version-history';
 import { requireUser, requireOwnedProject } from '@/lib/auth-helpers';
 import { apiSuccess } from '@/lib/api-response';
 import { DependencyUnavailableError, ValidationError } from '@/lib/api-errors';
-import { ASSET_UPLOAD_BODY } from '@/lib/http/body-limits';
+import { MEDIA_ASSET_UPLOAD_BODY } from '@/lib/http/body-limits';
 import { readFormDataWithLimit } from '@/lib/http/read-bounded-body';
 import { consumeRateLimit } from '@/lib/rate-limit/rate-limiter';
 import { deleteAssetObject, saveAssetObject } from '@/lib/storage/asset-storage';
@@ -18,7 +18,7 @@ export const POST = withApiContext(async (req, context) => {
   context.userId = userId;
   await consumeRateLimit(req, 'assetUpload', userId);
 
-  const formData = await readFormDataWithLimit(req, { policy: ASSET_UPLOAD_BODY });
+  const formData = await readFormDataWithLimit(req, { policy: MEDIA_ASSET_UPLOAD_BODY });
   const rawFile = formData.get('file');
   const projectId = formData.get('projectId');
 
