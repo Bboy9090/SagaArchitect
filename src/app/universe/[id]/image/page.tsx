@@ -6,6 +6,9 @@ import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { RasterPaintCanvas } from '@/components/media/RasterPaintCanvas';
+import { MediaViewportToolbar } from '@/components/media/MediaViewportToolbar';
+import { MediaRulers } from '@/components/media/MediaRulers';
+import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
 import { dbGetAssets, dbGetProject, type ProjectAsset } from '@/lib/db-client';
@@ -57,6 +60,20 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
   const [selection, setSelection] = useState({ x: 120, y: 120, width: 600, height: 600 });
   const [exportingFormat, setExportingFormat] = useState<PhoenixRasterExportFormat | null>(null);
   const [exportError, setExportError] = useState('');
+  const {
+    zoom,
+    setZoom,
+    showGuides,
+    setShowGuides,
+    snap,
+    setSnap,
+    showRulers,
+    setShowRulers,
+    snapValue,
+    fitToView,
+    scrollRef,
+    panHandlers,
+  } = useMediaViewport(0.6);
 
   useEffect(() => {
     let cancelled = false;
@@ -206,7 +223,8 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
 
   const patchTransform = (key: keyof PhoenixMediaLayer['transform'], value: number) => {
     if (!selectedLayer) return;
-    patchSelectedLayer({ transform: { ...selectedLayer.transform, [key]: value } } as Partial<PhoenixMediaLayer>);
+    const nextValue = key === 'rotation' ? value : snapValue(value);
+    patchSelectedLayer({ transform: { ...selectedLayer.transform, [key]: nextValue } } as Partial<PhoenixMediaLayer>);
   };
 
   const deleteSelectedLayer = () => {
@@ -309,7 +327,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
     );
   }
 
-  const scale = Math.min(1, 760 / document.width);
+  const scale = zoom;
 
   return (
     <Navigation>
@@ -408,17 +426,42 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
           </div>
         </aside>
 
-        <main className="overflow-auto bg-[#04060b] p-4 md:p-8">
-          <div className="mx-auto flex min-h-full items-center justify-center">
-            <div
-              className="relative origin-center overflow-hidden border border-white/15 shadow-2xl"
-              style={{
-                width: document.width * scale,
-                height: document.height * scale,
-                background: document.background,
-              }}
-              aria-label="Image composition canvas"
-            >
+        <main className="flex min-h-0 flex-col bg-[#04060b] p-4 md:p-6">
+          <MediaViewportToolbar
+            zoom={zoom}
+            onZoomChange={setZoom}
+            onFit={() => fitToView(document.width, document.height)}
+            showGuides={showGuides}
+            onToggleGuides={() => setShowGuides(value => !value)}
+            snap={snap}
+            onToggleSnap={() => setSnap(value => !value)}
+            showRulers={showRulers}
+            onToggleRulers={() => setShowRulers(value => !value)}
+          />
+          <div
+            ref={scrollRef}
+            {...panHandlers}
+            className="relative mt-4 min-h-[680px] flex-1 cursor-grab overflow-auto rounded-lg border border-white/5 bg-[#03050a] p-10 active:cursor-grabbing"
+          >
+            <div className="relative mx-auto w-max pt-6 pl-6">
+              <MediaRulers width={document.width} height={document.height} zoom={scale} visible={showRulers} />
+              <div
+                className="relative origin-top-left overflow-hidden border border-white/15 shadow-2xl"
+                style={{
+                  width: document.width * scale,
+                  height: document.height * scale,
+                  background: document.background,
+                }}
+                aria-label="Image composition canvas"
+              >
+                {showGuides && (
+                  <>
+                    <div className="pointer-events-none absolute inset-[5%] z-[9998] border border-dashed border-cyan-300/40" />
+                    <div className="pointer-events-none absolute inset-[10%] z-[9998] border border-dashed border-fuchsia-300/30" />
+                    <div className="pointer-events-none absolute left-1/2 top-0 z-[9998] h-full border-l border-dashed border-white/20" />
+                    <div className="pointer-events-none absolute left-0 top-1/2 z-[9998] w-full border-t border-dashed border-white/20" />
+                  </>
+                )}
               {sortedLayers.map(layer => {
                 if (!layer.visible) return null;
                 const style: React.CSSProperties = {
@@ -442,6 +485,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                   <button
                     key={layer.id}
                     type="button"
+                    data-media-interactive="true"
                     onClick={() => setSelectedLayerId(layer.id)}
                     className="block border-0 bg-transparent p-0 text-left"
                     style={style}
@@ -497,8 +541,8 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                   </button>
                 );
               })}
-              <div
-                className="pointer-events-none absolute z-[10000] border-2 border-dashed border-cyan-300 bg-cyan-300/5"
+                <div
+                  className="pointer-events-none absolute z-[10000] border-2 border-dashed border-cyan-300 bg-cyan-300/5"
                 style={{
                   left: normalizedSelection().x * scale,
                   top: normalizedSelection().y * scale,
@@ -507,6 +551,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                 }}
                 aria-hidden="true"
               />
+              </div>
             </div>
           </div>
         </main>
