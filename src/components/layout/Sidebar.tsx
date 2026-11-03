@@ -25,6 +25,7 @@ export function Sidebar() {
   const universeNav: NavItem[] = universeId ? [
     { href: `/universe/${universeId}/studio`, label: 'Studio Hub', icon: '✦' },
     { href: `/universe/${universeId}/stories`, label: 'Writing Room', icon: '✎' },
+    { href: `/universe/${universeId}/book`, label: 'Book Production', icon: '📚' },
     { href: `/universe/${universeId}/image`, label: 'Image Studio', icon: '◫' },
     { href: `/universe/${universeId}/design`, label: 'Design Studio', icon: '▦' },
     { href: `/universe/${universeId}/illustrate`, label: 'Illustration', icon: '🖌️' },
