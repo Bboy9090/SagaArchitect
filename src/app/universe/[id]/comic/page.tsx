@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useMemo, useState } from 'react';
+import { use, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
@@ -11,7 +11,7 @@ import { LayerTransformControls } from '@/components/media/LayerTransformControl
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
-import { dbGetAssets, dbGetProject, type ProjectAsset } from '@/lib/db-client';
+import { dbGetAssets, dbGetMediaDocument, dbGetProject, dbSaveMediaDocument, type ProjectAsset } from '@/lib/db-client';
 import {
   createPhoenixMediaDocument,
   loadPhoenixMediaDocument,
@@ -84,6 +84,7 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
   const [selectedLayerId, setSelectedLayerId] = useState('');
   const [loading, setLoading] = useState(true);
+  const cloudVersionRef = useRef(1);
   const [exportingFormat, setExportingFormat] = useState<PhoenixRasterExportFormat | null>(null);
   const [exportError, setExportError] = useState('');
   const {
@@ -106,13 +107,16 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
     void (async () => {
       try {
         const loadedProject = isDbMode() ? await dbGetProject(id) : getUniverseById(id) || null;
-        const loaded = loadPhoenixMediaDocument(id, 'comic_page') || {
+        const localDocument = loadPhoenixMediaDocument(id, 'comic_page');
+        const cloudDocument = isDbMode() ? await dbGetMediaDocument(id, 'comic_page') : null;
+        const loaded = cloudDocument || localDocument || {
           ...createPhoenixMediaDocument(id, 'comic_page'),
           title: 'Comic Page 1',
           width: PAGE_WIDTH,
           height: PAGE_HEIGHT,
           background: '#ffffff',
         };
+        cloudVersionRef.current = cloudDocument?.version || loaded.version || 1;
         if (cancelled) return;
         setProject(loadedProject);
         setHistory(createDocumentHistory(loaded));
@@ -133,9 +137,16 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
 
   useEffect(() => {
     if (!document || loading) return;
-    const handle = window.setTimeout(() => savePhoenixMediaDocument(document), 250);
+    const handle = window.setTimeout(() => {
+      const saved = savePhoenixMediaDocument(document);
+      if (isDbMode()) {
+        void dbSaveMediaDocument(id, { ...saved, version: cloudVersionRef.current })
+          .then(cloudSaved => { cloudVersionRef.current = cloudSaved.version; })
+          .catch(error => console.error('Phoenix cloud media autosave failed:', error));
+      }
+    }, 500);
     return () => window.clearTimeout(handle);
-  }, [document, loading]);
+  }, [document, id, loading]);
 
   const commit = (updater: (current: PhoenixMediaDocument) => PhoenixMediaDocument) => {
     setHistory(current => current ? commitDocumentHistory(current, updater(current.present)) : current);

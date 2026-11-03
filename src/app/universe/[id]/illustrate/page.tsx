@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useMemo, useState } from 'react';
+import { use, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
@@ -8,7 +8,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { RasterPaintCanvas } from '@/components/media/RasterPaintCanvas';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
-import { dbGetAssets, dbGetProject, type ProjectAsset } from '@/lib/db-client';
+import { dbGetAssets, dbGetMediaDocument, dbGetProject, dbSaveMediaDocument, type ProjectAsset } from '@/lib/db-client';
 import {
   createPhoenixMediaDocument,
   loadPhoenixMediaDocument,
@@ -47,6 +47,7 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
   const [selectedLayerId, setSelectedLayerId] = useState('');
   const [loading, setLoading] = useState(true);
+  const cloudVersionRef = useRef(1);
   const [brushPreset, setBrushPreset] = useState<BrushPreset>('ink');
   const [brushColor, setBrushColor] = useState('#f8fafc');
   const [brushSize, setBrushSize] = useState(BRUSH_PRESETS.ink.size);
@@ -64,7 +65,10 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
         const loadedProject = isDbMode() ? await dbGetProject(id) : getUniverseById(id) || null;
         if (cancelled) return;
         setProject(loadedProject);
-        const loadedDocument = loadPhoenixMediaDocument(id, 'illustration') || createPhoenixMediaDocument(id, 'illustration');
+        const localDocument = loadPhoenixMediaDocument(id, 'illustration');
+        const cloudDocument = isDbMode() ? await dbGetMediaDocument(id, 'illustration') : null;
+        const loadedDocument = cloudDocument || localDocument || createPhoenixMediaDocument(id, 'illustration');
+        cloudVersionRef.current = cloudDocument?.version || loadedDocument.version || 1;
         setHistory(createDocumentHistory({
           ...loadedDocument,
           title: loadedDocument.title === 'Untitled Composition' ? 'Untitled Illustration' : loadedDocument.title,
@@ -87,9 +91,16 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
 
   useEffect(() => {
     if (!document || loading) return;
-    const handle = window.setTimeout(() => savePhoenixMediaDocument(document), 250);
+    const handle = window.setTimeout(() => {
+      const saved = savePhoenixMediaDocument(document);
+      if (isDbMode()) {
+        void dbSaveMediaDocument(id, { ...saved, version: cloudVersionRef.current })
+          .then(cloudSaved => { cloudVersionRef.current = cloudSaved.version; })
+          .catch(error => console.error('Phoenix cloud media autosave failed:', error));
+      }
+    }, 500);
     return () => window.clearTimeout(handle);
-  }, [document, loading]);
+  }, [document, id, loading]);
 
   const updateDocument = (updater: (current: PhoenixMediaDocument) => PhoenixMediaDocument) => {
     setHistory(current => current ? commitDocumentHistory(current, updater(current.present)) : current);
