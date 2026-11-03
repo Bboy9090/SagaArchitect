@@ -251,6 +251,17 @@ export const mediaDocuments = pgTable('media_documents', {
   projectKindUnique: uniqueIndex('media_documents_project_kind_unique').on(table.projectId, table.kind),
 }));
 
+export const videoTimelines = pgTable('video_timelines', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  timeline: jsonb('timeline').$type<import('@/lib/video-timeline').PhoenixVideoTimeline>().notNull(),
+  version: integer('version').default(1).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  projectUnique: uniqueIndex('video_timelines_project_unique').on(table.projectId),
+}));
+
 export const storyboardPanels = pgTable('storyboard_panels', {
   id: uuid('id').primaryKey().defaultRandom(),
   sceneId: uuid('scene_id').notNull().references(() => scenes.id, { onDelete: 'cascade' }),
