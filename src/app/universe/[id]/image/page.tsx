@@ -47,6 +47,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
   const [brushSize, setBrushSize] = useState(24);
   const [brushOpacity, setBrushOpacity] = useState(1);
   const [eraseMode, setEraseMode] = useState(false);
+  const [selection, setSelection] = useState({ x: 120, y: 120, width: 600, height: 600 });
 
   useEffect(() => {
     let cancelled = false;
@@ -220,6 +221,61 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
     updateDocument(current => ({ ...current, layers: current.layers.map(layer => ordered.find(next => next.id === layer.id) || layer) }));
   };
 
+  const normalizedSelection = () => {
+    if (!document) return selection;
+    const x = Math.max(0, Math.min(selection.x, document.width - 1));
+    const y = Math.max(0, Math.min(selection.y, document.height - 1));
+    const width = Math.max(1, Math.min(selection.width, document.width - x));
+    const height = Math.max(1, Math.min(selection.height, document.height - y));
+    return { x, y, width, height };
+  };
+
+  const cropCanvasToSelection = () => {
+    if (!document) return;
+    const selected = normalizedSelection();
+    updateDocument(current => ({
+      ...current,
+      width: selected.width,
+      height: selected.height,
+      layers: current.layers.map(layer => ({
+        ...layer,
+        transform: {
+          ...layer.transform,
+          x: layer.transform.x - selected.x,
+          y: layer.transform.y - selected.y,
+        },
+      })),
+    }));
+    setSelection({ x: 0, y: 0, width: selected.width, height: selected.height });
+  };
+
+  const maskLayerToSelection = () => {
+    if (!selectedLayer) return;
+    const selected = normalizedSelection();
+    const left = Math.max(selected.x, selectedLayer.transform.x);
+    const top = Math.max(selected.y, selectedLayer.transform.y);
+    const right = Math.min(selected.x + selected.width, selectedLayer.transform.x + selectedLayer.transform.width);
+    const bottom = Math.min(selected.y + selected.height, selectedLayer.transform.y + selectedLayer.transform.height);
+    if (right <= left || bottom <= top) return;
+    patchSelectedLayer({
+      mask: {
+        x: left - selectedLayer.transform.x,
+        y: top - selectedLayer.transform.y,
+        width: right - left,
+        height: bottom - top,
+      },
+    } as Partial<PhoenixMediaLayer>);
+  };
+
+  const selectedLayerClipPath = (layer: PhoenixMediaLayer): string | undefined => {
+    if (!layer.mask) return undefined;
+    const top = Math.max(0, (layer.mask.y / layer.transform.height) * 100);
+    const left = Math.max(0, (layer.mask.x / layer.transform.width) * 100);
+    const right = Math.max(0, ((layer.transform.width - layer.mask.x - layer.mask.width) / layer.transform.width) * 100);
+    const bottom = Math.max(0, ((layer.transform.height - layer.mask.y - layer.mask.height) / layer.transform.height) * 100);
+    return `inset(${top}% ${right}% ${bottom}% ${left}%)`;
+  };
+
   if (loading || !document) {
     return (
       <Navigation>
@@ -265,6 +321,27 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
           </div>
 
           <div className="mt-6">
+            <p className="mb-3 text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Selection</p>
+            <div className="grid grid-cols-2 gap-2">
+              {(['x', 'y', 'width', 'height'] as const).map(key => (
+                <label key={key} className="text-[10px] uppercase text-slate-500">{key}
+                  <input
+                    type="number"
+                    min={key === 'width' || key === 'height' ? 1 : 0}
+                    value={Math.round(selection[key])}
+                    onChange={event => setSelection(current => ({ ...current, [key]: Number(event.target.value) }))}
+                    className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white"
+                  />
+                </label>
+              ))}
+            </div>
+            <div className="mt-2 grid grid-cols-1 gap-2">
+              <Button size="sm" variant="ghost" onClick={cropCanvasToSelection}>Crop Canvas to Selection</Button>
+              <Button size="sm" variant="ghost" disabled={!selectedLayer} onClick={maskLayerToSelection}>Mask Selected Layer</Button>
+            </div>
+          </div>
+
+          <div className="mt-6">
             <p className="mb-3 text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Project Assets</p>
             {!isDbMode() ? (
               <p className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-3 text-xs leading-5 text-amber-200/70">
@@ -294,8 +371,8 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
           <div className="mt-6 rounded-xl border border-violet-400/15 bg-violet-400/[0.04] p-3">
             <p className="text-xs font-bold text-violet-200">Foundation editor</p>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              This establishes Phoenix&apos;s non-destructive layer document. Masks, selections, brush rasterization,
-              adjustment layers, filters, and GPU effects come next on the same format.
+              Layers, raster painting, selections, cropping, masks, and undo/redo now share one persistent document.
+              Adjustment layers, filters, and GPU effects are the next image-engine tier.
             </p>
           </div>
         </aside>
@@ -326,6 +403,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                   outline: selectedLayerId === layer.id ? '2px solid #60a5fa' : undefined,
                   outlineOffset: 2,
                   cursor: layer.locked ? 'not-allowed' : 'pointer',
+                  clipPath: selectedLayerClipPath(layer),
                 };
 
                 return (
@@ -387,6 +465,16 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                   </button>
                 );
               })}
+              <div
+                className="pointer-events-none absolute z-[10000] border-2 border-dashed border-cyan-300 bg-cyan-300/5"
+                style={{
+                  left: normalizedSelection().x * scale,
+                  top: normalizedSelection().y * scale,
+                  width: normalizedSelection().width * scale,
+                  height: normalizedSelection().height * scale,
+                }}
+                aria-hidden="true"
+              />
             </div>
           </div>
         </main>
@@ -508,6 +596,18 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                   <option value="overlay">Overlay</option>
                 </select>
               </label>
+
+              {selectedLayer.mask && (
+                <div className="rounded-lg border border-cyan-400/20 bg-cyan-400/5 p-3">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-cyan-300">Layer Mask Active</div>
+                  <div className="mt-1 text-[10px] text-slate-500">
+                    {Math.round(selectedLayer.mask.width)} × {Math.round(selectedLayer.mask.height)}
+                  </div>
+                  <Button size="sm" variant="ghost" className="mt-2 w-full" onClick={() => patchSelectedLayer({ mask: undefined })}>
+                    Clear Mask
+                  </Button>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-2">
                 <Button size="sm" variant="ghost" onClick={() => patchSelectedLayer({ visible: !selectedLayer.visible })}>

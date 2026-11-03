@@ -16,6 +16,14 @@ export interface PhoenixLayerTransform {
   rotation: number;
 }
 
+export interface PhoenixLayerMask {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  inverted?: boolean;
+}
+
 export interface PhoenixBaseLayer {
   id: string;
   type: PhoenixLayerType;
@@ -26,6 +34,7 @@ export interface PhoenixBaseLayer {
   blendMode: PhoenixBlendMode;
   zIndex: number;
   transform: PhoenixLayerTransform;
+  mask?: PhoenixLayerMask;
 }
 
 export interface PhoenixTextLayer extends PhoenixBaseLayer {

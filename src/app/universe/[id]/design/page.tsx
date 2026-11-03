@@ -48,30 +48,46 @@ function escapeXml(value: string): string {
   }[char] || char));
 }
 
+function cssMaskClipPath(layer: PhoenixMediaLayer): string | undefined {
+  if (!layer.mask) return undefined;
+  const top = Math.max(0, (layer.mask.y / layer.transform.height) * 100);
+  const left = Math.max(0, (layer.mask.x / layer.transform.width) * 100);
+  const right = Math.max(0, ((layer.transform.width - layer.mask.x - layer.mask.width) / layer.transform.width) * 100);
+  const bottom = Math.max(0, ((layer.transform.height - layer.mask.y - layer.mask.height) / layer.transform.height) * 100);
+  return `inset(${top}% ${right}% ${bottom}% ${left}%)`;
+}
+
 function buildSvg(document: PhoenixMediaDocument): string {
   const layers = [...document.layers].filter(layer => layer.visible).sort((a, b) => a.zIndex - b.zIndex);
   const body = layers.map(layer => {
     const { x, y, width, height, rotation } = layer.transform;
     const transform = `rotate(${rotation} ${x + width / 2} ${y + height / 2})`;
     const opacity = Math.max(0, Math.min(1, layer.opacity));
+    const clipId = `clip-${layer.id.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+    const maskDefinition = layer.mask
+      ? `<defs><clipPath id="${clipId}" clipPathUnits="userSpaceOnUse"><rect x="${x + layer.mask.x}" y="${y + layer.mask.y}" width="${layer.mask.width}" height="${layer.mask.height}" transform="${transform}" /></clipPath></defs>`
+      : '';
+    const wrap = (element: string) => layer.mask
+      ? `${maskDefinition}<g clip-path="url(#${clipId})">${element}</g>`
+      : element;
 
     if (layer.type === 'shape') {
       if (layer.shape === 'ellipse') {
-        return `<ellipse cx="${x + width / 2}" cy="${y + height / 2}" rx="${width / 2}" ry="${height / 2}" fill="${layer.fill}" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${transform}" />`;
+        return wrap(`<ellipse cx="${x + width / 2}" cy="${y + height / 2}" rx="${width / 2}" ry="${height / 2}" fill="${layer.fill}" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${transform}" />`);
       }
-      return `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${layer.fill}" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${transform}" />`;
+      return wrap(`<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${layer.fill}" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${transform}" />`);
     }
 
     if (layer.type === 'text') {
       const anchor = layer.align === 'center' ? 'middle' : layer.align === 'right' ? 'end' : 'start';
       const tx = layer.align === 'center' ? x + width / 2 : layer.align === 'right' ? x + width : x;
-      return `<text x="${tx}" y="${y + layer.fontSize}" fill="${layer.color}" font-size="${layer.fontSize}" font-family="${escapeXml(layer.fontFamily)}" font-weight="${layer.fontWeight}" text-anchor="${anchor}" opacity="${opacity}" transform="${transform}">${escapeXml(layer.text)}</text>`;
+      return wrap(`<text x="${tx}" y="${y + layer.fontSize}" fill="${layer.color}" font-size="${layer.fontSize}" font-family="${escapeXml(layer.fontFamily)}" font-weight="${layer.fontWeight}" text-anchor="${anchor}" opacity="${opacity}" transform="${transform}">${escapeXml(layer.text)}</text>`);
     }
 
     const preserveAspectRatio = layer.type === 'image'
       ? (layer.fit === 'contain' ? 'xMidYMid meet' : layer.fit === 'cover' ? 'xMidYMid slice' : 'none')
       : 'none';
-    return `<image href="${escapeXml(layer.src)}" x="${x}" y="${y}" width="${width}" height="${height}" preserveAspectRatio="${preserveAspectRatio}" opacity="${opacity}" transform="${transform}" />`;
+    return wrap(`<image href="${escapeXml(layer.src)}" x="${x}" y="${y}" width="${width}" height="${height}" preserveAspectRatio="${preserveAspectRatio}" opacity="${opacity}" transform="${transform}" />`);
   }).join('');
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${document.width}" height="${document.height}" viewBox="0 0 ${document.width} ${document.height}"><rect width="100%" height="100%" fill="${document.background}"/>${body}</svg>`;
@@ -320,6 +336,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                   transformOrigin: 'center',
                   outline: selectedLayerId === layer.id ? '2px solid #38bdf8' : undefined,
                   outlineOffset: 2,
+                  clipPath: cssMaskClipPath(layer),
                 };
                 return (
                   <button key={layer.id} type="button" onClick={() => setSelectedLayerId(layer.id)} style={style} className="block border-0 bg-transparent p-0 text-left">
