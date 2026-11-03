@@ -239,6 +239,27 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
     setStatus(`Added ${asset.name}`);
   };
 
+  const createTrack = (kind: 'video' | 'audio') => {
+    setTimeline(current => {
+      if (!current) return current;
+      const next = addTimelineTrack(current, kind);
+      const created = next.tracks
+        .filter(track => track.kind === kind)
+        .sort((a, b) => b.order - a.order)[0];
+      if (created) setSelectedTrackId(created.id);
+      return next;
+    });
+  };
+
+  const shiftTrack = (trackId: string, direction: -1 | 1) => {
+    setTimeline(current => current ? moveTimelineTrack(current, trackId, direction) : current);
+  };
+
+  const deleteEmptyTrack = (trackId: string) => {
+    setTimeline(current => current ? removeEmptyTimelineTrack(current, trackId) : current);
+    if (selectedTrackId === trackId) setSelectedTrackId('');
+  };
+
   const addCaption = () => {
     if (!timeline || !captionText.trim()) return;
     const start = playhead;
@@ -366,6 +387,36 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
 
       <div className="grid min-h-[calc(100vh-80px)] grid-cols-1 2xl:grid-cols-[280px_minmax(0,1fr)_300px]">
         <aside className="border-r border-white/10 bg-[#070b15] p-4">
+          <div className="mb-6">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Tracks</p>
+              <div className="flex gap-1">
+                <Button size="sm" variant="ghost" onClick={() => createTrack('video')}>+ V</Button>
+                <Button size="sm" variant="ghost" onClick={() => createTrack('audio')}>+ A</Button>
+              </div>
+            </div>
+            <div className="mt-3 space-y-2">
+              {[...timeline.tracks].sort((a, b) => a.order - b.order).map((track, index, ordered) => {
+                const peers = timeline.tracks.filter(item => item.kind === track.kind);
+                const canRemove = track.clips.length === 0 && peers.length > 1;
+                return (
+                  <div key={track.id} className={`rounded-lg border p-2 ${selectedTrackId === track.id ? 'border-cyan-400/50 bg-cyan-400/10' : 'border-white/10 bg-white/[0.02]'}`}>
+                    <button type="button" onClick={() => setSelectedTrackId(track.id)} className="flex w-full items-center justify-between gap-2 text-left">
+                      <span className="truncate text-xs font-bold text-white">{track.name}</span>
+                      <span className="text-[9px] uppercase text-slate-500">{track.kind} · {track.clips.length}</span>
+                    </button>
+                    <div className="mt-2 grid grid-cols-3 gap-1">
+                      <Button size="sm" variant="ghost" disabled={index === 0} onClick={() => shiftTrack(track.id, -1)}>↑</Button>
+                      <Button size="sm" variant="ghost" disabled={index === ordered.length - 1} onClick={() => shiftTrack(track.id, 1)}>↓</Button>
+                      <Button size="sm" variant="ghost" disabled={!canRemove} onClick={() => deleteEmptyTrack(track.id)}>×</Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-[10px] leading-4 text-slate-600">Select a matching track before placing media. Higher tracks composite above lower tracks during preview and WebM export.</p>
+          </div>
+
           <div className="mb-5">
             <p className="mb-3 text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Media</p>
             {isDbMode() && (
@@ -417,36 +468,45 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
                 className="relative flex max-h-[460px] w-full items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-black"
                 style={{ aspectRatio: canvasRatio }}
               >
-                {!activeVisualClip && <div className="text-sm text-slate-600">No visual clip at {playhead.toFixed(2)}s</div>}
-                {activeVisualClip?.kind === 'image' && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={activeVisualClip.src}
-                    alt=""
-                    className="h-full w-full object-contain"
-                    style={{
-                      opacity: activeVisualOpacity,
-                      transform: activeVisualTransform
-                        ? `translate(${activeVisualTransform.x}px, ${activeVisualTransform.y}px) scale(${activeVisualTransform.scale}) rotate(${activeVisualTransform.rotation}deg)`
-                        : undefined,
-                    }}
-                  />
-                )}
-                {activeVisualClip?.kind === 'video' && (
-                  <video
-                    ref={videoRef}
-                    key={activeVisualClip.id}
-                    src={activeVisualClip.src}
-                    className="h-full w-full object-contain"
-                    playsInline
-                    style={{
-                      opacity: activeVisualOpacity,
-                      transform: activeVisualTransform
-                        ? `translate(${activeVisualTransform.x}px, ${activeVisualTransform.y}px) scale(${activeVisualTransform.scale}) rotate(${activeVisualTransform.rotation}deg)`
-                        : undefined,
-                    }}
-                  />
-                )}
+                {activeVisualLayers.length === 0 && <div className="text-sm text-slate-600">No visual clip at {playhead.toFixed(2)}s</div>}
+                {activeVisualLayers.map(({ clip, trackOrder }) => {
+                  const transform = clipTransformAt(clip, playhead);
+                  const opacity = clipTransitionOpacity(clip, playhead);
+                  const layerStyle: React.CSSProperties = {
+                    position: 'absolute',
+                    inset: 0,
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    opacity,
+                    zIndex: trackOrder + 1,
+                    transform: `translate(${(transform.x / Math.max(1, timeline.width)) * 100}%, ${(transform.y / Math.max(1, timeline.height)) * 100}%) scale(${transform.scale}) rotate(${transform.rotation}deg)`,
+                    transformOrigin: 'center',
+                  };
+                  if (clip.kind === 'image') {
+                    return (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img key={clip.id} src={clip.src} alt="" style={layerStyle} />
+                    );
+                  }
+                  if (clip.kind === 'video') {
+                    return (
+                      <video
+                        key={clip.id}
+                        ref={element => {
+                          if (element) visualVideoRefs.current.set(clip.id, element);
+                          else visualVideoRefs.current.delete(clip.id);
+                        }}
+                        src={clip.src}
+                        playsInline
+                        muted
+                        preload="metadata"
+                        style={layerStyle}
+                      />
+                    );
+                  }
+                  return null;
+                })}
                 {activeCaption && (
                   <div
                     className={`pointer-events-none absolute left-1/2 z-20 max-w-[90%] -translate-x-1/2 rounded px-4 py-2 text-center font-bold ${activeCaption.position === 'top' ? 'top-[8%]' : activeCaption.position === 'center' ? 'top-1/2 -translate-y-1/2' : 'bottom-[8%]'}`}
@@ -459,7 +519,17 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
                     {activeCaption.text}
                   </div>
                 )}
-                {activeAudioClip && <audio ref={audioRef} key={activeAudioClip.id} src={activeAudioClip.src} preload="metadata" />}
+                {activeAudioClips.map(clip => (
+                  <audio
+                    ref={element => {
+                      if (element) audioRefs.current.set(clip.id, element);
+                      else audioRefs.current.delete(clip.id);
+                    }}
+                    key={clip.id}
+                    src={clip.src}
+                    preload="metadata"
+                  />
+                ))}
               </div>
 
               <div className="mt-4 flex w-full items-center gap-3">
@@ -489,9 +559,13 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
               </div>
               {[...timeline.tracks].sort((a,b) => a.order-b.order).map(track => (
                 <div key={track.id} className="relative flex h-20 border-b border-white/5">
-                  <div className="sticky left-0 z-20 flex w-28 shrink-0 items-center border-r border-white/10 bg-[#080c15] px-3 text-xs font-bold text-slate-400">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTrackId(track.id)}
+                    className={`sticky left-0 z-20 flex w-28 shrink-0 items-center border-r px-3 text-left text-xs font-bold ${selectedTrackId === track.id ? 'border-cyan-400/40 bg-cyan-400/10 text-cyan-100' : 'border-white/10 bg-[#080c15] text-slate-400'}`}
+                  >
                     {track.name}
-                  </div>
+                  </button>
                   <div className="relative h-full flex-1 bg-[#060911]">
                     {track.clips.map(clip => {
                       const clipDuration = timelineClipDuration(clip);
