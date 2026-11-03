@@ -9,6 +9,7 @@ import { RasterPaintCanvas } from '@/components/media/RasterPaintCanvas';
 import { MediaViewportToolbar } from '@/components/media/MediaViewportToolbar';
 import { MediaRulers } from '@/components/media/MediaRulers';
 import { LayerTransformControls } from '@/components/media/LayerTransformControls';
+import { LayerGroupPanel } from '@/components/media/LayerGroupPanel';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
@@ -19,7 +20,10 @@ import {
   loadPhoenixMediaDocument,
   nextLayerZIndex,
   savePhoenixMediaDocument,
+  effectiveLayerOpacity,
   gradientFillCss,
+  isLayerEffectivelyLocked,
+  isLayerEffectivelyVisible,
   layerCssFilter,
   moveVectorPoint,
   normalizeLayerAdjustments,
@@ -126,6 +130,38 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
       if (!current) return current;
       return commitDocumentHistory(current, updater(current.present));
     });
+  };
+
+  const patchGroup = (groupId: string, patch: Partial<NonNullable<PhoenixMediaDocument['groups']>[number]>) => {
+    updateDocument(current => ({
+      ...current,
+      groups: (current.groups || []).map(group => group.id === groupId ? { ...group, ...patch } : group),
+    }));
+  };
+
+  const addGroup = () => {
+    const groupId = crypto.randomUUID();
+    updateDocument(current => ({
+      ...current,
+      groups: [...(current.groups || []), {
+        id: groupId,
+        name: `Group ${(current.groups || []).length + 1}`,
+        visible: true,
+        locked: false,
+        opacity: 1,
+      }],
+      layers: selectedLayerId
+        ? current.layers.map(layer => layer.id === selectedLayerId ? { ...layer, groupId } : layer)
+        : current.layers,
+    }));
+  };
+
+  const deleteGroup = (groupId: string) => {
+    updateDocument(current => ({
+      ...current,
+      groups: (current.groups || []).filter(group => group.id !== groupId),
+      layers: current.layers.map(layer => layer.groupId === groupId ? { ...layer, groupId: undefined } : layer),
+    }));
   };
 
   const addTextLayer = () => {
@@ -437,7 +473,13 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
       )}
       <div className="grid min-h-[calc(100vh-80px)] grid-cols-1 xl:grid-cols-[260px_minmax(0,1fr)_300px]">
         <aside className="border-r border-white/10 bg-[#070b15] p-4">
-          <p className="mb-3 text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Create</p>
+          <LayerGroupPanel
+            groups={document.groups || []}
+            onCreate={addGroup}
+            onPatch={patchGroup}
+            onDelete={deleteGroup}
+          />
+          <p className="mb-3 mt-6 text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Create</p>
           <div className="grid grid-cols-2 gap-2">
             <Button size="sm" variant="secondary" onClick={addTextLayer}>Text</Button>
             <Button size="sm" variant="secondary" onClick={() => addShapeLayer('rectangle')}>Rectangle</Button>
@@ -540,20 +582,20 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                   </>
                 )}
               {sortedLayers.map(layer => {
-                if (!layer.visible) return null;
+                if (!isLayerEffectivelyVisible(layer, document)) return null;
                 const style: React.CSSProperties = {
                   position: 'absolute',
                   left: layer.transform.x * scale,
                   top: layer.transform.y * scale,
                   width: layer.transform.width * scale,
                   height: layer.transform.height * scale,
-                  opacity: layer.opacity,
+                  opacity: effectiveLayerOpacity(layer, document),
                   transform: `rotate(${layer.transform.rotation}deg)`,
                   transformOrigin: 'center',
                   mixBlendMode: layerMixBlendMode(layer.blendMode),
                   outline: selectedLayerId === layer.id ? '2px solid #60a5fa' : undefined,
                   outlineOffset: 2,
-                  cursor: layer.locked ? 'not-allowed' : 'pointer',
+                  cursor: isLayerEffectivelyLocked(layer, document) ? 'not-allowed' : 'pointer',
                   clipPath: selectedLayerClipPath(layer),
                   filter: layerCssFilter(layer),
                 };
@@ -668,7 +710,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                   zoom={scale}
                   canvasWidth={document.width}
                   canvasHeight={document.height}
-                  locked={selectedLayer.locked}
+                  locked={isLayerEffectivelyLocked(selectedLayer, document)}
                   allowMove={selectedLayer.type !== 'raster'}
                   snapValue={snapValue}
                   onCommit={transform => patchSelectedLayer({ transform } as Partial<PhoenixMediaLayer>)}
@@ -724,6 +766,17 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                   className="mt-1 min-h-10 w-full rounded border border-white/10 bg-black/20 px-3 text-sm text-white"
                 />
               </div>
+
+              <label className="block text-[10px] uppercase text-slate-500">Layer Group
+                <select
+                  value={selectedLayer.groupId || ''}
+                  onChange={event => patchSelectedLayer({ groupId: event.target.value || undefined } as Partial<PhoenixMediaLayer>)}
+                  className="mt-1 min-h-10 w-full rounded border border-white/10 bg-[#0a0d14] px-2 text-white"
+                >
+                  <option value="">No Group</option>
+                  {(document.groups || []).map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
+                </select>
+              </label>
 
               {selectedLayer.type === 'text' && (
                 <>
