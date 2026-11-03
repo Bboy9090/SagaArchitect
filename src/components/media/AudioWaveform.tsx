@@ -5,9 +5,10 @@ import { useEffect, useRef, useState } from 'react';
 interface AudioWaveformProps {
   src: string;
   color?: string;
+  height?: number;
 }
 
-export function AudioWaveform({ src, color = '#a78bfa' }: AudioWaveformProps) {
+export function AudioWaveform({ src, color = '#60a5fa', height = 56 }: AudioWaveformProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
 
@@ -31,13 +32,13 @@ export function AudioWaveform({ src, color = '#a78bfa' }: AudioWaveformProps) {
         const canvas = canvasRef.current;
         if (!canvas) return;
         const width = Math.max(240, Math.floor(canvas.clientWidth * window.devicePixelRatio));
-        const height = Math.max(48, Math.floor(canvas.clientHeight * window.devicePixelRatio));
+        const pixelHeight = Math.max(48, Math.floor(height * window.devicePixelRatio));
         canvas.width = width;
-        canvas.height = height;
+        canvas.height = pixelHeight;
 
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
-        ctx.clearRect(0, 0, width, height);
+        ctx.clearRect(0, 0, width, pixelHeight);
         const channel = decoded.getChannelData(0);
         const samplesPerPixel = Math.max(1, Math.floor(channel.length / width));
         ctx.strokeStyle = color;
@@ -53,8 +54,8 @@ export function AudioWaveform({ src, color = '#a78bfa' }: AudioWaveformProps) {
             if (sample < min) min = sample;
             if (sample > max) max = sample;
           }
-          const y1 = ((1 - max) / 2) * height;
-          const y2 = ((1 - min) / 2) * height;
+          const y1 = ((1 - max) / 2) * pixelHeight;
+          const y2 = ((1 - min) / 2) * pixelHeight;
           ctx.moveTo(x, y1);
           ctx.lineTo(x, y2);
         }
@@ -69,10 +70,10 @@ export function AudioWaveform({ src, color = '#a78bfa' }: AudioWaveformProps) {
       cancelled = true;
       controller.abort();
     };
-  }, [src, color]);
+  }, [src, color, height]);
 
   return (
-    <div className="relative h-14 w-full overflow-hidden rounded bg-black/20">
+    <div className="relative w-full overflow-hidden rounded bg-black/20" style={{ height }}>
       <canvas ref={canvasRef} className="h-full w-full" aria-label="Audio waveform" />
       {state === 'loading' && <span className="absolute inset-0 flex items-center justify-center text-[9px] uppercase tracking-wider text-slate-600">Decoding waveform…</span>}
       {state === 'error' && <span className="absolute inset-0 flex items-center justify-center text-[9px] uppercase tracking-wider text-slate-600">Waveform unavailable</span>}
