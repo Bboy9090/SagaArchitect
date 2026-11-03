@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useMemo, useRef, useState } from 'react';
+import { use, useEffect, useMemo, useState } from 'react';
 import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
@@ -84,7 +84,6 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
   const [selectedLayerId, setSelectedLayerId] = useState('');
   const [loading, setLoading] = useState(true);
-  const cloudVersionRef = useRef(1);
   const [exportingFormat, setExportingFormat] = useState<PhoenixRasterExportFormat | null>(null);
   const [exportError, setExportError] = useState('');
   const {
@@ -116,7 +115,6 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
           height: PAGE_HEIGHT,
           background: '#ffffff',
         };
-        cloudVersionRef.current = cloudDocument?.version || loaded.version || 1;
         if (cancelled) return;
         setProject(loadedProject);
         setHistory(createDocumentHistory(loaded));
@@ -140,8 +138,7 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
     const handle = window.setTimeout(() => {
       const saved = savePhoenixMediaDocument(document);
       if (isDbMode()) {
-        void dbSaveMediaDocument(id, { ...saved, version: cloudVersionRef.current })
-          .then(cloudSaved => { cloudVersionRef.current = cloudSaved.version; })
+        void dbSaveMediaDocument(id, saved)
           .catch(error => console.error('Phoenix cloud media autosave failed:', error));
       }
     }, 500);
