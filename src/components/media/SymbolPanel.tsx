@@ -34,7 +34,7 @@ export function SymbolPanel({
         <Button
           size="sm"
           variant="ghost"
-          disabled={!selectedLayer || Boolean(selectedLayer.symbolId) || Boolean(selectedMaster)}
+          disabled={!selectedLayer || selectedLayer.type === 'adjustment' || Boolean(selectedLayer.symbolId) || Boolean(selectedMaster)}
           onClick={onCreateFromSelected}
         >
           Make Symbol

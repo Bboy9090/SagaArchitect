@@ -18,7 +18,7 @@ export type PhoenixBlendMode =
   | 'soft-light'
   | 'difference'
   | 'exclusion';
-export type PhoenixLayerType = 'text' | 'shape' | 'image' | 'raster' | 'path';
+export type PhoenixLayerType = 'text' | 'shape' | 'image' | 'raster' | 'path' | 'adjustment';
 
 export interface PhoenixLayerTransform {
   x: number;
@@ -115,6 +115,11 @@ export interface PhoenixRasterLayer extends PhoenixBaseLayer {
   src: string;
 }
 
+export interface PhoenixAdjustmentLayer extends PhoenixBaseLayer {
+  type: 'adjustment';
+  adjustments: PhoenixLayerAdjustments;
+}
+
 export interface PhoenixVectorHandle {
   x: number;
   y: number;
@@ -154,7 +159,8 @@ export type PhoenixMediaLayer =
   | PhoenixShapeLayer
   | PhoenixImageLayer
   | PhoenixRasterLayer
-  | PhoenixPathLayer;
+  | PhoenixPathLayer
+  | PhoenixAdjustmentLayer;
 
 export interface PhoenixLayerGroup {
   id: string;
@@ -641,7 +647,7 @@ function isFiniteBoundedNumber(value: unknown, min: number, max: number): value 
 }
 
 function isPhoenixLayerType(value: unknown): value is PhoenixLayerType {
-  return value === 'text' || value === 'shape' || value === 'image' || value === 'raster' || value === 'path';
+  return value === 'text' || value === 'shape' || value === 'image' || value === 'raster' || value === 'path' || value === 'adjustment';
 }
 
 export function parsePhoenixMediaDocumentFile(
@@ -745,5 +751,23 @@ export function rotateLayerBy(
   return {
     ...transform,
     rotation: ((transform.rotation + degrees) % 360 + 360) % 360,
+  };
+}
+
+
+export function createAdjustmentLayer(
+  document: Pick<PhoenixMediaDocument, 'width' | 'height' | 'layers'>,
+): PhoenixAdjustmentLayer {
+  return {
+    id: crypto.randomUUID(),
+    type: 'adjustment',
+    name: 'Adjustment Layer',
+    visible: true,
+    locked: false,
+    opacity: 1,
+    blendMode: 'normal',
+    zIndex: nextLayerZIndex(document.layers),
+    transform: { x: 0, y: 0, width: document.width, height: document.height, rotation: 0 },
+    adjustments: { ...DEFAULT_LAYER_ADJUSTMENTS },
   };
 }

@@ -15,11 +15,13 @@ import { VectorMaskPanel } from '@/components/media/VectorMaskPanel';
 import { LayerShadowPanel } from '@/components/media/LayerShadowPanel';
 import { MediaDocumentIO } from '@/components/media/MediaDocumentIO';
 import { LayerAlignmentPanel } from '@/components/media/LayerAlignmentPanel';
+import { AdjustmentLayerPanel } from '@/components/media/AdjustmentLayerPanel';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
 import { dbGetAssets, dbGetMediaDocument, dbGetProject, dbSaveMediaDocument, type ProjectAsset } from '@/lib/db-client';
 import {
+  createAdjustmentLayer,
   createPhoenixMediaDocument,
   createSymbolInstance,
   detachSymbolInstance,
@@ -33,6 +35,7 @@ import {
   isLayerEffectivelyLocked,
   isLayerEffectivelyVisible,
   layerCssEffects,
+  layerCssFilter,
   moveVectorPoint,
   scaleVectorContours,
   scaleVectorMask,
@@ -92,72 +95,108 @@ function cssMaskClipPath(layer: PhoenixMediaLayer): string | undefined {
   return `inset(${top}% ${right}% ${bottom}% ${left}%)`;
 }
 
-function buildSvg(document: PhoenixMediaDocument): string {
-  const layers = [...document.layers].filter(layer => isLayerEffectivelyVisible(layer, document)).sort((a, b) => a.zIndex - b.zIndex);
-  const body = layers.map(rawLayer => {
-    const layer = resolveSymbolLayer(document, rawLayer);
-    const { x, y, width, height, rotation } = layer.transform;
-    const transform = `rotate(${rotation} ${x + width / 2} ${y + height / 2})`;
-    const opacity = effectiveLayerOpacity(layer, document);
-    const safeLayerId = layer.id.replace(/[^a-zA-Z0-9_-]/g, '');
-    const clipId = `clip-${safeLayerId}`;
-    const gradientId = `gradient-${safeLayerId}`;
-    const gradient = layer.type === 'shape' || layer.type === 'path' ? layer.gradient : undefined;
-    const gradientDefinition = gradient
-      ? gradient.kind === 'radial'
-        ? `<defs><radialGradient id="${gradientId}" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="${gradient.start}"/><stop offset="100%" stop-color="${gradient.end}"/></radialGradient></defs>`
-        : `<defs><linearGradient id="${gradientId}" x1="0%" y1="50%" x2="100%" y2="50%" gradientTransform="rotate(${gradient.angle - 90} .5 .5)"><stop offset="0%" stop-color="${gradient.start}"/><stop offset="100%" stop-color="${gradient.end}"/></linearGradient></defs>`
+function renderSvgDrawableLayer(document: PhoenixMediaDocument, rawLayer: PhoenixMediaLayer): string {
+  const layer = resolveSymbolLayer(document, rawLayer);
+  if (layer.type === 'adjustment') return '';
+
+  const { x, y, width, height, rotation } = layer.transform;
+  const transform = `rotate(${rotation} ${x + width / 2} ${y + height / 2})`;
+  const opacity = effectiveLayerOpacity(layer, document);
+  const safeLayerId = layer.id.replace(/[^a-zA-Z0-9_-]/g, '');
+  const clipId = `clip-${safeLayerId}`;
+  const gradientId = `gradient-${safeLayerId}`;
+  const gradient = layer.type === 'shape' || layer.type === 'path' ? layer.gradient : undefined;
+  const gradientDefinition = gradient
+    ? gradient.kind === 'radial'
+      ? `<defs><radialGradient id="${gradientId}" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="${gradient.start}"/><stop offset="100%" stop-color="${gradient.end}"/></radialGradient></defs>`
+      : `<defs><linearGradient id="${gradientId}" x1="0%" y1="50%" x2="100%" y2="50%" gradientTransform="rotate(${gradient.angle - 90} .5 .5)"><stop offset="0%" stop-color="${gradient.start}"/><stop offset="100%" stop-color="${gradient.end}"/></linearGradient></defs>`
+    : '';
+  const layerFill = gradient ? `url(#${gradientId})` : (layer.type === 'shape' || layer.type === 'path' ? layer.fill : '');
+  const maskDefinition = layer.vectorMask && layer.vectorMask.points.length >= 3
+    ? `<defs><clipPath id="${clipId}" clipPathUnits="userSpaceOnUse"><polygon points="${layer.vectorMask.points.map(point => `${x + point.x},${y + point.y}`).join(' ')}" transform="${transform}" /></clipPath></defs>`
+    : layer.mask
+      ? `<defs><clipPath id="${clipId}" clipPathUnits="userSpaceOnUse"><rect x="${x + layer.mask.x}" y="${y + layer.mask.y}" width="${layer.mask.width}" height="${layer.mask.height}" transform="${transform}" /></clipPath></defs>`
       : '';
-    const layerFill = gradient ? `url(#${gradientId})` : (layer.type === 'shape' || layer.type === 'path' ? layer.fill : '');
-    const maskDefinition = layer.vectorMask && layer.vectorMask.points.length >= 3
-      ? `<defs><clipPath id="${clipId}" clipPathUnits="userSpaceOnUse"><polygon points="${layer.vectorMask.points.map(point => `${x + point.x},${y + point.y}`).join(' ')}" transform="${transform}" /></clipPath></defs>`
-      : layer.mask
-        ? `<defs><clipPath id="${clipId}" clipPathUnits="userSpaceOnUse"><rect x="${x + layer.mask.x}" y="${y + layer.mask.y}" width="${layer.mask.width}" height="${layer.mask.height}" transform="${transform}" /></clipPath></defs>`
-        : '';
-    const wrap = (element: string) => {
-      const filtered = `<g style="filter:${escapeXml(layerCssEffects(layer))}">${element}</g>`;
-      const definitions = `${gradientDefinition}${maskDefinition}`;
-      return layer.mask || (layer.vectorMask && layer.vectorMask.points.length >= 3)
-        ? `${definitions}<g clip-path="url(#${clipId})">${filtered}</g>`
-        : `${definitions}${filtered}`;
-    };
+  const wrap = (element: string) => {
+    const filtered = `<g style="filter:${escapeXml(layerCssEffects(layer))}">${element}</g>`;
+    const definitions = `${gradientDefinition}${maskDefinition}`;
+    return layer.mask || (layer.vectorMask && layer.vectorMask.points.length >= 3)
+      ? `${definitions}<g clip-path="url(#${clipId})">${filtered}</g>`
+      : `${definitions}${filtered}`;
+  };
 
-    if (layer.type === 'shape') {
-      if (layer.shape === 'ellipse') {
-        return wrap(`<ellipse cx="${x + width / 2}" cy="${y + height / 2}" rx="${width / 2}" ry="${height / 2}" fill="${layerFill}" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${transform}" />`);
-      }
-      return wrap(`<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${layerFill}" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${transform}" />`);
+  if (layer.type === 'shape') {
+    if (layer.shape === 'ellipse') {
+      return wrap(`<ellipse cx="${x + width / 2}" cy="${y + height / 2}" rx="${width / 2}" ry="${height / 2}" fill="${layerFill}" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${transform}" />`);
+    }
+    return wrap(`<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${layerFill}" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${transform}" />`);
+  }
+
+  if (layer.type === 'text') {
+    const anchor = layer.align === 'center' ? 'middle' : layer.align === 'right' ? 'end' : 'start';
+    const tx = layer.align === 'center' ? x + width / 2 : layer.align === 'right' ? x + width : x;
+    const lineHeight = textLineHeight(layer);
+    const lines = layer.text.split(/\r?\n/);
+    const tspans = lines.map((line, index) =>
+      `<tspan x="${tx}" dy="${index === 0 ? 0 : lineHeight}">${escapeXml(line)}</tspan>`
+    ).join('');
+    return wrap(`<text x="${tx}" y="${y + layer.fontSize}" fill="${layer.color}" font-size="${layer.fontSize}" font-family="${escapeXml(layer.fontFamily)}" font-weight="${layer.fontWeight}" font-style="${layer.italic ? 'italic' : 'normal'}" text-decoration="${layer.underline ? 'underline' : 'none'}" letter-spacing="${textLetterSpacing(layer)}" text-anchor="${anchor}" opacity="${opacity}" transform="${transform}" xml:space="preserve">${tspans}</text>`);
+  }
+
+  if (layer.type === 'path') {
+    const fillD = escapeXml(vectorPathFillSvgD(layer));
+    const strokeD = escapeXml(vectorPathSvgD(layer));
+    const localTransform = `translate(${x} ${y}) rotate(${rotation} ${width / 2} ${height / 2})`;
+    const fillElement = fillD
+      ? `<path d="${fillD}" fill="${layerFill}" fill-rule="${vectorPathFillRule(layer)}" stroke="none" opacity="${opacity}" transform="${localTransform}" />`
+      : '';
+    const strokeElement = `<path d="${strokeD}" fill="none" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${localTransform}" stroke-linejoin="round" stroke-linecap="round" />`;
+    return wrap(`${fillElement}${strokeElement}`);
+  }
+
+  const preserveAspectRatio = layer.type === 'image'
+    ? (layer.fit === 'contain' ? 'xMidYMid meet' : layer.fit === 'cover' ? 'xMidYMid slice' : 'none')
+    : 'none';
+  return wrap(`<image href="${escapeXml(layer.src)}" x="${x}" y="${y}" width="${width}" height="${height}" preserveAspectRatio="${preserveAspectRatio}" opacity="${opacity}" transform="${transform}" />`);
+}
+
+function adjustmentSvgClip(layer: Extract<PhoenixMediaLayer, { type: 'adjustment' }>, clipId: string): string {
+  const { x, y, width, height } = layer.transform;
+  if (layer.vectorMask && layer.vectorMask.points.length >= 3) {
+    const points = layer.vectorMask.points.map(point => `${x + point.x},${y + point.y}`).join(' ');
+    return `<clipPath id="${clipId}" clipPathUnits="userSpaceOnUse"><polygon points="${points}" /></clipPath>`;
+  }
+  if (layer.mask) {
+    return `<clipPath id="${clipId}" clipPathUnits="userSpaceOnUse"><rect x="${x + layer.mask.x}" y="${y + layer.mask.y}" width="${layer.mask.width}" height="${layer.mask.height}" /></clipPath>`;
+  }
+  return `<clipPath id="${clipId}" clipPathUnits="userSpaceOnUse"><rect x="${x}" y="${y}" width="${width}" height="${height}" /></clipPath>`;
+}
+
+function buildSvg(document: PhoenixMediaDocument): string {
+  const layers = [...document.layers]
+    .filter(layer => isLayerEffectivelyVisible(layer, document))
+    .sort((a, b) => a.zIndex - b.zIndex);
+
+  let body = `<rect width="100%" height="100%" fill="${document.background}"/>`;
+
+  for (const rawLayer of layers) {
+    const layer = resolveSymbolLayer(document, rawLayer);
+    if (layer.type !== 'adjustment') {
+      body += renderSvgDrawableLayer(document, rawLayer);
+      continue;
     }
 
-    if (layer.type === 'text') {
-      const anchor = layer.align === 'center' ? 'middle' : layer.align === 'right' ? 'end' : 'start';
-      const tx = layer.align === 'center' ? x + width / 2 : layer.align === 'right' ? x + width : x;
-      const lineHeight = textLineHeight(layer);
-      const lines = layer.text.split(/\r?\n/);
-      const tspans = lines.map((line, index) =>
-        `<tspan x="${tx}" dy="${index === 0 ? 0 : lineHeight}">${escapeXml(line)}</tspan>`
-      ).join('');
-      return wrap(`<text x="${tx}" y="${y + layer.fontSize}" fill="${layer.color}" font-size="${layer.fontSize}" font-family="${escapeXml(layer.fontFamily)}" font-weight="${layer.fontWeight}" font-style="${layer.italic ? 'italic' : 'normal'}" text-decoration="${layer.underline ? 'underline' : 'none'}" letter-spacing="${textLetterSpacing(layer)}" text-anchor="${anchor}" opacity="${opacity}" transform="${transform}" xml:space="preserve">${tspans}</text>`);
-    }
+    const safeId = layer.id.replace(/[^a-zA-Z0-9_-]/g, '');
+    const sourceId = `adjustment-source-${safeId}`;
+    const clipId = `adjustment-clip-${safeId}`;
+    const prior = body;
+    const opacity = effectiveLayerOpacity(layer, document);
+    body = `<defs><g id="${sourceId}">${prior}</g>${adjustmentSvgClip(layer, clipId)}</defs>`
+      + `<use href="#${sourceId}"/>`
+      + `<g clip-path="url(#${clipId})" opacity="${opacity}" style="filter:${escapeXml(layerCssFilter(layer))}"><use href="#${sourceId}"/></g>`;
+  }
 
-    if (layer.type === 'path') {
-      const fillD = escapeXml(vectorPathFillSvgD(layer));
-      const strokeD = escapeXml(vectorPathSvgD(layer));
-      const localTransform = `translate(${x} ${y}) rotate(${rotation} ${width / 2} ${height / 2})`;
-      const fillElement = fillD
-        ? `<path d="${fillD}" fill="${layerFill}" fill-rule="${vectorPathFillRule(layer)}" stroke="none" opacity="${opacity}" transform="${localTransform}" />`
-        : '';
-      const strokeElement = `<path d="${strokeD}" fill="none" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${localTransform}" stroke-linejoin="round" stroke-linecap="round" />`;
-      return wrap(`${fillElement}${strokeElement}`);
-    }
-
-    const preserveAspectRatio = layer.type === 'image'
-      ? (layer.fit === 'contain' ? 'xMidYMid meet' : layer.fit === 'cover' ? 'xMidYMid slice' : 'none')
-      : 'none';
-    return wrap(`<image href="${escapeXml(layer.src)}" x="${x}" y="${y}" width="${width}" height="${height}" preserveAspectRatio="${preserveAspectRatio}" opacity="${opacity}" transform="${transform}" />`);
-  }).join('');
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${document.width}" height="${document.height}" viewBox="0 0 ${document.width} ${document.height}"><rect width="100%" height="100%" fill="${document.background}"/>${body}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${document.width}" height="${document.height}" viewBox="0 0 ${document.width} ${document.height}">${body}</svg>`;
 }
 
 export default function DesignStudioPage({ params }: DesignStudioPageProps) {
@@ -406,6 +445,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
     if (!selected) return;
     const nextTransform = {
       ...transform,
+      rotation: selected.type === 'adjustment' ? 0 : transform.rotation,
       width: Math.max(1, transform.width),
       height: Math.max(1, transform.height),
     };
@@ -528,6 +568,11 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
               <Button size="sm" variant="secondary" onClick={addText}>Text</Button>
               <Button size="sm" variant="secondary" onClick={addShape}>Shape</Button>
               <Button size="sm" variant="secondary" onClick={addPath}>Vector Path</Button>
+              <Button size="sm" variant="secondary" onClick={() => {
+                const layer = createAdjustmentLayer(document);
+                commit(current => ({ ...current, layers: [...current.layers, layer] }));
+                setSelectedLayerId(layer.id);
+              }}>Adjustment</Button>
             </div>
           </div>
 
@@ -598,6 +643,26 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                   clipPath: vectorMaskCssClipPath(layer) || cssMaskClipPath(layer),
                   filter: layerCssEffects(layer),
                 };
+                if (layer.type === 'adjustment') {
+                  return (
+                    <button
+                      key={layer.id}
+                      type="button"
+                      data-media-interactive="true"
+                      onClick={() => setSelectedLayerId(layer.id)}
+                      className="absolute block border-0 p-0"
+                      aria-label={`Select layer ${layer.name}`}
+                      style={{
+                        ...style,
+                        filter: 'none',
+                        backdropFilter: layerCssFilter(layer),
+                        WebkitBackdropFilter: layerCssFilter(layer),
+                        background: 'rgba(0,0,0,0.001)',
+                      }}
+                    />
+                  );
+                }
+
                 return (
                   <button key={layer.id} type="button" data-media-interactive="true" onClick={() => setSelectedLayerId(layer.id)} style={style} className="block border-0 bg-transparent p-0 text-left">
                     {layer.type === 'shape' && <div className="h-full w-full" style={{ background: gradientFillCss(layer.gradient, layer.fill), border: layer.strokeWidth ? `${Math.max(1, layer.strokeWidth * zoom)}px solid ${layer.stroke}` : undefined }} />}
@@ -702,10 +767,19 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                 onChange={patch => patchLayer(patch)}
               />
 
-              <LayerShadowPanel
-                layer={selected}
-                onChange={patch => patchLayer(patch)}
-              />
+              {selected.type === 'adjustment' && (
+                <AdjustmentLayerPanel
+                  layer={selected}
+                  onChange={patch => patchLayer(patch)}
+                />
+              )}
+
+              {selected.type !== 'adjustment' && (
+                <LayerShadowPanel
+                  layer={selected}
+                  onChange={patch => patchLayer(patch)}
+                />
+              )}
 
               {!selected.symbolId && selected.type === 'text' && (
                 <>
