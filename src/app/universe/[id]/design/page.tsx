@@ -27,6 +27,8 @@ import {
   moveVectorPoint,
   scaleVectorContours,
   scaleVectorPoints,
+  textLetterSpacing,
+  textLineHeight,
   vectorPathFillRule,
   vectorPathSvgD,
   type PhoenixMediaDocument,
@@ -115,7 +117,12 @@ function buildSvg(document: PhoenixMediaDocument): string {
     if (layer.type === 'text') {
       const anchor = layer.align === 'center' ? 'middle' : layer.align === 'right' ? 'end' : 'start';
       const tx = layer.align === 'center' ? x + width / 2 : layer.align === 'right' ? x + width : x;
-      return wrap(`<text x="${tx}" y="${y + layer.fontSize}" fill="${layer.color}" font-size="${layer.fontSize}" font-family="${escapeXml(layer.fontFamily)}" font-weight="${layer.fontWeight}" text-anchor="${anchor}" opacity="${opacity}" transform="${transform}">${escapeXml(layer.text)}</text>`);
+      const lineHeight = textLineHeight(layer);
+      const lines = layer.text.split(/\r?\n/);
+      const tspans = lines.map((line, index) =>
+        `<tspan x="${tx}" dy="${index === 0 ? 0 : lineHeight}">${escapeXml(line)}</tspan>`
+      ).join('');
+      return wrap(`<text x="${tx}" y="${y + layer.fontSize}" fill="${layer.color}" font-size="${layer.fontSize}" font-family="${escapeXml(layer.fontFamily)}" font-weight="${layer.fontWeight}" font-style="${layer.italic ? 'italic' : 'normal'}" text-decoration="${layer.underline ? 'underline' : 'none'}" letter-spacing="${textLetterSpacing(layer)}" text-anchor="${anchor}" opacity="${opacity}" transform="${transform}" xml:space="preserve">${tspans}</text>`);
     }
 
     if (layer.type === 'path') {
@@ -513,7 +520,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                 return (
                   <button key={layer.id} type="button" data-media-interactive="true" onClick={() => setSelectedLayerId(layer.id)} style={style} className="block border-0 bg-transparent p-0 text-left">
                     {layer.type === 'shape' && <div className="h-full w-full" style={{ background: gradientFillCss(layer.gradient, layer.fill), border: layer.strokeWidth ? `${Math.max(1, layer.strokeWidth * zoom)}px solid ${layer.stroke}` : undefined }} />}
-                    {layer.type === 'text' && <div className="h-full w-full overflow-hidden" style={{ color: layer.color, fontSize: layer.fontSize * zoom, fontFamily: layer.fontFamily, fontWeight: layer.fontWeight, lineHeight: 1.05, textAlign: layer.align }}>{layer.text}</div>}
+                    {layer.type === 'text' && <div className="h-full w-full overflow-hidden whitespace-pre-wrap" style={{ color: layer.color, fontSize: layer.fontSize * zoom, fontFamily: layer.fontFamily, fontWeight: layer.fontWeight, fontStyle: layer.italic ? 'italic' : 'normal', textDecoration: layer.underline ? 'underline' : 'none', letterSpacing: textLetterSpacing(layer) * zoom, lineHeight: `${textLineHeight(layer) * zoom}px`, textAlign: layer.align }}>{layer.text}</div>}
                     {layer.type === 'path' && (
                       <svg viewBox={`0 0 ${layer.transform.width} ${layer.transform.height}`} className="h-full w-full overflow-visible">
                         {layer.gradient && (
@@ -611,9 +618,29 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                   <label className="block text-[10px] uppercase text-slate-500">Text
                     <textarea value={selected.text} onChange={event => patchLayer({ text: event.target.value } as Partial<PhoenixMediaLayer>)} className="mt-1 min-h-20 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
                   </label>
-                  <label className="block text-[10px] uppercase text-slate-500">Color
-                    <input type="color" value={selected.color} onChange={event => patchLayer({ color: event.target.value } as Partial<PhoenixMediaLayer>)} className="mt-1 h-10 w-full" />
-                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="block text-[10px] uppercase text-slate-500">Color
+                      <input type="color" value={selected.color} onChange={event => patchLayer({ color: event.target.value } as Partial<PhoenixMediaLayer>)} className="mt-1 h-10 w-full" />
+                    </label>
+                    <label className="text-[10px] uppercase text-slate-500">Size
+                      <input type="number" min={8} max={300} value={selected.fontSize} onChange={event => patchLayer({ fontSize: Number(event.target.value) } as Partial<PhoenixMediaLayer>)} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                    </label>
+                    <label className="text-[10px] uppercase text-slate-500">Line height
+                      <input type="number" min={0.5} max={4} step={0.05} value={selected.lineHeight ?? 1.08} onChange={event => patchLayer({ lineHeight: Number(event.target.value) } as Partial<PhoenixMediaLayer>)} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                    </label>
+                    <label className="text-[10px] uppercase text-slate-500">Tracking px
+                      <input type="number" min={-20} max={200} step={0.5} value={selected.letterSpacing ?? 0} onChange={event => patchLayer({ letterSpacing: Number(event.target.value) } as Partial<PhoenixMediaLayer>)} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <select value={selected.align} onChange={event => patchLayer({ align: event.target.value as 'left' | 'center' | 'right' } as Partial<PhoenixMediaLayer>)} className="min-h-10 rounded border border-white/10 bg-[#0a0d14] px-2 text-xs text-white">
+                      <option value="left">Left</option>
+                      <option value="center">Center</option>
+                      <option value="right">Right</option>
+                    </select>
+                    <Button size="sm" variant={selected.italic ? 'gold' : 'ghost'} onClick={() => patchLayer({ italic: !selected.italic } as Partial<PhoenixMediaLayer>)}>Italic</Button>
+                    <Button size="sm" variant={selected.underline ? 'gold' : 'ghost'} onClick={() => patchLayer({ underline: !selected.underline } as Partial<PhoenixMediaLayer>)}>Underline</Button>
+                  </div>
                 </>
               )}
               {selected.type === 'shape' && (
