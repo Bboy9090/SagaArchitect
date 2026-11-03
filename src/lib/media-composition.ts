@@ -713,3 +713,37 @@ export function phoenixMediaDocumentFileName(document: Pick<PhoenixMediaDocument
   const safeTitle = document.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'untitled';
   return `${safeTitle}.${document.kind}.phoenix.json`;
 }
+
+
+export type PhoenixLayerAlignment =
+  | 'left'
+  | 'center-x'
+  | 'right'
+  | 'top'
+  | 'center-y'
+  | 'bottom';
+
+export function alignLayerToCanvas(
+  transform: PhoenixLayerTransform,
+  document: Pick<PhoenixMediaDocument, 'width' | 'height'>,
+  alignment: PhoenixLayerAlignment,
+): PhoenixLayerTransform {
+  const next = { ...transform };
+  if (alignment === 'left') next.x = 0;
+  if (alignment === 'center-x') next.x = (document.width - transform.width) / 2;
+  if (alignment === 'right') next.x = document.width - transform.width;
+  if (alignment === 'top') next.y = 0;
+  if (alignment === 'center-y') next.y = (document.height - transform.height) / 2;
+  if (alignment === 'bottom') next.y = document.height - transform.height;
+  return clampLayerTransform(next, document);
+}
+
+export function rotateLayerBy(
+  transform: PhoenixLayerTransform,
+  degrees: number,
+): PhoenixLayerTransform {
+  return {
+    ...transform,
+    rotation: ((transform.rotation + degrees) % 360 + 360) % 360,
+  };
+}
