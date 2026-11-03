@@ -122,8 +122,10 @@ export function LayerTransformControls({
     };
   };
 
-  const beginResize = (handle: ResizeHandle) => (event: React.PointerEvent<HTMLDivElement>) => {
+  const beginResize = (event: React.PointerEvent<HTMLDivElement>) => {
     if (locked || event.button !== 0) return;
+    const handle = event.currentTarget.dataset.handle as ResizeHandle | undefined;
+    if (!handle) return;
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
     gesture.current = {
@@ -168,7 +170,8 @@ export function LayerTransformControls({
           <div
             data-media-interactive="true"
             className={`${handleClass} -left-1.5 -top-1.5 cursor-nwse-resize`}
-            onPointerDown={beginResize('nw')}
+            data-handle="nw"
+            onPointerDown={beginResize}
             onPointerMove={updateGesture}
             onPointerUp={finishGesture}
             onPointerCancel={finishGesture}
@@ -176,7 +179,8 @@ export function LayerTransformControls({
           <div
             data-media-interactive="true"
             className={`${handleClass} -right-1.5 -top-1.5 cursor-nesw-resize`}
-            onPointerDown={beginResize('ne')}
+            data-handle="ne"
+            onPointerDown={beginResize}
             onPointerMove={updateGesture}
             onPointerUp={finishGesture}
             onPointerCancel={finishGesture}
@@ -184,7 +188,8 @@ export function LayerTransformControls({
           <div
             data-media-interactive="true"
             className={`${handleClass} -bottom-1.5 -left-1.5 cursor-nesw-resize`}
-            onPointerDown={beginResize('sw')}
+            data-handle="sw"
+            onPointerDown={beginResize}
             onPointerMove={updateGesture}
             onPointerUp={finishGesture}
             onPointerCancel={finishGesture}
@@ -192,7 +197,8 @@ export function LayerTransformControls({
           <div
             data-media-interactive="true"
             className={`${handleClass} -bottom-1.5 -right-1.5 cursor-nwse-resize`}
-            onPointerDown={beginResize('se')}
+            data-handle="se"
+            onPointerDown={beginResize}
             onPointerMove={updateGesture}
             onPointerUp={finishGesture}
             onPointerCancel={finishGesture}
