@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useMemo, useState } from 'react';
+import { use, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
@@ -9,7 +9,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { StudioRevisionPanel } from '@/components/media/StudioRevisionPanel';
 import { getScenes, getStoryboardPanels, getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
-import { dbGetProject, dbGetScenes, dbGetStoryboardPanels, dbGetStudioDocument, dbSaveStudioDocument } from '@/lib/db-client';
+import { dbGetAssets, dbGetProject, dbGetScenes, dbGetStoryboardPanels, dbGetStudioDocument, dbSaveStudioDocument, type ProjectAsset } from '@/lib/db-client';
 import {
   buildMotionComicTimeline,
   loadMotionComicTimeline,
@@ -17,11 +17,16 @@ import {
 } from '@/lib/motion-comic';
 import {
   activeCaptionAt,
+  addClipToTimelineTrack,
+  addTimelineTrack,
   clipTransitionOpacity,
   clipTransformAt,
+  moveTimelineTrack,
+  removeEmptyTimelineTrack,
   timelineClipDuration,
   timelineDuration,
   savePhoenixVideoTimeline,
+  type PhoenixTimelineClip,
   type PhoenixVideoTimeline,
 } from '@/lib/video-timeline';
 import type { Scene, StoryboardPanel, Universe } from '@/lib/types';
@@ -38,12 +43,17 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [sceneId, setSceneId] = useState('');
   const [panels, setPanels] = useState<StoryboardPanel[]>([]);
+  const [assets, setAssets] = useState<ProjectAsset[]>([]);
   const [timeline, setTimeline] = useState<PhoenixVideoTimeline | null>(null);
+  const [selectedTrackId, setSelectedTrackId] = useState('');
+  const [selectedClipId, setSelectedClipId] = useState('');
   const [secondsPerPanel, setSecondsPerPanel] = useState(4);
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState('');
+  const visualVideoRefs = useRef(new Map<string, HTMLVideoElement>());
+  const audioRefs = useRef(new Map<string, HTMLAudioElement>());
 
   useEffect(() => {
     let cancelled = false;
@@ -63,6 +73,7 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
         const localTimeline = loadMotionComicTimeline(id);
         const cloudTimeline = isDbMode() ? await dbGetStudioDocument<PhoenixVideoTimeline>(id, 'motion_timeline') : null;
         setTimeline(newestStudioDocument(localTimeline, cloudTimeline));
+        if (isDbMode()) setAssets(await dbGetAssets(id));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -93,27 +104,32 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
   }, [timeline, id]);
 
   const duration = useMemo(() => timeline ? timelineDuration(timeline) : 1, [timeline]);
-  const activeClip = useMemo(() => {
-    if (!timeline) return null;
+  const selectedClip = useMemo(
+    () => timeline?.tracks.flatMap(track => track.clips).find(clip => clip.id === selectedClipId) || null,
+    [timeline, selectedClipId],
+  );
+  const activeVisualLayers = useMemo(() => {
+    if (!timeline) return [];
     return timeline.tracks
       .filter(track => track.kind === 'video')
-      .flatMap(track => track.clips)
-      .filter(clip => playhead >= clip.start && playhead <= clip.start + timelineClipDuration(clip))
-      .sort((a, b) => b.start - a.start)[0] || null;
+      .sort((a, b) => a.order - b.order)
+      .flatMap(track => track.clips.map(clip => ({ clip, trackOrder: track.order })))
+      .filter(({ clip }) => playhead >= clip.start && playhead <= clip.start + timelineClipDuration(clip))
+      .sort((a, b) => a.trackOrder - b.trackOrder || a.clip.start - b.clip.start);
   }, [timeline, playhead]);
 
   const activeCaption = useMemo(
     () => timeline ? activeCaptionAt(timeline, playhead) : null,
     [timeline, playhead],
   );
-  const activeTransform = useMemo(
-    () => activeClip ? clipTransformAt(activeClip, playhead) : null,
-    [activeClip, playhead],
-  );
-  const activeOpacity = useMemo(
-    () => activeClip ? clipTransitionOpacity(activeClip, playhead) : 1,
-    [activeClip, playhead],
-  );
+  const activeAudioClips = useMemo(() => {
+    if (!timeline) return [];
+    return timeline.tracks
+      .filter(track => track.kind === 'audio')
+      .sort((a, b) => a.order - b.order)
+      .flatMap(track => track.clips)
+      .filter(clip => playhead >= clip.start && playhead <= clip.start + timelineClipDuration(clip));
+  }, [timeline, playhead]);
 
   useEffect(() => {
     if (!playing || !timeline) return;
@@ -136,6 +152,45 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
     return () => cancelAnimationFrame(frame);
   }, [playing, timeline, duration]);
 
+  useEffect(() => {
+    const activeIds = new Set(activeVisualLayers.filter(({ clip }) => clip.kind === 'video').map(({ clip }) => clip.id));
+    for (const [clipId, video] of visualVideoRefs.current.entries()) {
+      if (!activeIds.has(clipId)) video.pause();
+    }
+    for (const { clip } of activeVisualLayers) {
+      if (clip.kind !== 'video') continue;
+      const video = visualVideoRefs.current.get(clip.id);
+      if (!video) continue;
+      const sourceTime = clip.inPoint + Math.max(0, playhead - clip.start) * clip.playbackRate;
+      if (Number.isFinite(video.duration) && Math.abs(video.currentTime - sourceTime) > 0.3) {
+        video.currentTime = Math.min(sourceTime, Math.max(0, video.duration - 0.05));
+      }
+      video.playbackRate = clip.playbackRate;
+      video.muted = true;
+      if (playing) void video.play().catch(() => undefined);
+      else video.pause();
+    }
+  }, [activeVisualLayers, playhead, playing]);
+
+  useEffect(() => {
+    const activeIds = new Set(activeAudioClips.map(clip => clip.id));
+    for (const [clipId, audio] of audioRefs.current.entries()) {
+      if (!activeIds.has(clipId)) audio.pause();
+    }
+    for (const clip of activeAudioClips) {
+      const audio = audioRefs.current.get(clip.id);
+      if (!audio) continue;
+      const sourceTime = clip.inPoint + Math.max(0, playhead - clip.start) * clip.playbackRate;
+      if (Number.isFinite(audio.duration) && Math.abs(audio.currentTime - sourceTime) > 0.3) {
+        audio.currentTime = Math.min(sourceTime, Math.max(0, audio.duration - 0.05));
+      }
+      audio.playbackRate = clip.playbackRate;
+      audio.volume = clip.muted ? 0 : Math.max(0, Math.min(1, clip.volume));
+      if (playing) void audio.play().catch(() => undefined);
+      else audio.pause();
+    }
+  }, [activeAudioClips, playhead, playing]);
+
   const generateFromStoryboard = () => {
       if (!scene) return;
     const ordered = [...panels].sort((a, b) => a.panel_number - b.panel_number);
@@ -157,7 +212,7 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
     );
   };
 
-  const continueInVideoStudio = () => {
+  const continueInVideoStudio = async () => {
     if (!timeline) return;
     const promoted: PhoenixVideoTimeline = {
       ...timeline,
@@ -165,9 +220,80 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
       title: timeline.title.replace(/\s+Motion Comic$/i, '') + ' — Video Edit',
       updatedAt: new Date().toISOString(),
     };
-    savePhoenixVideoTimeline(promoted);
+    const saved = savePhoenixVideoTimeline(promoted);
+    if (isDbMode()) {
+      await dbGetStudioDocument<PhoenixVideoTimeline>(id, 'video_timeline');
+      await dbSaveStudioDocument(id, 'video_timeline', saved);
+    }
     setStatus('Motion timeline promoted to Video Studio without flattening.');
     router.push(`/universe/${id}/video`);
+  };
+
+  const patchClip = (clipId: string, patch: Partial<PhoenixTimelineClip>) => {
+    setTimeline(current => current ? ({
+      ...current,
+      tracks: current.tracks.map(track => ({
+        ...track,
+        clips: track.clips.map(clip => clip.id === clipId ? { ...clip, ...patch } : clip),
+      })),
+    }) : current);
+  };
+
+  const addOverlayTrack = () => {
+    setTimeline(current => {
+      if (!current) return current;
+      const next = addTimelineTrack(current, 'video', `Overlay ${current.tracks.filter(track => track.kind === 'video').length}`);
+      const created = [...next.tracks].sort((a, b) => b.order - a.order).find(track => track.kind === 'video');
+      if (created) setSelectedTrackId(created.id);
+      return next;
+    });
+  };
+
+  const addOverlayAsset = (asset: ProjectAsset) => {
+    if (!timeline || !asset.mime_type.startsWith('image/')) return;
+    setTimeline(current => {
+      if (!current) return current;
+      const selected = current.tracks.find(track => track.id === selectedTrackId && track.kind === 'video');
+      const target = selected || current.tracks.filter(track => track.kind === 'video').sort((a, b) => b.order - a.order)[0];
+      if (!target) return current;
+      const span = Math.max(0.5, Math.min(secondsPerPanel, Math.max(0.5, timelineDuration(current) - playhead)));
+      setSelectedTrackId(target.id);
+      return addClipToTimelineTrack(current, target.id, {
+        assetId: asset.id,
+        name: asset.name,
+        src: asset.serve_url || `/api/db/assets/${asset.id}/serve`,
+        mimeType: asset.mime_type,
+        kind: 'image',
+        start: playhead,
+        sourceDuration: span,
+        inPoint: 0,
+        outPoint: span,
+        playbackRate: 1,
+        volume: 1,
+        muted: false,
+      });
+    });
+    setStatus(`Added ${asset.name} as a motion overlay at ${playhead.toFixed(2)}s.`);
+  };
+
+  const shiftTrack = (trackId: string, direction: -1 | 1) => {
+    setTimeline(current => current ? moveTimelineTrack(current, trackId, direction) : current);
+  };
+
+  const deleteEmptyTrack = (trackId: string) => {
+    setTimeline(current => current ? removeEmptyTimelineTrack(current, trackId) : current);
+    if (selectedTrackId === trackId) setSelectedTrackId('');
+  };
+
+  const addTransformKeyframe = () => {
+    if (!selectedClip) return;
+    const localTime = Math.max(0, playhead - selectedClip.start);
+    const keyframes = [...(selectedClip.keyframes || []).filter(frame => Math.abs(frame.time - localTime) > 0.02), {
+      time: localTime,
+      transform: { ...selectedClip.transform },
+    }].sort((a, b) => a.time - b.time);
+    patchClip(selectedClip.id, { keyframes });
+    setStatus(`Added transform keyframe at ${playhead.toFixed(2)}s.`);
   };
 
   const setCanvasPreset = (width: number, height: number) => {
@@ -211,7 +337,7 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
               <Button size="sm" variant={timeline.width > timeline.height ? 'gold' : 'ghost'} onClick={() => setCanvasPreset(1920, 1080)}>16:9</Button>
               <Button size="sm" variant={timeline.height > timeline.width ? 'gold' : 'ghost'} onClick={() => setCanvasPreset(1080, 1920)}>9:16</Button>
               <Button size="sm" variant={timeline.height === timeline.width ? 'gold' : 'ghost'} onClick={() => setCanvasPreset(1080, 1080)}>1:1</Button>
-              <Button size="sm" variant="secondary" onClick={continueInVideoStudio}>Continue in Video Studio →</Button>
+              <Button size="sm" variant="secondary" onClick={() => void continueInVideoStudio()}>Continue in Video Studio →</Button>
             </div>
           ) : null
         }
