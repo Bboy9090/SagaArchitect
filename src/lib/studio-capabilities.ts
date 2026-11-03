@@ -92,7 +92,8 @@ export const PHOENIX_STUDIOS: PhoenixStudioCapability[] = [
     icon: '▷',
     status: 'foundation',
     summary: 'Non-linear video and short-form editing with canon-aware project media.',
-    capabilities: ['Scene model', 'Storyboard source', 'Asset pipeline'],
+    capabilities: ['Non-linear timeline', 'Trim and split', 'Media preview', 'Playback speed', 'Volume', 'Vertical video presets'],
+    route: id => `/universe/${id}/video`,
     productionTypes: ['film', 'video', 'short_video'],
   },
   {
