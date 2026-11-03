@@ -8,6 +8,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { MediaViewportToolbar } from '@/components/media/MediaViewportToolbar';
 import { MediaRulers } from '@/components/media/MediaRulers';
 import { LayerTransformControls } from '@/components/media/LayerTransformControls';
+import { MediaRevisionPanel } from '@/components/media/MediaRevisionPanel';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
@@ -296,6 +297,18 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="ghost" disabled={history.past.length === 0} onClick={() => setHistory(current => current ? undoDocumentHistory(current) : current)}>Undo</Button>
             <Button size="sm" variant="ghost" disabled={history.future.length === 0} onClick={() => setHistory(current => current ? redoDocumentHistory(current) : current)}>Redo</Button>
+            <MediaRevisionPanel
+              projectId={id}
+              kind={document.kind}
+              currentVersion={document.version}
+              enabled={isDbMode()}
+              onRestore={restored => {
+                setHistory(createDocumentHistory(restored));
+                setSelectedLayerId('');
+                
+              }}
+              onError={setExportError}
+            />
             <Button size="sm" variant="secondary" loading={exportingFormat === 'png'} onClick={() => void exportFlattened('png')}>PNG</Button>
             <Button size="sm" variant="secondary" loading={exportingFormat === 'jpeg'} onClick={() => void exportFlattened('jpeg')}>JPEG</Button>
             <Button size="sm" variant="secondary" loading={exportingFormat === 'webp'} onClick={() => void exportFlattened('webp')}>WebP</Button>
