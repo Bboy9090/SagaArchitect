@@ -343,7 +343,7 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
                   </span>
                 ))}
               </div>
-              {timeline.tracks.sort((a,b) => a.order-b.order).map(track => (
+              {[...timeline.tracks].sort((a,b) => a.order-b.order).map(track => (
                 <div key={track.id} className="relative flex h-20 border-b border-white/5">
                   <div className="sticky left-0 z-20 flex w-28 shrink-0 items-center border-r border-white/10 bg-[#080c15] px-3 text-xs font-bold text-slate-400">
                     {track.name}
