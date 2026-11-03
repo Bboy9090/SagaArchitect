@@ -102,7 +102,8 @@ export const PHOENIX_STUDIOS: PhoenixStudioCapability[] = [
     icon: '⌁',
     status: 'foundation',
     summary: 'Motion graphics, animatics, panel animation, parallax, and motion comics.',
-    capabilities: ['Storyboard timing source', 'Scene structure', 'Asset lineage'],
+    capabilities: ['Storyboard import', 'Panel timing', 'Ken Burns keyframes', 'Dialogue captions', 'Fade transitions'],
+    route: id => `/universe/${id}/motion`,
     productionTypes: ['motion_comic', 'video', 'film'],
   },
   {
