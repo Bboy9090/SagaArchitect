@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  activeCaptionAt,
   addClipToTimeline,
+  clipTransitionOpacity,
+  clipTransformAt,
   createPhoenixVideoTimeline,
   splitTimelineClip,
   timelineClipDuration,
@@ -96,4 +99,74 @@ test('split outside clip interior is a no-op', () => {
   const clip = timeline.tracks[0].clips[0];
   const same = splitTimelineClip(timeline, clip.id, 0);
   assert.equal(same.tracks[0].clips.length, 1);
+});
+
+
+test('caption lookup returns the active timed cue', () => {
+  const timeline = createPhoenixVideoTimeline('project-caption');
+  timeline.captions.push({
+    id: 'caption-1',
+    text: 'Hello',
+    start: 1,
+    end: 3,
+    position: 'bottom',
+    fontSize: 40,
+    color: '#fff',
+    background: '#000',
+  });
+  assert.equal(activeCaptionAt(timeline, 2)?.text, 'Hello');
+  assert.equal(activeCaptionAt(timeline, 4), null);
+});
+
+test('fade transitions calculate bounded opacity', () => {
+  let timeline = createPhoenixVideoTimeline('project-fade');
+  timeline = addClipToTimeline(timeline, {
+    name: 'Fade',
+    src: '/fade.mp4',
+    mimeType: 'video/mp4',
+    kind: 'video',
+    start: 2,
+    sourceDuration: 6,
+    inPoint: 0,
+    outPoint: 6,
+    playbackRate: 1,
+    volume: 1,
+    muted: false,
+    transitionIn: 'fade',
+    transitionOut: 'fade',
+    transitionDuration: 1,
+  });
+  const clip = timeline.tracks[0].clips[0];
+  assert.equal(clipTransitionOpacity(clip, 2), 0);
+  assert.ok(clipTransitionOpacity(clip, 2.5) > 0.45 && clipTransitionOpacity(clip, 2.5) < 0.55);
+  assert.equal(clipTransitionOpacity(clip, 5), 1);
+  assert.ok(clipTransitionOpacity(clip, 7.5) > 0.45 && clipTransitionOpacity(clip, 7.5) < 0.55);
+});
+
+test('transform keyframes interpolate linearly at the playhead', () => {
+  let timeline = createPhoenixVideoTimeline('project-keyframes');
+  timeline = addClipToTimeline(timeline, {
+    name: 'Move',
+    src: '/move.png',
+    mimeType: 'image/png',
+    kind: 'image',
+    start: 1,
+    sourceDuration: 5,
+    inPoint: 0,
+    outPoint: 5,
+    playbackRate: 1,
+    volume: 1,
+    muted: false,
+    transform: { scale: 1, x: 0, y: 0, rotation: 0 },
+    keyframes: [
+      { time: 0, transform: { scale: 1, x: 0, y: 0, rotation: 0 } },
+      { time: 4, transform: { scale: 2, x: 100, y: 40, rotation: 20 } },
+    ],
+  });
+  const clip = timeline.tracks[0].clips[0];
+  const transform = clipTransformAt(clip, 3);
+  assert.equal(transform.scale, 1.5);
+  assert.equal(transform.x, 50);
+  assert.equal(transform.y, 20);
+  assert.equal(transform.rotation, 10);
 });
