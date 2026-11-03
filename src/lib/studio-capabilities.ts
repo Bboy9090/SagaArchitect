@@ -42,7 +42,8 @@ export const PHOENIX_STUDIOS: PhoenixStudioCapability[] = [
     icon: '▦',
     status: 'foundation',
     summary: 'Page, cover, poster, thumbnail, and promotional layout workspace.',
-    capabilities: ['Layout model', 'Asset pipeline', 'Export foundation'],
+    capabilities: ['Layout presets', 'Guides and safe zones', 'Undo/redo', 'Snapping', 'SVG export'],
+    route: id => `/universe/${id}/design`,
     productionTypes: ['design', 'book', 'comic'],
   },
   {
