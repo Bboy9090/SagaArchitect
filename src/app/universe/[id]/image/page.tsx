@@ -8,6 +8,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { RasterPaintCanvas } from '@/components/media/RasterPaintCanvas';
 import { MediaViewportToolbar } from '@/components/media/MediaViewportToolbar';
 import { MediaRulers } from '@/components/media/MediaRulers';
+import { LayerTransformControls } from '@/components/media/LayerTransformControls';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
@@ -541,6 +542,18 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                   </button>
                 );
               })}
+              {selectedLayer && selectedLayer.visible && (
+                <LayerTransformControls
+                  transform={selectedLayer.transform}
+                  zoom={scale}
+                  canvasWidth={document.width}
+                  canvasHeight={document.height}
+                  locked={selectedLayer.locked}
+                  allowMove={selectedLayer.type !== 'raster'}
+                  snapValue={snapValue}
+                  onCommit={transform => patchSelectedLayer({ transform } as Partial<PhoenixMediaLayer>)}
+                />
+              )}
                 <div
                   className="pointer-events-none absolute z-[10000] border-2 border-dashed border-cyan-300 bg-cyan-300/5"
                 style={{

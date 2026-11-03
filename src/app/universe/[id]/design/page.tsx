@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { MediaViewportToolbar } from '@/components/media/MediaViewportToolbar';
 import { MediaRulers } from '@/components/media/MediaRulers';
+import { LayerTransformControls } from '@/components/media/LayerTransformControls';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
@@ -405,6 +406,18 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                   </button>
                 );
               })}
+              {selected && selected.visible && (
+                <LayerTransformControls
+                  transform={selected.transform}
+                  zoom={zoom}
+                  canvasWidth={document.width}
+                  canvasHeight={document.height}
+                  locked={selected.locked}
+                  allowMove={selected.type !== 'raster'}
+                  snapValue={snapValue}
+                  onCommit={transform => patchLayer({ transform } as Partial<PhoenixMediaLayer>)}
+                />
+              )}
               </div>
             </div>
           </div>
