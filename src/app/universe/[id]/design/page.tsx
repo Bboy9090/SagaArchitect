@@ -8,6 +8,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { MediaViewportToolbar } from '@/components/media/MediaViewportToolbar';
 import { MediaRulers } from '@/components/media/MediaRulers';
 import { LayerTransformControls } from '@/components/media/LayerTransformControls';
+import { LayerGroupPanel } from '@/components/media/LayerGroupPanel';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
@@ -17,7 +18,10 @@ import {
   loadPhoenixMediaDocument,
   nextLayerZIndex,
   savePhoenixMediaDocument,
+  effectiveLayerOpacity,
   gradientFillCss,
+  isLayerEffectivelyLocked,
+  isLayerEffectivelyVisible,
   layerCssFilter,
   moveVectorPoint,
   scaleVectorPoints,
@@ -72,11 +76,11 @@ function cssMaskClipPath(layer: PhoenixMediaLayer): string | undefined {
 }
 
 function buildSvg(document: PhoenixMediaDocument): string {
-  const layers = [...document.layers].filter(layer => layer.visible).sort((a, b) => a.zIndex - b.zIndex);
+  const layers = [...document.layers].filter(layer => isLayerEffectivelyVisible(layer, document)).sort((a, b) => a.zIndex - b.zIndex);
   const body = layers.map(layer => {
     const { x, y, width, height, rotation } = layer.transform;
     const transform = `rotate(${rotation} ${x + width / 2} ${y + height / 2})`;
-    const opacity = Math.max(0, Math.min(1, layer.opacity));
+    const opacity = effectiveLayerOpacity(layer, document);
     const safeLayerId = layer.id.replace(/[^a-zA-Z0-9_-]/g, '');
     const clipId = `clip-${safeLayerId}`;
     const gradientId = `gradient-${safeLayerId}`;
@@ -195,6 +199,38 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
       if (!current) return current;
       return commitDocumentHistory(current, updater(current.present));
     });
+  };
+
+  const patchGroup = (groupId: string, patch: Partial<NonNullable<PhoenixMediaDocument['groups']>[number]>) => {
+    commit(current => ({
+      ...current,
+      groups: (current.groups || []).map(group => group.id === groupId ? { ...group, ...patch } : group),
+    }));
+  };
+
+  const addGroup = () => {
+    const groupId = crypto.randomUUID();
+    commit(current => ({
+      ...current,
+      groups: [...(current.groups || []), {
+        id: groupId,
+        name: `Group ${(current.groups || []).length + 1}`,
+        visible: true,
+        locked: false,
+        opacity: 1,
+      }],
+      layers: selectedLayerId
+        ? current.layers.map(layer => layer.id === selectedLayerId ? { ...layer, groupId } : layer)
+        : current.layers,
+    }));
+  };
+
+  const deleteGroup = (groupId: string) => {
+    commit(current => ({
+      ...current,
+      groups: (current.groups || []).filter(group => group.id !== groupId),
+      layers: current.layers.map(layer => layer.groupId === groupId ? { ...layer, groupId: undefined } : layer),
+    }));
   };
 
   const quantize = (value: number) => snapValue(value);
@@ -379,7 +415,13 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
       )}
       <div className="grid min-h-[calc(100vh-80px)] grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)_300px]">
         <aside className="border-r border-white/10 bg-[#070b15] p-4">
-          <p className="mb-3 text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Presets</p>
+          <LayerGroupPanel
+            groups={document.groups || []}
+            onCreate={addGroup}
+            onPatch={patchGroup}
+            onDelete={deleteGroup}
+          />
+          <p className="mb-3 mt-6 text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Presets</p>
           <div className="grid grid-cols-2 gap-2">
             {PRESETS.map(preset => (
               <button key={preset.id} type="button" onClick={() => applyPreset(preset.width, preset.height, preset.label)}
@@ -450,14 +492,14 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
               )}
 
               {sortedLayers.map(layer => {
-                if (!layer.visible) return null;
+                if (!isLayerEffectivelyVisible(layer, document)) return null;
                 const style: React.CSSProperties = {
                   position: 'absolute',
                   left: layer.transform.x * zoom,
                   top: layer.transform.y * zoom,
                   width: layer.transform.width * zoom,
                   height: layer.transform.height * zoom,
-                  opacity: layer.opacity,
+                  opacity: effectiveLayerOpacity(layer, document),
                   transform: `rotate(${layer.transform.rotation}deg)`,
                   transformOrigin: 'center',
                   outline: selectedLayerId === layer.id ? '2px solid #38bdf8' : undefined,
@@ -523,7 +565,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                   zoom={zoom}
                   canvasWidth={document.width}
                   canvasHeight={document.height}
-                  locked={selected.locked}
+                  locked={isLayerEffectivelyLocked(selected, document)}
                   allowMove={selected.type !== 'raster'}
                   snapValue={snapValue}
                   onCommit={transform => patchLayer({ transform } as Partial<PhoenixMediaLayer>)}
@@ -550,6 +592,17 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
               <label className="block text-[10px] uppercase text-slate-500">Name
                 <input value={selected.name} onChange={event => patchLayer({ name: event.target.value })} className="mt-1 min-h-10 w-full rounded border border-white/10 bg-black/20 px-2 text-white" />
               </label>
+              <label className="block text-[10px] uppercase text-slate-500">Layer Group
+                <select
+                  value={selected.groupId || ''}
+                  onChange={event => patchLayer({ groupId: event.target.value || undefined } as Partial<PhoenixMediaLayer>)}
+                  className="mt-1 min-h-10 w-full rounded border border-white/10 bg-[#0a0d14] px-2 text-white"
+                >
+                  <option value="">No Group</option>
+                  {(document.groups || []).map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
+                </select>
+              </label>
+
               {selected.type === 'text' && (
                 <>
                   <label className="block text-[10px] uppercase text-slate-500">Text
