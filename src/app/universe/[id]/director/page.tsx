@@ -19,7 +19,13 @@ import { isDbMode } from '@/lib/storage-mode';
 import { dbGetCharacters, dbGetProject } from '@/lib/db-client';
 import {
   DIRECTOR_STUDIO_ROUTES,
+  createDirectorActionStatus,
+  directorExecutionProgress,
+  isDirectorActionReady,
+  loadDirectorExecutionState,
   normalizeDirectorPlan,
+  saveDirectorExecutionState,
+  type PhoenixDirectorActionStatus,
   type PhoenixDirectorPlan,
   type PhoenixDirectorStudio,
 } from '@/lib/phoenix-director';
@@ -58,6 +64,7 @@ export default function DirectorPage({ params }: DirectorPageProps) {
   const [brief, setBrief] = useState('');
   const [selectedStudios, setSelectedStudios] = useState<PhoenixDirectorStudio[]>(STUDIO_OPTIONS.map(item => item.id));
   const [plan, setPlan] = useState<PhoenixDirectorPlan | null>(null);
+  const [actionStatus, setActionStatus] = useState<Record<string, PhoenixDirectorActionStatus>>({});
   const [planning, setPlanning] = useState(false);
   const [status, setStatus] = useState('');
 
@@ -66,13 +73,26 @@ export default function DirectorPage({ params }: DirectorPageProps) {
     void (async () => {
       try {
         const loaded = isDbMode() ? await dbGetProject(id) : getUniverseById(id) || null;
-        if (!cancelled) setProject(loaded);
+        if (!cancelled) {
+          setProject(loaded);
+          const saved = loadDirectorExecutionState(id);
+          if (saved) {
+            setPlan(saved.plan);
+            setActionStatus(saved.action_status);
+            setStatus('Resumed saved Phoenix Director execution board.');
+          }
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
   }, [id]);
+
+  useEffect(() => {
+    if (!plan) return;
+    saveDirectorExecutionState(id, plan, actionStatus);
+  }, [id, plan, actionStatus]);
 
   const canonStats = useMemo(() => ({
     characters: getCharacters(id).length,
@@ -113,7 +133,9 @@ export default function DirectorPage({ params }: DirectorPageProps) {
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) throw new Error(payload.error || 'Director planning failed.');
-      setPlan(normalizeDirectorPlan(payload.plan));
+      const normalizedPlan = normalizeDirectorPlan(payload.plan);
+      setPlan(normalizedPlan);
+      setActionStatus(createDirectorActionStatus(normalizedPlan));
       setStatus(response.headers.get('x-phoenix-generation-mode') === 'mock'
         ? 'Development-mode plan generated. Production requires the live AI provider.'
         : 'Live canon-aware production plan generated.');
@@ -124,9 +146,18 @@ export default function DirectorPage({ params }: DirectorPageProps) {
     }
   };
 
-  const openStudio = (studio: PhoenixDirectorStudio) => {
+  const updateActionStatus = (actionId: string, nextStatus: PhoenixDirectorActionStatus) => {
+    setActionStatus(current => ({ ...current, [actionId]: nextStatus }));
+  };
+
+  const openStudio = (studio: PhoenixDirectorStudio, actionId?: string, ready = true) => {
+    if (actionId && ready && actionStatus[actionId] !== 'done') {
+      updateActionStatus(actionId, 'in_progress');
+    }
     router.push(DIRECTOR_STUDIO_ROUTES[studio](id));
   };
+
+  const progress = plan ? directorExecutionProgress(plan, actionStatus) : null;
 
   if (loading || !project) {
     return (
@@ -224,6 +255,17 @@ export default function DirectorPage({ params }: DirectorPageProps) {
                   <p className="text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Production strategy</p>
                   <h2 className="mt-2 text-xl font-black text-white">{plan.project_summary}</h2>
                   <p className="mt-3 text-sm leading-6 text-slate-400">{plan.creative_strategy}</p>
+                  {progress && (
+                    <div className="mt-4 rounded-xl border border-emerald-400/15 bg-emerald-400/[0.04] p-4">
+                      <div className="flex items-center justify-between gap-3 text-xs">
+                        <span className="font-black uppercase tracking-wider text-emerald-300">Execution progress</span>
+                        <span className="font-bold text-slate-300">{progress.complete}/{progress.total} complete · {progress.percent}%</span>
+                      </div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/30">
+                        <div className="h-full rounded-full bg-emerald-400 transition-all" style={{ width: `${progress.percent}%` }} />
+                      </div>
+                    </div>
+                  )}
                   {plan.risks.length > 0 && (
                     <div className="mt-4 grid gap-2 md:grid-cols-2">
                       {plan.risks.map((risk, index) => (
@@ -236,7 +278,10 @@ export default function DirectorPage({ params }: DirectorPageProps) {
                 </section>
 
                 <div className="space-y-3">
-                  {plan.actions.map((action, index) => (
+                  {plan.actions.map((action, index) => {
+                    const executionStatus = actionStatus[action.id] || 'pending';
+                    const ready = isDirectorActionReady(action, actionStatus);
+                    return (
                     <article key={action.id} className="rounded-2xl border border-white/10 bg-[#080d17] p-5">
                       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                         <div className="flex gap-4">
@@ -254,9 +299,22 @@ export default function DirectorPage({ params }: DirectorPageProps) {
                             <p className="mt-1 text-sm leading-6 text-slate-400">{action.objective}</p>
                           </div>
                         </div>
-                        <Button size="sm" variant="secondary" onClick={() => openStudio(action.studio)}>
-                          Open {action.studio}
-                        </Button>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-wider ${
+                            executionStatus === 'done'
+                              ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
+                              : executionStatus === 'in_progress'
+                                ? 'border-blue-400/30 bg-blue-400/10 text-blue-300'
+                                : ready
+                                  ? 'border-white/10 bg-white/[0.03] text-slate-400'
+                                  : 'border-amber-400/20 bg-amber-400/5 text-amber-300'
+                          }`}>
+                            {executionStatus === 'done' ? 'Complete' : executionStatus === 'in_progress' ? 'In progress' : ready ? 'Ready' : 'Blocked'}
+                          </span>
+                          <Button size="sm" variant="secondary" disabled={!ready && executionStatus !== 'done'} onClick={() => openStudio(action.studio, action.id, ready)}>
+                            Open {action.studio}
+                          </Button>
+                        </div>
                       </div>
 
                       {action.instructions.length > 0 && (
@@ -288,8 +346,32 @@ export default function DirectorPage({ params }: DirectorPageProps) {
                       {action.depends_on.length > 0 && (
                         <div className="mt-3 text-[10px] text-slate-600">Depends on: {action.depends_on.join(', ')}</div>
                       )}
+
+                      <div className="mt-4 flex flex-wrap gap-2 border-t border-white/5 pt-4">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={!ready || executionStatus === 'done'}
+                          onClick={() => updateActionStatus(action.id, 'in_progress')}
+                        >
+                          Mark Active
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={!ready || executionStatus === 'done'}
+                          onClick={() => updateActionStatus(action.id, 'done')}
+                        >
+                          Mark Complete
+                        </Button>
+                        {executionStatus !== 'pending' && (
+                          <Button size="sm" variant="ghost" onClick={() => updateActionStatus(action.id, 'pending')}>
+                            Reset
+                          </Button>
+                        )}
+                      </div>
                     </article>
-                  ))}
+                  )})}
                 </div>
               </div>
             )}
