@@ -445,6 +445,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
     if (!selected) return;
     const nextTransform = {
       ...transform,
+      rotation: selected.type === 'adjustment' ? 0 : transform.rotation,
       width: Math.max(1, transform.width),
       height: Math.max(1, transform.height),
     };
@@ -567,6 +568,11 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
               <Button size="sm" variant="secondary" onClick={addText}>Text</Button>
               <Button size="sm" variant="secondary" onClick={addShape}>Shape</Button>
               <Button size="sm" variant="secondary" onClick={addPath}>Vector Path</Button>
+              <Button size="sm" variant="secondary" onClick={() => {
+                const layer = createAdjustmentLayer(document);
+                commit(current => ({ ...current, layers: [...current.layers, layer] }));
+                setSelectedLayerId(layer.id);
+              }}>Adjustment</Button>
             </div>
           </div>
 
@@ -637,6 +643,26 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                   clipPath: vectorMaskCssClipPath(layer) || cssMaskClipPath(layer),
                   filter: layerCssEffects(layer),
                 };
+                if (layer.type === 'adjustment') {
+                  return (
+                    <button
+                      key={layer.id}
+                      type="button"
+                      data-media-interactive="true"
+                      onClick={() => setSelectedLayerId(layer.id)}
+                      className="absolute block border-0 p-0"
+                      aria-label={`Select layer ${layer.name}`}
+                      style={{
+                        ...style,
+                        filter: 'none',
+                        backdropFilter: layerCssFilter(layer),
+                        WebkitBackdropFilter: layerCssFilter(layer),
+                        background: 'rgba(0,0,0,0.001)',
+                      }}
+                    />
+                  );
+                }
+
                 return (
                   <button key={layer.id} type="button" data-media-interactive="true" onClick={() => setSelectedLayerId(layer.id)} style={style} className="block border-0 bg-transparent p-0 text-left">
                     {layer.type === 'shape' && <div className="h-full w-full" style={{ background: gradientFillCss(layer.gradient, layer.fill), border: layer.strokeWidth ? `${Math.max(1, layer.strokeWidth * zoom)}px solid ${layer.stroke}` : undefined }} />}
@@ -741,10 +767,19 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                 onChange={patch => patchLayer(patch)}
               />
 
-              <LayerShadowPanel
-                layer={selected}
-                onChange={patch => patchLayer(patch)}
-              />
+              {selected.type === 'adjustment' && (
+                <AdjustmentLayerPanel
+                  layer={selected}
+                  onChange={patch => patchLayer(patch)}
+                />
+              )}
+
+              {selected.type !== 'adjustment' && (
+                <LayerShadowPanel
+                  layer={selected}
+                  onChange={patch => patchLayer(patch)}
+                />
+              )}
 
               {!selected.symbolId && selected.type === 'text' && (
                 <>
