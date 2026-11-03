@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useMemo, useRef, useState } from 'react';
+import { use, useEffect, useMemo, useState } from 'react';
 import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
@@ -47,7 +47,6 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
   const [selectedLayerId, setSelectedLayerId] = useState('');
   const [loading, setLoading] = useState(true);
-  const cloudVersionRef = useRef(1);
   const [brushPreset, setBrushPreset] = useState<BrushPreset>('ink');
   const [brushColor, setBrushColor] = useState('#f8fafc');
   const [brushSize, setBrushSize] = useState(BRUSH_PRESETS.ink.size);
@@ -68,7 +67,6 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
         const localDocument = loadPhoenixMediaDocument(id, 'illustration');
         const cloudDocument = isDbMode() ? await dbGetMediaDocument(id, 'illustration') : null;
         const loadedDocument = cloudDocument || localDocument || createPhoenixMediaDocument(id, 'illustration');
-        cloudVersionRef.current = cloudDocument?.version || loadedDocument.version || 1;
         setHistory(createDocumentHistory({
           ...loadedDocument,
           title: loadedDocument.title === 'Untitled Composition' ? 'Untitled Illustration' : loadedDocument.title,
@@ -94,8 +92,7 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
     const handle = window.setTimeout(() => {
       const saved = savePhoenixMediaDocument(document);
       if (isDbMode()) {
-        void dbSaveMediaDocument(id, { ...saved, version: cloudVersionRef.current })
-          .then(cloudSaved => { cloudVersionRef.current = cloudSaved.version; })
+        void dbSaveMediaDocument(id, saved)
           .catch(error => console.error('Phoenix cloud media autosave failed:', error));
       }
     }, 500);
