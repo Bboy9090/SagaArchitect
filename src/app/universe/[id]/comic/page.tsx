@@ -18,6 +18,7 @@ import {
   mediaDocumentStorageKey,
   nextLayerZIndex,
   savePhoenixMediaDocument,
+  vectorPathSvgD,
   type PhoenixMediaDocument,
   type PhoenixMediaDocumentKind,
   type PhoenixMediaLayer,
@@ -48,6 +49,13 @@ interface ComicTemplate {
 
 const PAGE_WIDTH = 1650;
 const PAGE_HEIGHT = 2550;
+
+const COMIC_LETTERING_STYLES = [
+  { id: 'dialogue', label: 'Dialogue', fontFamily: 'Arial, sans-serif', fontWeight: 700, fontSize: 44, italic: false, letterSpacing: 0, lineHeight: 1.05 },
+  { id: 'caption', label: 'Caption', fontFamily: 'Arial, sans-serif', fontWeight: 800, fontSize: 50, italic: false, letterSpacing: 1.5, lineHeight: 1.08 },
+  { id: 'whisper', label: 'Whisper', fontFamily: 'Georgia, serif', fontWeight: 500, fontSize: 40, italic: true, letterSpacing: 0.5, lineHeight: 1.12 },
+  { id: 'shout', label: 'Shout', fontFamily: 'Arial Black, Arial, sans-serif', fontWeight: 900, fontSize: 56, italic: false, letterSpacing: 1, lineHeight: 1 },
+] as const;
 const TEMPLATES: ComicTemplate[] = [
   { id: 'single', label: '1 Panel', panels: [{ x: 90, y: 90, width: 1470, height: 2370 }] },
   { id: 'two-row', label: '2 Rows', panels: [
@@ -168,10 +176,43 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
 
   const patchSelected = (patch: Partial<PhoenixMediaLayer>) => {
     if (!selectedLayer) return;
-    commit(current => ({
-      ...current,
-      layers: current.layers.map(layer => layer.id === selectedLayer.id ? ({ ...layer, ...patch } as PhoenixMediaLayer) : layer),
-    }));
+    commit(current => {
+      const nextTransform = patch.transform;
+      const balloonGroup = selectedLayer.groupId?.startsWith('balloon:') ? selectedLayer.groupId : null;
+      const dx = nextTransform ? nextTransform.x - selectedLayer.transform.x : 0;
+      const dy = nextTransform ? nextTransform.y - selectedLayer.transform.y : 0;
+      return {
+        ...current,
+        layers: current.layers.map(layer => {
+          if (layer.id === selectedLayer.id) return { ...layer, ...patch } as PhoenixMediaLayer;
+          if (balloonGroup && nextTransform && layer.groupId === balloonGroup) {
+            return {
+              ...layer,
+              transform: {
+                ...layer.transform,
+                x: layer.transform.x + dx,
+                y: layer.transform.y + dy,
+              },
+            } as PhoenixMediaLayer;
+          }
+          return layer;
+        }),
+      };
+    });
+  };
+
+  const applyLetteringStyle = (styleId: string) => {
+    if (!selectedLayer || selectedLayer.type !== 'text') return;
+    const style = COMIC_LETTERING_STYLES.find(candidate => candidate.id === styleId);
+    if (!style) return;
+    patchSelected({
+      fontFamily: style.fontFamily,
+      fontWeight: style.fontWeight,
+      fontSize: style.fontSize,
+      italic: style.italic,
+      letterSpacing: style.letterSpacing,
+      lineHeight: style.lineHeight,
+    } as Partial<PhoenixMediaLayer>);
   };
 
   const persistPageOrder = (orderedPages: PhoenixMediaDocument[]) => {
@@ -317,9 +358,11 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
   const addSpeechBalloon = () => {
     if (!document) return;
     const z = nextLayerZIndex(document.layers);
+    const groupId = `balloon:${crypto.randomUUID()}`;
     const balloon: PhoenixMediaLayer = {
       id: crypto.randomUUID(),
       type: 'shape',
+      groupId,
       name: 'Speech Balloon',
       visible: true,
       locked: false,
@@ -332,15 +375,37 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
       stroke: '#111827',
       strokeWidth: 10,
     };
-    const text: PhoenixMediaLayer = {
+    const tail: PhoenixMediaLayer = {
       id: crypto.randomUUID(),
-      type: 'text',
-      name: 'Balloon Text',
+      type: 'path',
+      groupId,
+      name: 'Balloon Tail',
       visible: true,
       locked: false,
       opacity: 1,
       blendMode: 'normal',
       zIndex: z + 1,
+      transform: { x: 520, y: 455, width: 140, height: 150, rotation: -8 },
+      points: [
+        { x: 0, y: 0 },
+        { x: 110, y: 0 },
+        { x: 70, y: 145 },
+      ],
+      closed: true,
+      fill: '#ffffff',
+      stroke: '#111827',
+      strokeWidth: 10,
+    };
+    const text: PhoenixMediaLayer = {
+      id: crypto.randomUUID(),
+      type: 'text',
+      groupId,
+      name: 'Balloon Text',
+      visible: true,
+      locked: false,
+      opacity: 1,
+      blendMode: 'normal',
+      zIndex: z + 2,
       transform: { x: 310, y: 300, width: 420, height: 160, rotation: 0 },
       text: 'Dialogue goes here.',
       color: '#111827',
@@ -348,8 +413,20 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
       fontFamily: 'Arial, sans-serif',
       fontWeight: 700,
       align: 'center',
+      lineHeight: 1.05,
+      letterSpacing: 0,
     };
-    commit(current => ({ ...current, layers: [...current.layers, balloon, text] }));
+    commit(current => ({
+      ...current,
+      groups: [...(current.groups || []), {
+        id: groupId,
+        name: 'Speech Balloon',
+        visible: true,
+        locked: false,
+        opacity: 1,
+      }],
+      layers: [...current.layers, balloon, tail, text],
+    }));
     setSelectedLayerId(text.id);
   };
 
@@ -508,6 +585,17 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
                     <button key={layer.id} type="button" data-media-interactive="true" onClick={() => setSelectedLayerId(layer.id)} className="block border-0 bg-transparent p-0 text-left" style={style}>
                       {layer.type === 'shape' && <div className="h-full w-full" style={{ background: layer.fill, border: layer.strokeWidth ? `${Math.max(1, layer.strokeWidth * zoom)}px solid ${layer.stroke}` : undefined, borderRadius: layer.shape === 'ellipse' ? '9999px' : 0 }} />}
                       {layer.type === 'text' && <div className="h-full w-full overflow-hidden" style={{ color: layer.color, fontSize: layer.fontSize * zoom, fontFamily: layer.fontFamily, fontWeight: layer.fontWeight, lineHeight: 1.05, textAlign: layer.align }}>{layer.text}</div>}
+                      {layer.type === 'path' && (
+                        <svg viewBox={`0 0 ${layer.transform.width} ${layer.transform.height}`} className="h-full w-full overflow-visible">
+                          <path
+                            d={vectorPathSvgD(layer)}
+                            fill={layer.fill}
+                            stroke={layer.stroke}
+                            strokeWidth={layer.strokeWidth}
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      )}
                       {layer.type === 'image' && (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={layer.src} alt="" className="h-full w-full" style={{ objectFit: layer.fit }} />
@@ -553,9 +641,21 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
                 <input value={selectedLayer.name} onChange={event => patchSelected({ name: event.target.value })} className="mt-1 min-h-10 w-full rounded border border-white/10 bg-black/20 px-2 text-white" />
               </label>
               {selectedLayer.type === 'text' && (
-                <label className="block text-[10px] uppercase text-slate-500">Text
-                  <textarea value={selectedLayer.text} onChange={event => patchSelected({ text: event.target.value } as Partial<PhoenixMediaLayer>)} className="mt-1 min-h-24 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
-                </label>
+                <>
+                  <label className="block text-[10px] uppercase text-slate-500">Text
+                    <textarea value={selectedLayer.text} onChange={event => patchSelected({ text: event.target.value } as Partial<PhoenixMediaLayer>)} className="mt-1 min-h-24 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                  </label>
+                  <div>
+                    <div className="mb-2 text-[10px] uppercase text-slate-500">Lettering Style</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {COMIC_LETTERING_STYLES.map(style => (
+                        <Button key={style.id} size="sm" variant="ghost" onClick={() => applyLetteringStyle(style.id)}>
+                          {style.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </>
               )}
               <Button size="sm" variant="ghost" className="w-full" onClick={() => patchSelected({ locked: !selectedLayer.locked })}>{selectedLayer.locked ? 'Unlock Layer' : 'Lock Layer'}</Button>
               <Button size="sm" variant="danger" className="w-full" onClick={() => {
@@ -568,8 +668,8 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
           <div className="mt-6 rounded-xl border border-amber-400/15 bg-amber-400/[0.04] p-3">
             <div className="text-xs font-bold text-amber-200">Comic foundation</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              Multi-page issues, page duplication/reordering, page templates, panel frames, image placement, captions, speech balloons, direct transforms, and raster export are active.
-              Linked panel groups, balloon tails, lettering styles, issue-level export, and motion-comic handoff are next.
+              Multi-page issues, page duplication/reordering, page templates, panel frames, image placement, grouped speech balloons with vector tails, lettering presets, direct transforms, and raster export are active.
+              Linked panel groups, advanced balloon geometry, issue-level export, and motion-comic handoff are next.
             </p>
           </div>
         </aside>
