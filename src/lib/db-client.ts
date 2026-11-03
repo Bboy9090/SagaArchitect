@@ -260,16 +260,37 @@ export async function dbExportProjectPdf(projectId: string): Promise<Blob> {
 
 
 // MEDIA DOCUMENTS
-export async function dbGetMediaDocument(projectId: string, kind: PhoenixMediaDocumentKind): Promise<PhoenixMediaDocument | null> {
-  const res = await fetch(`/api/db/projects/${projectId}/media-documents?kind=${encodeURIComponent(kind)}`);
-  return handleResponse<PhoenixMediaDocument | null>(res);
+const mediaDocumentVersions = new Map<string, number>();
+const mediaDocumentSaveQueues = new Map<string, Promise<PhoenixMediaDocument>>();
+
+function mediaDocumentKey(projectId: string, kind: PhoenixMediaDocumentKind): string {
+  return `${projectId}:${kind}`;
 }
 
-export async function dbSaveMediaDocument(projectId: string, document: PhoenixMediaDocument): Promise<PhoenixMediaDocument> {
-  const res = await fetch(`/api/db/projects/${projectId}/media-documents`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ kind: document.kind, document }),
+export async function dbGetMediaDocument(projectId: string, kind: PhoenixMediaDocumentKind): Promise<PhoenixMediaDocument | null> {
+  const res = await fetch(`/api/db/projects/${projectId}/media-documents?kind=${encodeURIComponent(kind)}`);
+  const document = await handleResponse<PhoenixMediaDocument | null>(res);
+  if (document) mediaDocumentVersions.set(mediaDocumentKey(projectId, kind), document.version || 1);
+  return document;
+}
+
+export function dbSaveMediaDocument(projectId: string, document: PhoenixMediaDocument): Promise<PhoenixMediaDocument> {
+  const key = mediaDocumentKey(projectId, document.kind);
+  const previous = mediaDocumentSaveQueues.get(key) || Promise.resolve(document);
+  const next = previous.catch(() => document).then(async () => {
+    const expectedVersion = mediaDocumentVersions.get(key) ?? document.version ?? 1;
+    const res = await fetch(`/api/db/projects/${projectId}/media-documents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: document.kind, document: { ...document, version: expectedVersion } }),
+    });
+    const saved = await handleResponse<PhoenixMediaDocument>(res);
+    mediaDocumentVersions.set(key, saved.version || expectedVersion);
+    return saved;
   });
-  return handleResponse<PhoenixMediaDocument>(res);
+  mediaDocumentSaveQueues.set(key, next);
+  void next.finally(() => {
+    if (mediaDocumentSaveQueues.get(key) === next) mediaDocumentSaveQueues.delete(key);
+  });
+  return next;
 }
