@@ -65,6 +65,8 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
     return () => { cancelled = true; };
   }, [id]);
 
+  const document = history?.present || null;
+
   useEffect(() => {
     if (!document || loading) return;
     const handle = window.setTimeout(() => {
@@ -73,8 +75,6 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
     }, 250);
     return () => window.clearTimeout(handle);
   }, [document, loading]);
-
-  const document = history?.present || null;
 
   const sortedLayers = useMemo(
     () => [...(document?.layers || [])].sort((a, b) => a.zIndex - b.zIndex),
