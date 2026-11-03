@@ -294,8 +294,21 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
 
   const patchTransform = (key: keyof PhoenixMediaLayer['transform'], value: number) => {
     if (!selected) return;
-    const next = { ...selected.transform, [key]: quantize(value) };
-    patchLayer({ transform: next } as Partial<PhoenixMediaLayer>);
+    const nextValue = key === 'rotation' ? value : quantize(value);
+    if (selected.type === 'path' && (key === 'width' || key === 'height')) {
+      const previousSize = selected.transform[key];
+      const safeNext = Math.max(1, nextValue);
+      const ratio = previousSize > 0 ? safeNext / previousSize : 1;
+      const points = selected.points.map(point => key === 'width'
+        ? { ...point, x: point.x * ratio }
+        : { ...point, y: point.y * ratio });
+      patchLayer({
+        transform: { ...selected.transform, [key]: safeNext },
+        points,
+      } as Partial<PhoenixMediaLayer>);
+      return;
+    }
+    patchLayer({ transform: { ...selected.transform, [key]: nextValue } } as Partial<PhoenixMediaLayer>);
   };
 
   const exportFlattened = async (format: PhoenixRasterExportFormat) => {
