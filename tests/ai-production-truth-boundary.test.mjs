@@ -11,6 +11,7 @@ const generationRoutes = [
   'src/app/api/generate/characters/route.ts',
   'src/app/api/generate/story/route.ts',
   'src/app/api/shared-lore-pool/generate/route.ts',
+  'src/app/api/director/plan/route.ts',
 ];
 
 test('production generation routes import the fail-closed AI policy', () => {
