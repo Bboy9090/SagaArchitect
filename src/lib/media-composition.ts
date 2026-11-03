@@ -50,6 +50,7 @@ export interface PhoenixLayerMask {
 export interface PhoenixBaseLayer {
   id: string;
   type: PhoenixLayerType;
+  groupId?: string;
   name: string;
   visible: boolean;
   locked: boolean;
@@ -128,6 +129,14 @@ export type PhoenixMediaLayer =
   | PhoenixRasterLayer
   | PhoenixPathLayer;
 
+export interface PhoenixLayerGroup {
+  id: string;
+  name: string;
+  visible: boolean;
+  locked: boolean;
+  opacity: number;
+}
+
 export interface PhoenixMediaDocument {
   id: string;
   projectId: string;
@@ -137,6 +146,7 @@ export interface PhoenixMediaDocument {
   height: number;
   background: string;
   layers: PhoenixMediaLayer[];
+  groups?: PhoenixLayerGroup[];
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -158,6 +168,7 @@ export function createPhoenixMediaDocument(
     height: 1200,
     background: '#111827',
     layers: [],
+    groups: [],
     version: 1,
     createdAt: now,
     updatedAt: now,
@@ -303,4 +314,37 @@ export function gradientFillCss(gradient: PhoenixGradientFill | undefined, fallb
   return gradient.kind === 'radial'
     ? `radial-gradient(circle at center, ${start} 0%, ${end} 100%)`
     : `linear-gradient(${Number.isFinite(gradient.angle) ? gradient.angle : 0}deg, ${start} 0%, ${end} 100%)`;
+}
+
+
+export function layerGroupFor(
+  document: Pick<PhoenixMediaDocument, 'groups'>,
+  layer: Pick<PhoenixBaseLayer, 'groupId'>,
+): PhoenixLayerGroup | undefined {
+  if (!layer.groupId) return undefined;
+  return (document.groups || []).find(group => group.id === layer.groupId);
+}
+
+export function effectiveLayerOpacity(
+  layer: Pick<PhoenixBaseLayer, 'opacity' | 'groupId'>,
+  document: Pick<PhoenixMediaDocument, 'groups'>,
+): number {
+  const group = layerGroupFor(document, layer);
+  return Math.max(0, Math.min(1, layer.opacity * (group?.opacity ?? 1)));
+}
+
+export function isLayerEffectivelyVisible(
+  layer: Pick<PhoenixBaseLayer, 'visible' | 'groupId'>,
+  document: Pick<PhoenixMediaDocument, 'groups'>,
+): boolean {
+  const group = layerGroupFor(document, layer);
+  return layer.visible && (group?.visible ?? true);
+}
+
+export function isLayerEffectivelyLocked(
+  layer: Pick<PhoenixBaseLayer, 'locked' | 'groupId'>,
+  document: Pick<PhoenixMediaDocument, 'groups'>,
+): boolean {
+  const group = layerGroupFor(document, layer);
+  return layer.locked || (group?.locked ?? false);
 }
