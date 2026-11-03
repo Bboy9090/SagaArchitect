@@ -300,6 +300,17 @@ export function vectorPathSvgD(
   ].filter(Boolean).join(' ');
 }
 
+export function vectorPathFillSvgD(
+  layer: Pick<PhoenixPathLayer, 'points' | 'closed' | 'contours'>,
+): string {
+  return [
+    layer.closed ? vectorContourSvgD(layer.points, true) : '',
+    ...(layer.contours || [])
+      .filter(contour => contour.closed)
+      .map(contour => vectorContourSvgD(contour.points, true)),
+  ].filter(Boolean).join(' ');
+}
+
 
 export function moveVectorPoint(point: PhoenixVectorPoint, x: number, y: number): PhoenixVectorPoint {
   const dx = x - point.x;
