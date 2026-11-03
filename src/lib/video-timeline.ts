@@ -65,6 +65,7 @@ export interface PhoenixVideoTimeline {
   fps: number;
   tracks: PhoenixTimelineTrack[];
   captions: PhoenixCaptionCue[];
+  version: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -85,6 +86,7 @@ export function createPhoenixVideoTimeline(projectId: string): PhoenixVideoTimel
       { id: crypto.randomUUID(), name: 'Audio 1', kind: 'audio', order: 1, clips: [] },
     ],
     captions: [],
+    version: 1,
     createdAt: now,
     updatedAt: now,
   };
@@ -103,6 +105,7 @@ export function loadPhoenixVideoTimeline(projectId: string): PhoenixVideoTimelin
     if (!parsed || parsed.projectId !== projectId || !Array.isArray(parsed.tracks)) return null;
     return {
       ...parsed,
+      version: Math.max(1, parsed.version || 1),
       captions: Array.isArray(parsed.captions) ? parsed.captions : [],
       tracks: parsed.tracks.map(track => ({
         ...track,
