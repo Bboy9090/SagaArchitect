@@ -210,6 +210,11 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
   const [selectedLayerId, setSelectedLayerId] = useState('');
   const [additionalLayerIds, setAdditionalLayerIds] = useState<string[]>([]);
 
+  const focusLayer = (layerId: string) => {
+    setSelectedLayerId(layerId);
+    setAdditionalLayerIds([]);
+  };
+
   useEffect(() => {
     setAdditionalLayerIds([]);
   }, [selectedLayerId]);
@@ -277,7 +282,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
 
   const selectLayer = (layerId: string, additive = false) => {
     if (!additive || !selectedLayerId) {
-      setSelectedLayerId(layerId);
+      focusLayer(layerId);
       setAdditionalLayerIds([]);
       return;
     }
@@ -364,7 +369,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
     const instance = createSymbolInstance(document, symbolId, nextLayerZIndex(document.layers));
     if (!instance) return;
     commit(current => ({ ...current, layers: [...current.layers, instance] }));
-    setSelectedLayerId(instance.id);
+    focusLayer(instance.id);
   };
 
   const detachSelectedSymbol = () => {
@@ -403,7 +408,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
       align: 'left',
     };
     commit(current => ({ ...current, layers: [...current.layers, layer] }));
-    setSelectedLayerId(layer.id);
+    focusLayer(layer.id);
   };
 
   const addShape = () => {
@@ -424,7 +429,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
       strokeWidth: 0,
     };
     commit(current => ({ ...current, layers: [...current.layers, layer] }));
-    setSelectedLayerId(layer.id);
+    focusLayer(layer.id);
   };
 
   const addPath = () => {
@@ -453,7 +458,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
       strokeWidth: 6,
     };
     commit(current => ({ ...current, layers: [...current.layers, layer] }));
-    setSelectedLayerId(layer.id);
+    focusLayer(layer.id);
   };
 
   const addImage = (asset: ProjectAsset) => {
@@ -473,7 +478,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
       fit: 'cover',
     };
     commit(current => ({ ...current, layers: [...current.layers, layer] }));
-    setSelectedLayerId(layer.id);
+    focusLayer(layer.id);
   };
 
   const patchLayer = (patch: Partial<PhoenixMediaLayer>) => {
@@ -562,7 +567,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
               document={document}
               onImport={imported => {
                 setHistory(createDocumentHistory(imported));
-                setSelectedLayerId('');
+                focusLayer('');
                 setExportError('');
               }}
               onError={setExportError}
@@ -590,7 +595,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
               selectedLayer={selected}
               onCreateFromSelected={createSymbolFromSelected}
               onInsert={insertSymbol}
-              onSelectMaster={setSelectedLayerId}
+              onSelectMaster={focusLayer}
               onDetachSelected={detachSelectedSymbol}
             />
           </div>
@@ -614,7 +619,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
               <Button size="sm" variant="secondary" onClick={() => {
                 const layer = createAdjustmentLayer(document);
                 commit(current => ({ ...current, layers: [...current.layers, layer] }));
-                setSelectedLayerId(layer.id);
+                focusLayer(layer.id);
               }}>Adjustment</Button>
             </div>
           </div>
@@ -1043,7 +1048,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
               </div>
               <Button size="sm" variant="danger" className="w-full" onClick={() => {
                 commit(current => removeLayerPreservingSymbols(current, selected.id));
-                setSelectedLayerId('');
+                focusLayer('');
               }}>Delete Layer</Button>
             </div>
           )}
