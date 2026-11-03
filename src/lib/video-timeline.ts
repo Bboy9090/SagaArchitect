@@ -151,7 +151,7 @@ export function addClipToTimeline(
     ...input,
     transitionIn: input.transitionIn || 'none',
     transitionOut: input.transitionOut || 'none',
-    transitionDuration: Number.isFinite(input.transitionDuration) ? input.transitionDuration : 0.5,
+    transitionDuration: typeof input.transitionDuration === 'number' && Number.isFinite(input.transitionDuration) ? input.transitionDuration : 0.5,
     transform: input.transform || { scale: 1, x: 0, y: 0, rotation: 0 },
     keyframes: input.keyframes || [],
     id: crypto.randomUUID(),
