@@ -106,6 +106,57 @@ function imageRect(
   return { sx, sy, sw, sh, dx: 0, dy: 0, dw: width, dh: height };
 }
 
+function applyLayerMasks(ctx: CanvasRenderingContext2D, layer: PhoenixMediaLayer) {
+  if (layer.mask) {
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.fillStyle = '#000';
+    ctx.fillRect(layer.mask.x, layer.mask.y, layer.mask.width, layer.mask.height);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  if (layer.vectorMask && layer.vectorMask.points.length >= 3) {
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    const [first, ...rest] = layer.vectorMask.points;
+    ctx.moveTo(first.x, first.y);
+    for (const point of rest) ctx.lineTo(point.x, point.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+  }
+}
+
+function compositeAdjustmentLayer(
+  canvas: HTMLCanvasElement,
+  ctx: CanvasRenderingContext2D,
+  layer: Extract<PhoenixMediaLayer, { type: 'adjustment' }>,
+  documentModel: PhoenixMediaDocument,
+) {
+  const x = Math.max(0, Math.round(layer.transform.x));
+  const y = Math.max(0, Math.round(layer.transform.y));
+  const width = Math.max(1, Math.min(Math.round(layer.transform.width), canvas.width - x));
+  const height = Math.max(1, Math.min(Math.round(layer.transform.height), canvas.height - y));
+  if (x >= canvas.width || y >= canvas.height || width <= 0 || height <= 0) return;
+
+  const source = canvasFor(width, height);
+  const sourceCtx = source.getContext('2d');
+  const filtered = canvasFor(width, height);
+  const filteredCtx = filtered.getContext('2d');
+  if (!sourceCtx || !filteredCtx) throw new Error('Canvas adjustment rendering is unavailable.');
+
+  sourceCtx.drawImage(canvas, x, y, width, height, 0, 0, width, height);
+  filteredCtx.filter = layerCssFilter(layer);
+  filteredCtx.drawImage(source, 0, 0);
+  filteredCtx.filter = 'none';
+  applyLayerMasks(filteredCtx, layer);
+
+  ctx.save();
+  applyCommonLayerState(ctx, layer, documentModel);
+  ctx.drawImage(filtered, x, y, width, height);
+  ctx.restore();
+}
+
 async function renderLayerBitmap(layer: PhoenixMediaLayer): Promise<HTMLCanvasElement> {
   const width = Math.max(1, Math.round(layer.transform.width));
   const height = Math.max(1, Math.round(layer.transform.height));
@@ -213,26 +264,7 @@ async function renderLayerBitmap(layer: PhoenixMediaLayer): Promise<HTMLCanvasEl
   }
 
   ctx.filter = 'none';
-
-  if (layer.mask) {
-    ctx.globalCompositeOperation = 'destination-in';
-    ctx.fillStyle = '#000';
-    ctx.fillRect(layer.mask.x, layer.mask.y, layer.mask.width, layer.mask.height);
-    ctx.globalCompositeOperation = 'source-over';
-  }
-
-  if (layer.vectorMask && layer.vectorMask.points.length >= 3) {
-    ctx.globalCompositeOperation = 'destination-in';
-    ctx.fillStyle = '#000';
-    ctx.beginPath();
-    const [first, ...rest] = layer.vectorMask.points;
-    ctx.moveTo(first.x, first.y);
-    for (const point of rest) ctx.lineTo(point.x, point.y);
-    ctx.closePath();
-    ctx.fill();
-    ctx.globalCompositeOperation = 'source-over';
-  }
-
+  applyLayerMasks(ctx, layer);
   return canvas;
 }
 
@@ -250,6 +282,10 @@ export async function renderPhoenixMediaDocument(documentModel: PhoenixMediaDocu
 
   for (const layer of layers) {
     const resolvedLayer = resolveSymbolLayer(documentModel, layer);
+    if (resolvedLayer.type === 'adjustment') {
+      compositeAdjustmentLayer(canvas, ctx, resolvedLayer, documentModel);
+      continue;
+    }
     const bitmap = await renderLayerBitmap(resolvedLayer);
     const { x, y, width, height, rotation } = resolvedLayer.transform;
     ctx.save();
