@@ -1,12 +1,16 @@
 import { PayloadTooLargeError, UnsupportedMediaTypeError, ValidationError } from '../api-errors';
-import { detectImageMime } from './file-signatures';
+import { detectUploadMime } from './file-signatures';
 import { createStorageIdentity, extensionOf, sanitizeDisplayFilename, type StorageIdentity } from './storage-key';
-import { IMAGE_UPLOAD_POLICY, type UploadPolicy } from './upload-policy';
+import { uploadPolicyForMime, type UploadPolicy } from './upload-policy';
 
 const MIME_TO_EXTENSIONS: Record<string, ReadonlySet<string>> = {
   'image/png': new Set(['.png']),
   'image/jpeg': new Set(['.jpg', '.jpeg']),
   'image/webp': new Set(['.webp']),
+  'video/mp4': new Set(['.mp4']),
+  'video/webm': new Set(['.webm']),
+  'audio/wav': new Set(['.wav']),
+  'audio/mpeg': new Set(['.mp3']),
 };
 
 export interface ValidatedUpload extends StorageIdentity {
@@ -18,20 +22,21 @@ export interface ValidatedUpload extends StorageIdentity {
 
 export async function validateUpload(
   file: File,
-  policy: UploadPolicy = IMAGE_UPLOAD_POLICY,
+  policy?: UploadPolicy,
 ): Promise<ValidatedUpload> {
   if (!file || file.size <= 0) throw new ValidationError('The uploaded file is empty.');
-  if (file.size > policy.maxBytes) {
-    throw new PayloadTooLargeError(`The uploaded file exceeds the ${policy.maxBytes}-byte limit.`);
+  const selectedPolicy = policy ?? uploadPolicyForMime(file.type);
+  if (file.size > selectedPolicy.maxBytes) {
+    throw new PayloadTooLargeError(`The uploaded file exceeds the ${selectedPolicy.maxBytes}-byte limit.`);
   }
 
   const displayName = sanitizeDisplayFilename(file.name);
   const extension = extensionOf(displayName);
 
-  if (!policy.allowedMimeTypes.has(file.type)) {
-    throw new UnsupportedMediaTypeError('Only PNG, JPEG, and WEBP images are accepted.');
+  if (!selectedPolicy.allowedMimeTypes.has(file.type)) {
+    throw new UnsupportedMediaTypeError('This image, video, or audio media type is not accepted.');
   }
-  if (!policy.allowedExtensions.has(extension)) {
+  if (!selectedPolicy.allowedExtensions.has(extension)) {
     throw new UnsupportedMediaTypeError('The uploaded file extension is not allowed.');
   }
   if (!MIME_TO_EXTENSIONS[file.type]?.has(extension)) {
@@ -39,13 +44,13 @@ export async function validateUpload(
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  if (buffer.byteLength > policy.maxBytes) {
-    throw new PayloadTooLargeError(`The uploaded file exceeds the ${policy.maxBytes}-byte limit.`);
+  if (buffer.byteLength > selectedPolicy.maxBytes) {
+    throw new PayloadTooLargeError(`The uploaded file exceeds the ${selectedPolicy.maxBytes}-byte limit.`);
   }
 
-  const detectedMime = detectImageMime(buffer);
+  const detectedMime = detectUploadMime(buffer);
   if (!detectedMime || detectedMime !== file.type) {
-    throw new UnsupportedMediaTypeError('The file signature does not match the declared image type.');
+    throw new UnsupportedMediaTypeError('The file signature does not match the declared media type.');
   }
 
   return {
