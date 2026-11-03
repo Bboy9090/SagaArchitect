@@ -5,6 +5,7 @@ import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
+import { RasterPaintCanvas } from '@/components/media/RasterPaintCanvas';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
 import { dbGetAssets, dbGetProject, type ProjectAsset } from '@/lib/db-client';
@@ -35,6 +36,10 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [savedAt, setSavedAt] = useState('');
+  const [brushColor, setBrushColor] = useState('#ffffff');
+  const [brushSize, setBrushSize] = useState(24);
+  const [brushOpacity, setBrushOpacity] = useState(1);
+  const [eraseMode, setEraseMode] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,6 +97,25 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
       fontFamily: 'Arial, sans-serif',
       fontWeight: 800,
       align: 'left',
+    };
+    updateDocument(current => ({ ...current, layers: [...current.layers, layer] }));
+    setSelectedLayerId(id);
+  };
+
+  const addRasterLayer = () => {
+    if (!document) return;
+    const id = crypto.randomUUID();
+    const layer: PhoenixMediaLayer = {
+      id,
+      type: 'raster',
+      name: 'Paint Layer',
+      visible: true,
+      locked: false,
+      opacity: 1,
+      blendMode: 'normal',
+      zIndex: nextLayerZIndex(document.layers),
+      transform: { x: 0, y: 0, width: document.width, height: document.height, rotation: 0 },
+      src: '',
     };
     updateDocument(current => ({ ...current, layers: [...current.layers, layer] }));
     setSelectedLayerId(id);
@@ -217,6 +241,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
             <Button size="sm" variant="secondary" onClick={addTextLayer}>Text</Button>
             <Button size="sm" variant="secondary" onClick={() => addShapeLayer('rectangle')}>Rectangle</Button>
             <Button size="sm" variant="secondary" onClick={() => addShapeLayer('ellipse')}>Ellipse</Button>
+            <Button size="sm" variant="secondary" onClick={addRasterLayer}>Paint Layer</Button>
           </div>
 
           <div className="mt-6">
@@ -321,6 +346,24 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={layer.src} alt="" className="h-full w-full" style={{ objectFit: layer.fit }} />
                     )}
+                    {layer.type === 'raster' && (
+                      <RasterPaintCanvas
+                        layer={layer}
+                        scale={scale}
+                        selected={selectedLayerId === layer.id}
+                        brushColor={brushColor}
+                        brushSize={brushSize}
+                        brushOpacity={brushOpacity}
+                        erase={eraseMode}
+                        onSelect={() => setSelectedLayerId(layer.id)}
+                        onCommit={(src) => {
+                          updateDocument(current => ({
+                            ...current,
+                            layers: current.layers.map(item => item.id === layer.id ? { ...item, src } : item),
+                          }));
+                        }}
+                      />
+                    )}
                   </button>
                 );
               })}
@@ -383,6 +426,25 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                     </label>
                   </div>
                 </>
+              )}
+
+              {selectedLayer.type === 'raster' && (
+                <div className="space-y-3 rounded-lg border border-amber-400/20 bg-amber-400/5 p-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="text-[10px] uppercase text-slate-500">Brush
+                      <input type="number" min={1} max={300} value={brushSize} onChange={event => setBrushSize(Number(event.target.value))} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                    </label>
+                    <label className="text-[10px] uppercase text-slate-500">Opacity %
+                      <input type="number" min={1} max={100} value={Math.round(brushOpacity * 100)} onChange={event => setBrushOpacity(Math.max(0.01, Math.min(1, Number(event.target.value) / 100)))} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                    </label>
+                  </div>
+                  <label className="block text-[10px] uppercase text-slate-500">Brush Color
+                    <input type="color" value={brushColor} onChange={event => setBrushColor(event.target.value)} className="mt-1 h-10 w-full rounded border border-white/10 bg-black/20 p-1" />
+                  </label>
+                  <Button size="sm" variant={eraseMode ? 'gold' : 'ghost'} className="w-full" onClick={() => setEraseMode(value => !value)}>
+                    {eraseMode ? 'Erase Mode On' : 'Enable Eraser'}
+                  </Button>
+                </div>
               )}
 
               {selectedLayer.type === 'shape' && (
