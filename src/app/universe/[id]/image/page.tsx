@@ -18,6 +18,7 @@ import { MediaDocumentIO } from '@/components/media/MediaDocumentIO';
 import { LayerAlignmentPanel } from '@/components/media/LayerAlignmentPanel';
 import { MultiLayerLayoutPanel } from '@/components/media/MultiLayerLayoutPanel';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
+import { useMediaEditorShortcuts } from '@/hooks/use-media-editor-shortcuts';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
 import { dbGetAssets, dbGetMediaDocument, dbGetProject, dbSaveMediaDocument, type ProjectAsset } from '@/lib/db-client';
@@ -425,31 +426,33 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
   };
 
   const deleteSelectedLayer = () => {
-    if (!selectedLayer) return;
-    updateDocument(current => removeLayerPreservingSymbols(current, selectedLayer.id));
+    if (!document || selectedLayerIds.length === 0) return;
+    updateDocument(current => selectedLayerIds.reduce(
+      (nextDocument, layerId) => removeLayerPreservingSymbols(nextDocument, layerId),
+      current,
+    ));
     focusLayer('');
   };
 
   const duplicateSelectedLayer = () => {
-    if (!document || !selectedLayer) return;
-    const id = crypto.randomUUID();
-    const duplicate = {
-      ...selectedLayer,
-      id,
-      name: `${selectedLayer.name} copy`,
-      zIndex: nextLayerZIndex(document.layers),
-      transform: {
-        ...selectedLayer.transform,
-        x: Math.min(document.width - selectedLayer.transform.width, selectedLayer.transform.x + 24),
-        y: Math.min(document.height - selectedLayer.transform.height, selectedLayer.transform.y + 24),
-      },
-      mask: selectedLayer.mask ? { ...selectedLayer.mask } : undefined,
-      vectorMask: selectedLayer.vectorMask ? { points: structuredClone(selectedLayer.vectorMask.points) } : undefined,
-      shadow: selectedLayer.shadow ? { ...selectedLayer.shadow } : undefined,
-      adjustments: selectedLayer.adjustments ? { ...selectedLayer.adjustments } : undefined,
-    } as PhoenixMediaLayer;
-    updateDocument(current => ({ ...current, layers: [...current.layers, duplicate] }));
-    focusLayer(id);
+    if (!document || selectedLayerIds.length === 0) return;
+    const selected = document.layers.filter(layer => selectedLayerIds.includes(layer.id));
+    if (selected.length === 0) return;
+    const baseZ = nextLayerZIndex(document.layers);
+    const duplicates = selected.map((layer, index) => {
+      const duplicate = structuredClone(layer) as PhoenixMediaLayer;
+      duplicate.id = crypto.randomUUID();
+      duplicate.name = `${layer.name} copy`;
+      duplicate.zIndex = baseZ + index;
+      duplicate.transform = clampLayerTransform({
+        ...layer.transform,
+        x: layer.transform.x + 24,
+        y: layer.transform.y + 24,
+      }, document);
+      return duplicate;
+    });
+    updateDocument(current => ({ ...current, layers: [...current.layers, ...duplicates] }));
+    focusLayer(duplicates[0].id);
   };
 
   const moveLayer = (direction: 1 | -1) => {
@@ -463,6 +466,32 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
     ordered[swapIndex] = { ...ordered[swapIndex], zIndex: currentZ };
     updateDocument(current => ({ ...current, layers: current.layers.map(layer => ordered.find(next => next.id === layer.id) || layer) }));
   };
+
+  const nudgeSelection = (dx: number, dy: number) => {
+    if (!document || selectedLayerIds.length === 0) return;
+    updateDocument(current => ({
+      ...current,
+      layers: current.layers.map(layer => {
+        if (!selectedLayerIds.includes(layer.id) || isLayerEffectivelyLocked(layer, current)) return layer;
+        return {
+          ...layer,
+          transform: clampLayerTransform({
+            ...layer.transform,
+            x: layer.transform.x + dx,
+            y: layer.transform.y + dy,
+          }, current),
+        };
+      }),
+    }));
+  };
+
+  useMediaEditorShortcuts({
+    onUndo: () => setHistory(current => current ? undoDocumentHistory(current) : current),
+    onRedo: () => setHistory(current => current ? redoDocumentHistory(current) : current),
+    onDelete: deleteSelectedLayer,
+    onDuplicate: duplicateSelectedLayer,
+    onNudge: nudgeSelection,
+  });
 
   const normalizedSelection = () => {
     if (!document) return selection;
