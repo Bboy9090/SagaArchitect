@@ -16,16 +16,19 @@ import { VectorMaskPanel } from '@/components/media/VectorMaskPanel';
 import { LayerShadowPanel } from '@/components/media/LayerShadowPanel';
 import { MediaDocumentIO } from '@/components/media/MediaDocumentIO';
 import { LayerAlignmentPanel } from '@/components/media/LayerAlignmentPanel';
+import { MultiLayerLayoutPanel } from '@/components/media/MultiLayerLayoutPanel';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
 import { dbGetAssets, dbGetMediaDocument, dbGetProject, dbSaveMediaDocument, type ProjectAsset } from '@/lib/db-client';
 import {
+  alignLayerTransformsToSelection,
   clampLayerTransform,
   createAdjustmentLayer,
   createPhoenixMediaDocument,
   createSymbolInstance,
   detachSymbolInstance,
+  distributeLayerTransforms,
   loadPhoenixMediaDocument,
   nextLayerZIndex,
   removeLayerPreservingSymbols,
@@ -78,6 +81,13 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
   const [project, setProject] = useState<Universe | null>(null);
   const [history, setHistory] = useState<PhoenixDocumentHistory | null>(null);
   const [selectedLayerId, setSelectedLayerId] = useState('');
+  const [additionalLayerIds, setAdditionalLayerIds] = useState<string[]>([]);
+
+  const focusLayer = (layerId: string) => {
+    setSelectedLayerId(layerId);
+    setAdditionalLayerIds([]);
+  };
+
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [savedAt, setSavedAt] = useState('');
@@ -144,6 +154,41 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
 
   const selectedLayer = document?.layers.find(layer => layer.id === selectedLayerId) || null;
 
+  const selectedLayerIds = useMemo(
+    () => [selectedLayerId, ...additionalLayerIds].filter((value, index, values) => value && values.indexOf(value) === index),
+    [selectedLayerId, additionalLayerIds],
+  );
+
+  const selectLayer = (layerId: string, additive = false) => {
+    if (!additive || !selectedLayerId) {
+      focusLayer(layerId);
+      setAdditionalLayerIds([]);
+      return;
+    }
+    if (layerId === selectedLayerId) return;
+    setAdditionalLayerIds(current => current.includes(layerId)
+      ? current.filter(id => id !== layerId)
+      : [...current, layerId]);
+  };
+
+  const applyBatchLayout = (
+    operation: 'left' | 'center-x' | 'right' | 'top' | 'center-y' | 'bottom' | 'horizontal' | 'vertical',
+  ) => {
+    if (!document) return;
+    const movable = document.layers.filter(layer =>
+      selectedLayerIds.includes(layer.id) && !isLayerEffectivelyLocked(layer, document));
+    const transforms = operation === 'horizontal' || operation === 'vertical'
+      ? distributeLayerTransforms(movable, operation)
+      : alignLayerTransformsToSelection(movable, operation);
+    if (transforms.size === 0) return;
+    updateDocument(current => ({
+      ...current,
+      layers: current.layers.map(layer => transforms.has(layer.id)
+        ? { ...layer, transform: transforms.get(layer.id)! }
+        : layer),
+    }));
+  };
+
   const updateDocument = (updater: (current: PhoenixMediaDocument) => PhoenixMediaDocument) => {
     setHistory(current => {
       if (!current) return current;
@@ -203,7 +248,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
     const instance = createSymbolInstance(document, symbolId, nextLayerZIndex(document.layers));
     if (!instance) return;
     updateDocument(current => ({ ...current, layers: [...current.layers, instance] }));
-    setSelectedLayerId(instance.id);
+    focusLayer(instance.id);
   };
 
   const detachSelectedSymbol = () => {
@@ -236,7 +281,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
       align: 'left',
     };
     updateDocument(current => ({ ...current, layers: [...current.layers, layer] }));
-    setSelectedLayerId(id);
+    focusLayer(id);
   };
 
   const addRasterLayer = () => {
@@ -255,7 +300,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
       src: '',
     };
     updateDocument(current => ({ ...current, layers: [...current.layers, layer] }));
-    setSelectedLayerId(id);
+    focusLayer(id);
   };
 
   const addShapeLayer = (shape: 'rectangle' | 'ellipse') => {
@@ -277,7 +322,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
       strokeWidth: 0,
     };
     updateDocument(current => ({ ...current, layers: [...current.layers, layer] }));
-    setSelectedLayerId(id);
+    focusLayer(id);
   };
 
   const addPathLayer = () => {
@@ -307,7 +352,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
       strokeWidth: 8,
     };
     updateDocument(current => ({ ...current, layers: [...current.layers, layer] }));
-    setSelectedLayerId(id);
+    focusLayer(id);
   };
 
   const addAssetLayer = (asset: ProjectAsset) => {
@@ -328,7 +373,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
       fit: 'contain',
     };
     updateDocument(current => ({ ...current, layers: [...current.layers, layer] }));
-    setSelectedLayerId(layerId);
+    focusLayer(layerId);
   };
 
   const patchSelectedLayer = (patch: Partial<PhoenixMediaLayer>) => {
@@ -382,7 +427,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
   const deleteSelectedLayer = () => {
     if (!selectedLayer) return;
     updateDocument(current => removeLayerPreservingSymbols(current, selectedLayer.id));
-    setSelectedLayerId('');
+    focusLayer('');
   };
 
   const duplicateSelectedLayer = () => {
@@ -404,7 +449,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
       adjustments: selectedLayer.adjustments ? { ...selectedLayer.adjustments } : undefined,
     } as PhoenixMediaLayer;
     updateDocument(current => ({ ...current, layers: [...current.layers, duplicate] }));
-    setSelectedLayerId(id);
+    focusLayer(id);
   };
 
   const moveLayer = (direction: 1 | -1) => {
@@ -521,7 +566,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
               document={document}
               onImport={imported => {
                 setHistory(createDocumentHistory(imported));
-                setSelectedLayerId('');
+                focusLayer('');
                 setExportError('');
               }}
               onError={setExportError}
@@ -554,7 +599,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
               selectedLayer={selectedLayer}
               onCreateFromSelected={createSymbolFromSelected}
               onInsert={insertSymbol}
-              onSelectMaster={setSelectedLayerId}
+              onSelectMaster={focusLayer}
               onDetachSelected={detachSelectedSymbol}
             />
           </div>
@@ -567,7 +612,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
             <Button size="sm" variant="secondary" onClick={() => {
               const layer = createAdjustmentLayer(document);
               updateDocument(current => ({ ...current, layers: [...current.layers, layer] }));
-              setSelectedLayerId(layer.id);
+              focusLayer(layer.id);
             }}>Adjustment</Button>
             <Button size="sm" variant="secondary" onClick={addRasterLayer}>Paint Layer</Button>
           </div>
@@ -678,7 +723,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                   transform: `rotate(${layer.transform.rotation}deg)`,
                   transformOrigin: 'center',
                   mixBlendMode: layerMixBlendMode(layer.blendMode),
-                  outline: selectedLayerId === layer.id ? '2px solid #60a5fa' : undefined,
+                  outline: selectedLayerIds.includes(layer.id) ? '2px solid #60a5fa' : undefined,
                   outlineOffset: 2,
                   cursor: isLayerEffectivelyLocked(layer, document) ? 'not-allowed' : 'pointer',
                   clipPath: vectorMaskCssClipPath(layer) || selectedLayerClipPath(layer),
@@ -691,7 +736,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                       key={layer.id}
                       type="button"
                       data-media-interactive="true"
-                      onClick={() => setSelectedLayerId(layer.id)}
+                      onClick={event => selectLayer(layer.id, event.shiftKey)}
                       aria-label={`Select layer ${layer.name}`}
                       className="absolute block border-0 p-0"
                       style={{
@@ -710,7 +755,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                     key={layer.id}
                     type="button"
                     data-media-interactive="true"
-                    onClick={() => setSelectedLayerId(layer.id)}
+                    onClick={event => selectLayer(layer.id, event.shiftKey)}
                     className="block border-0 bg-transparent p-0 text-left"
                     style={style}
                     aria-label={`Select layer ${layer.name}`}
@@ -813,7 +858,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                           brushSize={brushSize}
                           brushOpacity={brushOpacity}
                           erase={eraseMode}
-                          onSelect={() => setSelectedLayerId(layer.id)}
+                          onSelect={() => focusLayer(layer.id)}
                           onCommit={(src) => {
                             updateDocument(current => ({
                               ...current,
@@ -861,7 +906,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                 <button
                   key={layer.id}
                   type="button"
-                  onClick={() => setSelectedLayerId(layer.id)}
+                  onClick={event => selectLayer(layer.id, event.shiftKey)}
                   className={`flex min-h-11 w-full items-center justify-between rounded-lg border px-3 text-left text-xs ${selectedLayerId === layer.id
                     ? 'border-blue-400/50 bg-blue-400/10 text-blue-100'
                     : 'border-white/5 bg-white/[0.02] text-slate-400 hover:border-white/15'}`}
@@ -876,6 +921,15 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                 </p>
               )}
             </div>
+          </div>
+
+          <div className="mb-4">
+            <MultiLayerLayoutPanel
+              count={document.layers.filter(layer => selectedLayerIds.includes(layer.id) && !isLayerEffectivelyLocked(layer, document)).length}
+              onAlign={alignment => applyBatchLayout(alignment)}
+              onDistribute={axis => applyBatchLayout(axis)}
+              onClear={() => setAdditionalLayerIds([])}
+            />
           </div>
 
           {selectedLayer && (

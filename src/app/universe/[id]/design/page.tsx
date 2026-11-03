@@ -16,15 +16,18 @@ import { LayerShadowPanel } from '@/components/media/LayerShadowPanel';
 import { MediaDocumentIO } from '@/components/media/MediaDocumentIO';
 import { LayerAlignmentPanel } from '@/components/media/LayerAlignmentPanel';
 import { AdjustmentLayerPanel } from '@/components/media/AdjustmentLayerPanel';
+import { MultiLayerLayoutPanel } from '@/components/media/MultiLayerLayoutPanel';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
 import { dbGetAssets, dbGetMediaDocument, dbGetProject, dbSaveMediaDocument, type ProjectAsset } from '@/lib/db-client';
 import {
+  alignLayerTransformsToSelection,
   createAdjustmentLayer,
   createPhoenixMediaDocument,
   createSymbolInstance,
   detachSymbolInstance,
+  distributeLayerTransforms,
   loadPhoenixMediaDocument,
   nextLayerZIndex,
   removeLayerPreservingSymbols,
@@ -205,6 +208,13 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
   const [history, setHistory] = useState<PhoenixDocumentHistory | null>(null);
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
   const [selectedLayerId, setSelectedLayerId] = useState('');
+  const [additionalLayerIds, setAdditionalLayerIds] = useState<string[]>([]);
+
+  const focusLayer = (layerId: string) => {
+    setSelectedLayerId(layerId);
+    setAdditionalLayerIds([]);
+  };
+
   const [loading, setLoading] = useState(true);
   const {
     zoom,
@@ -261,6 +271,41 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
     [document?.layers],
   );
   const selected = document?.layers.find(layer => layer.id === selectedLayerId) || null;
+
+  const selectedLayerIds = useMemo(
+    () => [selectedLayerId, ...additionalLayerIds].filter((value, index, values) => value && values.indexOf(value) === index),
+    [selectedLayerId, additionalLayerIds],
+  );
+
+  const selectLayer = (layerId: string, additive = false) => {
+    if (!additive || !selectedLayerId) {
+      focusLayer(layerId);
+      setAdditionalLayerIds([]);
+      return;
+    }
+    if (layerId === selectedLayerId) return;
+    setAdditionalLayerIds(current => current.includes(layerId)
+      ? current.filter(id => id !== layerId)
+      : [...current, layerId]);
+  };
+
+  const applyBatchLayout = (
+    operation: 'left' | 'center-x' | 'right' | 'top' | 'center-y' | 'bottom' | 'horizontal' | 'vertical',
+  ) => {
+    if (!document) return;
+    const movable = document.layers.filter(layer =>
+      selectedLayerIds.includes(layer.id) && !isLayerEffectivelyLocked(layer, document));
+    const transforms = operation === 'horizontal' || operation === 'vertical'
+      ? distributeLayerTransforms(movable, operation)
+      : alignLayerTransformsToSelection(movable, operation);
+    if (transforms.size === 0) return;
+    commit(current => ({
+      ...current,
+      layers: current.layers.map(layer => transforms.has(layer.id)
+        ? { ...layer, transform: transforms.get(layer.id)! }
+        : layer),
+    }));
+  };
 
   const commit = (updater: (current: PhoenixMediaDocument) => PhoenixMediaDocument) => {
     setHistory(current => {
@@ -321,7 +366,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
     const instance = createSymbolInstance(document, symbolId, nextLayerZIndex(document.layers));
     if (!instance) return;
     commit(current => ({ ...current, layers: [...current.layers, instance] }));
-    setSelectedLayerId(instance.id);
+    focusLayer(instance.id);
   };
 
   const detachSelectedSymbol = () => {
@@ -360,7 +405,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
       align: 'left',
     };
     commit(current => ({ ...current, layers: [...current.layers, layer] }));
-    setSelectedLayerId(layer.id);
+    focusLayer(layer.id);
   };
 
   const addShape = () => {
@@ -381,7 +426,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
       strokeWidth: 0,
     };
     commit(current => ({ ...current, layers: [...current.layers, layer] }));
-    setSelectedLayerId(layer.id);
+    focusLayer(layer.id);
   };
 
   const addPath = () => {
@@ -410,7 +455,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
       strokeWidth: 6,
     };
     commit(current => ({ ...current, layers: [...current.layers, layer] }));
-    setSelectedLayerId(layer.id);
+    focusLayer(layer.id);
   };
 
   const addImage = (asset: ProjectAsset) => {
@@ -430,7 +475,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
       fit: 'cover',
     };
     commit(current => ({ ...current, layers: [...current.layers, layer] }));
-    setSelectedLayerId(layer.id);
+    focusLayer(layer.id);
   };
 
   const patchLayer = (patch: Partial<PhoenixMediaLayer>) => {
@@ -519,7 +564,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
               document={document}
               onImport={imported => {
                 setHistory(createDocumentHistory(imported));
-                setSelectedLayerId('');
+                focusLayer('');
                 setExportError('');
               }}
               onError={setExportError}
@@ -547,7 +592,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
               selectedLayer={selected}
               onCreateFromSelected={createSymbolFromSelected}
               onInsert={insertSymbol}
-              onSelectMaster={setSelectedLayerId}
+              onSelectMaster={focusLayer}
               onDetachSelected={detachSelectedSymbol}
             />
           </div>
@@ -571,7 +616,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
               <Button size="sm" variant="secondary" onClick={() => {
                 const layer = createAdjustmentLayer(document);
                 commit(current => ({ ...current, layers: [...current.layers, layer] }));
-                setSelectedLayerId(layer.id);
+                focusLayer(layer.id);
               }}>Adjustment</Button>
             </div>
           </div>
@@ -638,7 +683,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                   opacity: effectiveLayerOpacity(layer, document),
                   transform: `rotate(${layer.transform.rotation}deg)`,
                   transformOrigin: 'center',
-                  outline: selectedLayerId === layer.id ? '2px solid #38bdf8' : undefined,
+                  outline: selectedLayerIds.includes(layer.id) ? '2px solid #38bdf8' : undefined,
                   outlineOffset: 2,
                   clipPath: vectorMaskCssClipPath(layer) || cssMaskClipPath(layer),
                   filter: layerCssEffects(layer),
@@ -649,7 +694,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                       key={layer.id}
                       type="button"
                       data-media-interactive="true"
-                      onClick={() => setSelectedLayerId(layer.id)}
+                      onClick={event => selectLayer(layer.id, event.shiftKey)}
                       className="absolute block border-0 p-0"
                       aria-label={`Select layer ${layer.name}`}
                       style={{
@@ -664,7 +709,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                 }
 
                 return (
-                  <button key={layer.id} type="button" data-media-interactive="true" onClick={() => setSelectedLayerId(layer.id)} style={style} className="block border-0 bg-transparent p-0 text-left">
+                  <button key={layer.id} type="button" data-media-interactive="true" onClick={event => selectLayer(layer.id, event.shiftKey)} style={style} className="block border-0 bg-transparent p-0 text-left">
                     {layer.type === 'shape' && <div className="h-full w-full" style={{ background: gradientFillCss(layer.gradient, layer.fill), border: layer.strokeWidth ? `${Math.max(1, layer.strokeWidth * zoom)}px solid ${layer.stroke}` : undefined }} />}
                     {layer.type === 'text' && <div className="h-full w-full overflow-hidden whitespace-pre-wrap" style={{ color: layer.color, fontSize: layer.fontSize * zoom, fontFamily: layer.fontFamily, fontWeight: layer.fontWeight, fontStyle: layer.italic ? 'italic' : 'normal', textDecoration: layer.underline ? 'underline' : 'none', letterSpacing: textLetterSpacing(layer) * zoom, lineHeight: `${textLineHeight(layer) * zoom}px`, textAlign: layer.align }}>{layer.text}</div>}
                     {layer.type === 'path' && (
@@ -739,11 +784,20 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
           <p className="mb-3 text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Layers</p>
           <div className="space-y-2">
             {[...sortedLayers].reverse().map(layer => (
-              <button key={layer.id} type="button" data-media-interactive="true" onClick={() => setSelectedLayerId(layer.id)}
+              <button key={layer.id} type="button" data-media-interactive="true" onClick={event => selectLayer(layer.id, event.shiftKey)}
                 className={`flex min-h-11 w-full items-center justify-between rounded-lg border px-3 text-left text-xs ${selectedLayerId === layer.id ? 'border-blue-400/50 bg-blue-400/10 text-blue-100' : 'border-white/5 text-slate-400'}`}>
                 <span className="truncate">{layer.name}</span><span className="text-[9px] uppercase">{layer.type}</span>
               </button>
             ))}
+          </div>
+
+          <div className="mt-5">
+            <MultiLayerLayoutPanel
+              count={document.layers.filter(layer => selectedLayerIds.includes(layer.id) && !isLayerEffectivelyLocked(layer, document)).length}
+              onAlign={alignment => applyBatchLayout(alignment)}
+              onDistribute={axis => applyBatchLayout(axis)}
+              onClear={() => setAdditionalLayerIds([])}
+            />
           </div>
 
           {selected && (
@@ -991,7 +1045,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
               </div>
               <Button size="sm" variant="danger" className="w-full" onClick={() => {
                 commit(current => removeLayerPreservingSymbols(current, selected.id));
-                setSelectedLayerId('');
+                focusLayer('');
               }}>Delete Layer</Button>
             </div>
           )}
