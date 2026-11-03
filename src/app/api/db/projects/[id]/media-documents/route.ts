@@ -24,10 +24,18 @@ function validDocument(value: unknown, projectId: string, kind: PhoenixMediaDocu
   return doc.projectId === projectId
     && doc.kind === kind
     && typeof doc.id === 'string'
+    && doc.id.length > 0
+    && doc.id.length <= 128
     && typeof doc.title === 'string'
+    && doc.title.length <= 255
     && Number.isFinite(doc.width)
     && Number.isFinite(doc.height)
-    && Array.isArray(doc.layers);
+    && Number(doc.width) >= 1
+    && Number(doc.width) <= 16384
+    && Number(doc.height) >= 1
+    && Number(doc.height) <= 16384
+    && Array.isArray(doc.layers)
+    && doc.layers.length <= 500;
 }
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
