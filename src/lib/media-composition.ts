@@ -71,10 +71,18 @@ export interface PhoenixTextLayer extends PhoenixBaseLayer {
   align: 'left' | 'center' | 'right';
 }
 
+export interface PhoenixGradientFill {
+  kind: 'linear' | 'radial';
+  angle: number;
+  start: string;
+  end: string;
+}
+
 export interface PhoenixShapeLayer extends PhoenixBaseLayer {
   type: 'shape';
   shape: 'rectangle' | 'ellipse';
   fill: string;
+  gradient?: PhoenixGradientFill;
   stroke: string;
   strokeWidth: number;
 }
@@ -108,6 +116,7 @@ export interface PhoenixPathLayer extends PhoenixBaseLayer {
   points: PhoenixVectorPoint[];
   closed: boolean;
   fill: string;
+  gradient?: PhoenixGradientFill;
   stroke: string;
   strokeWidth: number;
 }
@@ -284,4 +293,14 @@ export function scaleVectorPoints(points: PhoenixVectorPoint[], scaleX: number, 
     in: point.in ? { x: point.in.x * scaleX, y: point.in.y * scaleY } : undefined,
     out: point.out ? { x: point.out.x * scaleX, y: point.out.y * scaleY } : undefined,
   }));
+}
+
+
+export function gradientFillCss(gradient: PhoenixGradientFill | undefined, fallback: string): string {
+  if (!gradient) return fallback;
+  const start = gradient.start || fallback;
+  const end = gradient.end || fallback;
+  return gradient.kind === 'radial'
+    ? `radial-gradient(circle at center, ${start} 0%, ${end} 100%)`
+    : `linear-gradient(${Number.isFinite(gradient.angle) ? gradient.angle : 0}deg, ${start} 0%, ${end} 100%)`;
 }

@@ -17,6 +17,7 @@ import {
   loadPhoenixMediaDocument,
   nextLayerZIndex,
   savePhoenixMediaDocument,
+  gradientFillCss,
   layerCssFilter,
   moveVectorPoint,
   scaleVectorPoints,
@@ -76,20 +77,30 @@ function buildSvg(document: PhoenixMediaDocument): string {
     const { x, y, width, height, rotation } = layer.transform;
     const transform = `rotate(${rotation} ${x + width / 2} ${y + height / 2})`;
     const opacity = Math.max(0, Math.min(1, layer.opacity));
-    const clipId = `clip-${layer.id.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+    const safeLayerId = layer.id.replace(/[^a-zA-Z0-9_-]/g, '');
+    const clipId = `clip-${safeLayerId}`;
+    const gradientId = `gradient-${safeLayerId}`;
+    const gradient = layer.type === 'shape' || layer.type === 'path' ? layer.gradient : undefined;
+    const gradientDefinition = gradient
+      ? gradient.kind === 'radial'
+        ? `<defs><radialGradient id="${gradientId}" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="${gradient.start}"/><stop offset="100%" stop-color="${gradient.end}"/></radialGradient></defs>`
+        : `<defs><linearGradient id="${gradientId}" x1="0%" y1="50%" x2="100%" y2="50%" gradientTransform="rotate(${gradient.angle - 90} .5 .5)"><stop offset="0%" stop-color="${gradient.start}"/><stop offset="100%" stop-color="${gradient.end}"/></linearGradient></defs>`
+      : '';
+    const layerFill = gradient ? `url(#${gradientId})` : (layer.type === 'shape' || layer.type === 'path' ? layer.fill : '');
     const maskDefinition = layer.mask
       ? `<defs><clipPath id="${clipId}" clipPathUnits="userSpaceOnUse"><rect x="${x + layer.mask.x}" y="${y + layer.mask.y}" width="${layer.mask.width}" height="${layer.mask.height}" transform="${transform}" /></clipPath></defs>`
       : '';
     const wrap = (element: string) => {
       const filtered = `<g style="filter:${escapeXml(layerCssFilter(layer))}">${element}</g>`;
+      const definitions = `${gradientDefinition}${maskDefinition}`;
       return layer.mask
-        ? `${maskDefinition}<g clip-path="url(#${clipId})">${filtered}</g>`
-        : filtered;
+        ? `${definitions}<g clip-path="url(#${clipId})">${filtered}</g>`
+        : `${definitions}${filtered}`;
     };
 
     if (layer.type === 'shape') {
       if (layer.shape === 'ellipse') {
-        return wrap(`<ellipse cx="${x + width / 2}" cy="${y + height / 2}" rx="${width / 2}" ry="${height / 2}" fill="${layer.fill}" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${transform}" />`);
+        return wrap(`<ellipse cx="${x + width / 2}" cy="${y + height / 2}" rx="${width / 2}" ry="${height / 2}" fill="${layerFill}" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${transform}" />`);
       }
       return wrap(`<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${layer.fill}" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${transform}" />`);
     }
@@ -103,7 +114,7 @@ function buildSvg(document: PhoenixMediaDocument): string {
     if (layer.type === 'path') {
       const d = escapeXml(vectorPathSvgD(layer));
       const localTransform = `translate(${x} ${y}) rotate(${rotation} ${width / 2} ${height / 2})`;
-      const element = `<path d="${d}" fill="${layer.closed ? layer.fill : 'none'}" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${localTransform}" stroke-linejoin="round" stroke-linecap="round" />`;
+      const element = `<path d="${d}" fill="${layer.closed ? layerFill : 'none'}" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${localTransform}" stroke-linejoin="round" stroke-linecap="round" />`;
       return wrap(element);
     }
 
@@ -456,11 +467,26 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                 };
                 return (
                   <button key={layer.id} type="button" data-media-interactive="true" onClick={() => setSelectedLayerId(layer.id)} style={style} className="block border-0 bg-transparent p-0 text-left">
-                    {layer.type === 'shape' && <div className="h-full w-full" style={{ background: layer.fill, border: layer.strokeWidth ? `${Math.max(1, layer.strokeWidth * zoom)}px solid ${layer.stroke}` : undefined }} />}
+                    {layer.type === 'shape' && <div className="h-full w-full" style={{ background: gradientFillCss(layer.gradient, layer.fill), border: layer.strokeWidth ? `${Math.max(1, layer.strokeWidth * zoom)}px solid ${layer.stroke}` : undefined }} />}
                     {layer.type === 'text' && <div className="h-full w-full overflow-hidden" style={{ color: layer.color, fontSize: layer.fontSize * zoom, fontFamily: layer.fontFamily, fontWeight: layer.fontWeight, lineHeight: 1.05, textAlign: layer.align }}>{layer.text}</div>}
                     {layer.type === 'path' && (
                       <svg viewBox={`0 0 ${layer.transform.width} ${layer.transform.height}`} className="h-full w-full overflow-visible">
-                        <path d={vectorPathSvgD(layer)} fill={layer.closed ? layer.fill : 'none'} stroke={layer.stroke} strokeWidth={layer.strokeWidth} strokeLinejoin="round" strokeLinecap="round" />
+                        {layer.gradient && (
+                          <defs>
+                            {layer.gradient.kind === 'radial' ? (
+                              <radialGradient id={`design-gradient-${layer.id}`} cx="50%" cy="50%" r="50%">
+                                <stop offset="0%" stopColor={layer.gradient.start} />
+                                <stop offset="100%" stopColor={layer.gradient.end} />
+                              </radialGradient>
+                            ) : (
+                              <linearGradient id={`design-gradient-${layer.id}`} x1="0%" y1="50%" x2="100%" y2="50%" gradientTransform={`rotate(${layer.gradient.angle - 90} .5 .5)`}>
+                                <stop offset="0%" stopColor={layer.gradient.start} />
+                                <stop offset="100%" stopColor={layer.gradient.end} />
+                              </linearGradient>
+                            )}
+                          </defs>
+                        )}
+                        <path d={vectorPathSvgD(layer)} fill={layer.closed ? (layer.gradient ? `url(#design-gradient-${layer.id})` : layer.fill) : 'none'} stroke={layer.stroke} strokeWidth={layer.strokeWidth} strokeLinejoin="round" strokeLinecap="round" />
                         {selectedLayerId === layer.id && layer.points.map((point, index) => (
                           <g key={index} className="pointer-events-none">
                             {point.in && (
@@ -645,6 +671,53 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                   </div>
                 </div>
               )}
+              {(selected.type === 'shape' || selected.type === 'path') && (
+                <div className="rounded-lg border border-fuchsia-400/20 bg-fuchsia-400/[0.04] p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-fuchsia-300">Gradient Fill</span>
+                    <Button
+                      size="sm"
+                      variant={selected.gradient ? 'gold' : 'ghost'}
+                      onClick={() => patchLayer({
+                        gradient: selected.gradient ? undefined : {
+                          kind: 'linear',
+                          angle: 90,
+                          start: selected.fill,
+                          end: '#111827',
+                        },
+                      } as Partial<PhoenixMediaLayer>)}
+                    >
+                      {selected.gradient ? 'On' : 'Enable'}
+                    </Button>
+                  </div>
+                  {selected.gradient && (
+                    <div className="mt-3 space-y-2">
+                      <select
+                        value={selected.gradient.kind}
+                        onChange={event => patchLayer({ gradient: { ...selected.gradient!, kind: event.target.value as 'linear' | 'radial' } } as Partial<PhoenixMediaLayer>)}
+                        className="min-h-10 w-full rounded border border-white/10 bg-[#0a0d14] px-2 text-xs text-white"
+                      >
+                        <option value="linear">Linear</option>
+                        <option value="radial">Radial</option>
+                      </select>
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="text-[10px] uppercase text-slate-500">Start
+                          <input type="color" value={selected.gradient.start} onChange={event => patchLayer({ gradient: { ...selected.gradient!, start: event.target.value } } as Partial<PhoenixMediaLayer>)} className="mt-1 h-9 w-full" />
+                        </label>
+                        <label className="text-[10px] uppercase text-slate-500">End
+                          <input type="color" value={selected.gradient.end} onChange={event => patchLayer({ gradient: { ...selected.gradient!, end: event.target.value } } as Partial<PhoenixMediaLayer>)} className="mt-1 h-9 w-full" />
+                        </label>
+                      </div>
+                      {selected.gradient.kind === 'linear' && (
+                        <label className="block text-[10px] uppercase text-slate-500">Angle
+                          <input type="number" min={-360} max={360} value={selected.gradient.angle} onChange={event => patchLayer({ gradient: { ...selected.gradient!, angle: Number(event.target.value) } } as Partial<PhoenixMediaLayer>)} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                        </label>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-2">
                 {(['x', 'y', 'width', 'height'] as const).map(key => (
                   <label key={key} className="text-[10px] uppercase text-slate-500">{key}
