@@ -251,6 +251,18 @@ export const mediaDocuments = pgTable('media_documents', {
   projectKindUnique: uniqueIndex('media_documents_project_kind_unique').on(table.projectId, table.kind),
 }));
 
+export const studioDocuments = pgTable('studio_documents', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  kind: varchar('kind', { length: 50 }).notNull(),
+  document: jsonb('document').notNull(),
+  version: integer('version').default(1).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  projectKindUnique: uniqueIndex('studio_documents_project_kind_unique').on(table.projectId, table.kind),
+}));
+
 export const storyboardPanels = pgTable('storyboard_panels', {
   id: uuid('id').primaryKey().defaultRandom(),
   sceneId: uuid('scene_id').notNull().references(() => scenes.id, { onDelete: 'cascade' }),
