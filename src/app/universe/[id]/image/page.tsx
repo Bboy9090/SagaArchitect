@@ -31,6 +31,7 @@ import {
   scaleVectorContours,
   scaleVectorPoints,
   vectorPathFillRule,
+  vectorPathFillSvgD,
   vectorPathSvgD,
   type PhoenixMediaDocument,
   type PhoenixMediaLayer,
@@ -655,10 +656,17 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                             )}
                           </defs>
                         )}
+                        {vectorPathFillSvgD(layer) && (
+                          <path
+                            d={vectorPathFillSvgD(layer)}
+                            fill={layer.gradient ? `url(#image-gradient-${layer.id})` : layer.fill}
+                            fillRule={vectorPathFillRule(layer)}
+                            stroke="none"
+                          />
+                        )}
                         <path
                           d={vectorPathSvgD(layer)}
-                          fill={layer.closed ? (layer.gradient ? `url(#image-gradient-${layer.id})` : layer.fill) : 'none'}
-                          fillRule={vectorPathFillRule(layer)}
+                          fill="none"
                           stroke={layer.stroke}
                           strokeWidth={layer.strokeWidth}
                           strokeLinejoin="round"
