@@ -13,7 +13,7 @@ import { MediaRevisionPanel } from '@/components/media/MediaRevisionPanel';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
-import { dbDeleteComicPage, dbGetAssets, dbGetComicPages, dbGetProject, dbSaveMediaDocument, dbUploadAsset, type ProjectAsset } from '@/lib/db-client';
+import { dbDeleteComicPage, dbGetAssets, dbGetComicPages, dbGetProject, dbSaveMediaDocument, dbSaveStudioDocument, dbUploadAsset, type ProjectAsset } from '@/lib/db-client';
 import {
   createPhoenixMediaDocument,
   listPhoenixMediaDocuments,
@@ -803,10 +803,14 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
       }
 
       const timeline = buildMotionComicTimeline(id, issueTitle(), inputs, 4);
-      saveMotionComicTimeline({
+      const savedTimeline = saveMotionComicTimeline({
         ...timeline,
         title: `${issueTitle()} Motion Comic`,
       });
+      if (cloudMode) {
+        setMotionHandoffStatus(`Saving ${rendered.length}-panel motion timeline to Studio Cloud…`);
+        await dbSaveStudioDocument(id, 'motion_timeline', savedTimeline);
+      }
       setMotionHandoffStatus(`Built ${rendered.length} motion panels. Opening Motion Comic Studio…`);
       router.push(`/universe/${id}/motion`);
     } catch (error) {
