@@ -14,38 +14,49 @@ export function isPhoenixStudioDocumentKind(value: unknown): value is PhoenixStu
   return value === 'video_timeline' || value === 'motion_timeline' || value === 'audio_mix';
 }
 
+interface StudioDocumentBase {
+  id?: unknown;
+  projectId?: unknown;
+  title?: unknown;
+  tracks?: unknown;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+  width?: unknown;
+  height?: unknown;
+  fps?: unknown;
+  captions?: unknown;
+}
+
+function hasBoundedClipArray(track: unknown): boolean {
+  if (!track || typeof track !== 'object') return false;
+  const clips = (track as { clips?: unknown }).clips;
+  return Array.isArray(clips) && clips.length <= 2000;
+}
+
 export function validatePhoenixStudioDocument(
   kind: PhoenixStudioDocumentKind,
   value: unknown,
   projectId: string,
 ): value is PhoenixStudioDocument {
   if (!value || typeof value !== 'object') return false;
-  const doc = value as Partial<PhoenixVideoTimeline & PhoenixAudioMix>;
+  const doc = value as StudioDocumentBase;
   if (doc.projectId !== projectId || typeof doc.id !== 'string' || !doc.id || typeof doc.title !== 'string') return false;
   if (typeof doc.updatedAt !== 'string' || typeof doc.createdAt !== 'string') return false;
-  if (!Array.isArray(doc.tracks) || doc.tracks.length > 64) return false;
+  if (!Array.isArray(doc.tracks) || doc.tracks.length > 64 || !doc.tracks.every(hasBoundedClipArray)) return false;
 
-  if (kind === 'audio_mix') {
-    return doc.tracks.every(track => (
-      track && typeof track === 'object'
-      && Array.isArray((track as PhoenixAudioMix['tracks'][number]).clips)
-      && (track as PhoenixAudioMix['tracks'][number]).clips.length <= 2000
-    ));
-  }
+  if (kind === 'audio_mix') return true;
 
-  const video = doc as Partial<PhoenixVideoTimeline>;
-  return Number.isFinite(video.width)
-    && Number(video.width) >= 16
-    && Number(video.width) <= 8192
-    && Number.isFinite(video.height)
-    && Number(video.height) >= 16
-    && Number(video.height) <= 8192
-    && Number.isFinite(video.fps)
-    && Number(video.fps) >= 1
-    && Number(video.fps) <= 120
-    && Array.isArray(video.captions)
-    && video.captions.length <= 5000
-    && video.tracks.every(track => Array.isArray(track.clips) && track.clips.length <= 2000);
+  return Number.isFinite(doc.width)
+    && Number(doc.width) >= 16
+    && Number(doc.width) <= 8192
+    && Number.isFinite(doc.height)
+    && Number(doc.height) >= 16
+    && Number(doc.height) <= 8192
+    && Number.isFinite(doc.fps)
+    && Number(doc.fps) >= 1
+    && Number(doc.fps) <= 120
+    && Array.isArray(doc.captions)
+    && doc.captions.length <= 5000;
 }
 
 export function newestStudioDocument<T extends PhoenixStudioDocument>(
