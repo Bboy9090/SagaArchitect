@@ -141,12 +141,61 @@ export function timelineDuration(timeline: PhoenixVideoTimeline): number {
   );
 }
 
-export function addClipToTimeline(
+export function addTimelineTrack(
   timeline: PhoenixVideoTimeline,
+  kind: PhoenixTimelineTrackKind,
+  name?: string,
+): PhoenixVideoTimeline {
+  const peers = timeline.tracks.filter(track => track.kind === kind);
+  const nextOrder = timeline.tracks.reduce((max, track) => Math.max(max, track.order), -1) + 1;
+  const track: PhoenixTimelineTrack = {
+    id: crypto.randomUUID(),
+    name: name || `${kind === 'video' ? 'Video' : 'Audio'} ${peers.length + 1}`,
+    kind,
+    order: nextOrder,
+    clips: [],
+  };
+  return { ...timeline, tracks: [...timeline.tracks, track], updatedAt: new Date().toISOString() };
+}
+
+export function removeEmptyTimelineTrack(
+  timeline: PhoenixVideoTimeline,
+  trackId: string,
+): PhoenixVideoTimeline {
+  const target = timeline.tracks.find(track => track.id === trackId);
+  if (!target || target.clips.length > 0) return timeline;
+  const sameKind = timeline.tracks.filter(track => track.kind === target.kind);
+  if (sameKind.length <= 1) return timeline;
+  const remaining = timeline.tracks.filter(track => track.id !== trackId)
+    .sort((a, b) => a.order - b.order)
+    .map((track, index) => ({ ...track, order: index }));
+  return { ...timeline, tracks: remaining, updatedAt: new Date().toISOString() };
+}
+
+export function moveTimelineTrack(
+  timeline: PhoenixVideoTimeline,
+  trackId: string,
+  direction: -1 | 1,
+): PhoenixVideoTimeline {
+  const ordered = [...timeline.tracks].sort((a, b) => a.order - b.order);
+  const index = ordered.findIndex(track => track.id === trackId);
+  const swapIndex = index + direction;
+  if (index < 0 || swapIndex < 0 || swapIndex >= ordered.length) return timeline;
+  [ordered[index], ordered[swapIndex]] = [ordered[swapIndex], ordered[index]];
+  return {
+    ...timeline,
+    tracks: ordered.map((track, order) => ({ ...track, order })),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function addClipToTimelineTrack(
+  timeline: PhoenixVideoTimeline,
+  trackId: string,
   input: Omit<PhoenixTimelineClip, 'id' | 'trackId' | 'createdAt' | 'transitionIn' | 'transitionOut' | 'transitionDuration' | 'transform' | 'keyframes'> & Partial<Pick<PhoenixTimelineClip, 'transitionIn' | 'transitionOut' | 'transitionDuration' | 'transform' | 'keyframes'>>,
 ): PhoenixVideoTimeline {
   const targetKind: PhoenixTimelineTrackKind = input.kind === 'audio' ? 'audio' : 'video';
-  const track = timeline.tracks.find(item => item.kind === targetKind);
+  const track = timeline.tracks.find(item => item.id === trackId && item.kind === targetKind);
   if (!track) return timeline;
   const clip: PhoenixTimelineClip = {
     ...input,
@@ -162,7 +211,19 @@ export function addClipToTimeline(
   return {
     ...timeline,
     tracks: timeline.tracks.map(item => item.id === track.id ? { ...item, clips: [...item.clips, clip] } : item),
+    updatedAt: new Date().toISOString(),
   };
+}
+
+export function addClipToTimeline(
+  timeline: PhoenixVideoTimeline,
+  input: Omit<PhoenixTimelineClip, 'id' | 'trackId' | 'createdAt' | 'transitionIn' | 'transitionOut' | 'transitionDuration' | 'transform' | 'keyframes'> & Partial<Pick<PhoenixTimelineClip, 'transitionIn' | 'transitionOut' | 'transitionDuration' | 'transform' | 'keyframes'>>,
+): PhoenixVideoTimeline {
+  const targetKind: PhoenixTimelineTrackKind = input.kind === 'audio' ? 'audio' : 'video';
+  const track = timeline.tracks
+    .filter(item => item.kind === targetKind)
+    .sort((a, b) => a.order - b.order)[0];
+  return track ? addClipToTimelineTrack(timeline, track.id, input) : timeline;
 }
 
 export function splitTimelineClip(
