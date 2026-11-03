@@ -5,6 +5,9 @@ import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
+import { MediaViewportToolbar } from '@/components/media/MediaViewportToolbar';
+import { MediaRulers } from '@/components/media/MediaRulers';
+import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
 import { dbGetAssets, dbGetProject, type ProjectAsset } from '@/lib/db-client';
@@ -109,9 +112,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
   const [selectedLayerId, setSelectedLayerId] = useState('');
   const [loading, setLoading] = useState(true);
-  const [zoom, setZoom] = useState(0.32);
-  const [showGuides, setShowGuides] = useState(true);
-  const [snap, setSnap] = useState(true);
+  const viewport = useMediaViewport(0.32);
   const [exportingFormat, setExportingFormat] = useState<PhoenixRasterExportFormat | null>(null);
   const [exportError, setExportError] = useState('');
 
@@ -153,11 +154,11 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
     });
   };
 
-  const quantize = (value: number) => snap ? Math.round(value / 10) * 10 : value;
+  const quantize = (value: number) => viewport.snapValue(value);
 
   const applyPreset = (width: number, height: number, title: string) => {
     commit(current => ({ ...current, width, height, title }));
-    setZoom(Math.min(0.45, 720 / width, 720 / height));
+    viewport.setZoom(Math.min(0.45, 720 / width, 720 / height));
   };
 
   const addText = () => {
@@ -327,27 +328,31 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
         </aside>
 
         <main className="overflow-auto bg-[#04060b] p-6">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-[#090d17] px-3 py-2">
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <span>{document.width} × {document.height}</span>
-              <span>•</span>
-              <button onClick={() => setShowGuides(value => !value)} className="rounded px-2 py-1 hover:bg-white/5">{showGuides ? 'Guides on' : 'Guides off'}</button>
-              <button onClick={() => setSnap(value => !value)} className="rounded px-2 py-1 hover:bg-white/5">{snap ? 'Snap 10px' : 'Snap off'}</button>
-            </div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setZoom(value => Math.max(0.1, value - 0.05))} className="h-9 w-9 rounded border border-white/10 text-white">−</button>
-              <span className="w-14 text-center text-xs text-slate-400">{Math.round(zoom * 100)}%</span>
-              <button onClick={() => setZoom(value => Math.min(1, value + 0.05))} className="h-9 w-9 rounded border border-white/10 text-white">+</button>
-            </div>
-          </div>
+          <MediaViewportToolbar
+            viewport.zoom={viewport.zoom}
+            onZoomChange={viewport.setZoom}
+            onFit={() => viewport.fitToView(document.width, document.height)}
+            viewport.showGuides={viewport.showGuides}
+            onToggleGuides={() => viewport.setShowGuides(value => !value)}
+            snap={viewport.snap}
+            onToggleSnap={() => viewport.setSnap(value => !value)}
+            showRulers={viewport.showRulers}
+            onToggleRulers={() => viewport.setShowRulers(value => !value)}
+          />
 
-          <div className="flex min-h-[680px] items-start justify-center overflow-auto p-8">
-            <div
-              className="relative shrink-0 overflow-hidden bg-white shadow-2xl"
-              style={{ width: document.width * zoom, height: document.height * zoom, background: document.background }}
-              aria-label="Design composition canvas"
-            >
-              {showGuides && (
+          <div
+            ref={viewport.scrollRef}
+            {...viewport.panHandlers}
+            className="relative mt-4 min-h-[680px] cursor-grab overflow-auto rounded-lg border border-white/5 bg-[#03050a] p-10 active:cursor-grabbing"
+          >
+            <div className="relative mx-auto w-max pt-6 pl-6">
+              <MediaRulers width={document.width} height={document.height} viewport.zoom={viewport.zoom} visible={viewport.showRulers} />
+              <div
+                className="relative shrink-0 overflow-hidden bg-white shadow-2xl"
+                style={{ width: document.width * viewport.zoom, height: document.height * viewport.zoom, background: document.background }}
+                aria-label="Design composition canvas"
+              >
+              {viewport.showGuides && (
                 <>
                   <div className="pointer-events-none absolute inset-[5%] z-[9999] border border-dashed border-cyan-300/50" />
                   <div className="pointer-events-none absolute inset-[10%] z-[9999] border border-dashed border-fuchsia-300/40" />
@@ -360,10 +365,10 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                 if (!layer.visible) return null;
                 const style: React.CSSProperties = {
                   position: 'absolute',
-                  left: layer.transform.x * zoom,
-                  top: layer.transform.y * zoom,
-                  width: layer.transform.width * zoom,
-                  height: layer.transform.height * zoom,
+                  left: layer.transform.x * viewport.zoom,
+                  top: layer.transform.y * viewport.zoom,
+                  width: layer.transform.width * viewport.zoom,
+                  height: layer.transform.height * viewport.zoom,
                   opacity: layer.opacity,
                   transform: `rotate(${layer.transform.rotation}deg)`,
                   transformOrigin: 'center',
@@ -373,9 +378,9 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                   filter: layerCssFilter(layer),
                 };
                 return (
-                  <button key={layer.id} type="button" onClick={() => setSelectedLayerId(layer.id)} style={style} className="block border-0 bg-transparent p-0 text-left">
-                    {layer.type === 'shape' && <div className="h-full w-full" style={{ background: layer.fill, border: layer.strokeWidth ? `${Math.max(1, layer.strokeWidth * zoom)}px solid ${layer.stroke}` : undefined }} />}
-                    {layer.type === 'text' && <div className="h-full w-full overflow-hidden" style={{ color: layer.color, fontSize: layer.fontSize * zoom, fontFamily: layer.fontFamily, fontWeight: layer.fontWeight, lineHeight: 1.05, textAlign: layer.align }}>{layer.text}</div>}
+                  <button key={layer.id} type="button" data-media-interactive="true" onClick={() => setSelectedLayerId(layer.id)} style={style} className="block border-0 bg-transparent p-0 text-left">
+                    {layer.type === 'shape' && <div className="h-full w-full" style={{ background: layer.fill, border: layer.strokeWidth ? `${Math.max(1, layer.strokeWidth * viewport.zoom)}px solid ${layer.stroke}` : undefined }} />}
+                    {layer.type === 'text' && <div className="h-full w-full overflow-hidden" style={{ color: layer.color, fontSize: layer.fontSize * viewport.zoom, fontFamily: layer.fontFamily, fontWeight: layer.fontWeight, lineHeight: 1.05, textAlign: layer.align }}>{layer.text}</div>}
                     {layer.type === 'image' && (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={layer.src} alt="" className="h-full w-full" style={{ objectFit: layer.fit }} />
@@ -387,6 +392,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                   </button>
                 );
               })}
+              </div>
             </div>
           </div>
         </main>
@@ -395,7 +401,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
           <p className="mb-3 text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Layers</p>
           <div className="space-y-2">
             {[...sortedLayers].reverse().map(layer => (
-              <button key={layer.id} type="button" onClick={() => setSelectedLayerId(layer.id)}
+              <button key={layer.id} type="button" data-media-interactive="true" onClick={() => setSelectedLayerId(layer.id)}
                 className={`flex min-h-11 w-full items-center justify-between rounded-lg border px-3 text-left text-xs ${selectedLayerId === layer.id ? 'border-blue-400/50 bg-blue-400/10 text-blue-100' : 'border-white/5 text-slate-400'}`}>
                 <span className="truncate">{layer.name}</span><span className="text-[9px] uppercase">{layer.type}</span>
               </button>
