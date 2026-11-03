@@ -329,10 +329,10 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
 
         <main className="overflow-auto bg-[#04060b] p-6">
           <MediaViewportToolbar
-            viewport.zoom={viewport.zoom}
+            zoom={viewport.zoom}
             onZoomChange={viewport.setZoom}
             onFit={() => viewport.fitToView(document.width, document.height)}
-            viewport.showGuides={viewport.showGuides}
+            showGuides={viewport.showGuides}
             onToggleGuides={() => viewport.setShowGuides(value => !value)}
             snap={viewport.snap}
             onToggleSnap={() => viewport.setSnap(value => !value)}
@@ -346,7 +346,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
             className="relative mt-4 min-h-[680px] cursor-grab overflow-auto rounded-lg border border-white/5 bg-[#03050a] p-10 active:cursor-grabbing"
           >
             <div className="relative mx-auto w-max pt-6 pl-6">
-              <MediaRulers width={document.width} height={document.height} viewport.zoom={viewport.zoom} visible={viewport.showRulers} />
+              <MediaRulers width={document.width} height={document.height} zoom={viewport.zoom} visible={viewport.showRulers} />
               <div
                 className="relative shrink-0 overflow-hidden bg-white shadow-2xl"
                 style={{ width: document.width * viewport.zoom, height: document.height * viewport.zoom, background: document.background }}
