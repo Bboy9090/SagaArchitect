@@ -8,7 +8,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { AudioWaveform } from '@/components/media/AudioWaveform';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
-import { dbGetAssets, dbGetProject, dbUploadAsset, type ProjectAsset } from '@/lib/db-client';
+import { dbGetAssets, dbGetProject, dbGetStudioDocument, dbSaveStudioDocument, dbUploadAsset, type ProjectAsset } from '@/lib/db-client';
 import {
   addAudioClip,
   audioClipDuration,
@@ -20,6 +20,7 @@ import {
   type PhoenixAudioMix,
 } from '@/lib/audio-mix';
 import { downloadAudioBlob, exportPhoenixAudioMixWav } from '@/lib/audio-renderer';
+import { newestStudioDocument } from '@/lib/studio-document';
 import type { Universe } from '@/lib/types';
 
 interface AudioStudioPageProps {
@@ -62,7 +63,9 @@ export default function AudioStudioPage({ params }: AudioStudioPageProps) {
         const loadedProject = isDbMode() ? await dbGetProject(id) : getUniverseById(id) || null;
         if (cancelled) return;
         setProject(loadedProject);
-        setMix(loadPhoenixAudioMix(id) || createPhoenixAudioMix(id));
+        const localMix = loadPhoenixAudioMix(id);
+        const cloudMix = isDbMode() ? await dbGetStudioDocument<PhoenixAudioMix>(id, 'audio_mix') : null;
+        setMix(newestStudioDocument(localMix, cloudMix) || createPhoenixAudioMix(id));
         if (isDbMode()) setAssets(await dbGetAssets(id));
       } finally {
         if (!cancelled) setLoading(false);
@@ -73,9 +76,15 @@ export default function AudioStudioPage({ params }: AudioStudioPageProps) {
 
   useEffect(() => {
     if (!mix || loading) return;
-    const handle = window.setTimeout(() => savePhoenixAudioMix(mix), 250);
+    const handle = window.setTimeout(() => {
+      const saved = savePhoenixAudioMix(mix);
+      if (isDbMode()) {
+        void dbSaveStudioDocument(id, 'audio_mix', saved)
+          .catch(error => setStatus(error instanceof Error ? error.message : 'Studio Cloud audio autosave failed.'));
+      }
+    }, 500);
     return () => window.clearTimeout(handle);
-  }, [mix, loading]);
+  }, [mix, id, loading]);
 
   const duration = useMemo(() => mix ? audioMixDuration(mix) : 1, [mix]);
   const selectedClip = useMemo(
