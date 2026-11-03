@@ -16,6 +16,15 @@ export interface PhoenixLayerTransform {
   rotation: number;
 }
 
+export interface PhoenixLayerAdjustments {
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  grayscale: number;
+  sepia: number;
+  blur: number;
+}
+
 export interface PhoenixLayerMask {
   x: number;
   y: number;
@@ -35,6 +44,7 @@ export interface PhoenixBaseLayer {
   zIndex: number;
   transform: PhoenixLayerTransform;
   mask?: PhoenixLayerMask;
+  adjustments?: PhoenixLayerAdjustments;
 }
 
 export interface PhoenixTextLayer extends PhoenixBaseLayer {
@@ -155,4 +165,30 @@ export function clampLayerTransform(
     y: Math.max(0, Math.min(transform.y, Math.max(0, document.height - height))),
     rotation: Number.isFinite(transform.rotation) ? transform.rotation : 0,
   };
+}
+
+
+export const DEFAULT_LAYER_ADJUSTMENTS: PhoenixLayerAdjustments = {
+  brightness: 100,
+  contrast: 100,
+  saturation: 100,
+  grayscale: 0,
+  sepia: 0,
+  blur: 0,
+};
+
+export function normalizeLayerAdjustments(layer: Pick<PhoenixBaseLayer, 'adjustments'>): PhoenixLayerAdjustments {
+  return { ...DEFAULT_LAYER_ADJUSTMENTS, ...(layer.adjustments || {}) };
+}
+
+export function layerCssFilter(layer: Pick<PhoenixBaseLayer, 'adjustments'>): string {
+  const a = normalizeLayerAdjustments(layer);
+  return [
+    `brightness(${Math.max(0, a.brightness)}%)`,
+    `contrast(${Math.max(0, a.contrast)}%)`,
+    `saturate(${Math.max(0, a.saturation)}%)`,
+    `grayscale(${Math.max(0, Math.min(100, a.grayscale))}%)`,
+    `sepia(${Math.max(0, Math.min(100, a.sepia))}%)`,
+    `blur(${Math.max(0, a.blur)}px)`,
+  ].join(' ');
 }
