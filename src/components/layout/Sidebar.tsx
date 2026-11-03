@@ -23,15 +23,23 @@ export function Sidebar() {
   ];
 
   const universeNav: NavItem[] = universeId ? [
+    { href: `/universe/${universeId}/studio`, label: 'Studio Hub', icon: '✦' },
+    { href: `/universe/${universeId}/stories`, label: 'Writing Room', icon: '✎' },
+    { href: `/universe/${universeId}/image`, label: 'Image Studio', icon: '◫' },
+    { href: `/universe/${universeId}/design`, label: 'Design Studio', icon: '▦' },
+    { href: `/universe/${universeId}/illustrate`, label: 'Illustration', icon: '🖌️' },
+    { href: `/universe/${universeId}/comic`, label: 'Comic Studio', icon: '▤' },
+    { href: `/universe/${universeId}/storyboard`, label: 'Storyboard', icon: '🖼️' },
+    { href: `/universe/${universeId}/video`, label: 'Video Studio', icon: '▷' },
+    { href: `/universe/${universeId}/motion`, label: 'Motion Comic', icon: '⌁' },
+    { href: `/universe/${universeId}/audio`, label: 'Audio Studio', icon: '♫' },
     { href: `/universe/${universeId}`, label: 'Project Bible', icon: '◎' },
     { href: `/universe/${universeId}/characters`, label: 'Characters', icon: '👤' },
     { href: `/universe/${universeId}/scenes`, label: 'Scenes', icon: '🎬' },
-    { href: `/universe/${universeId}/storyboard`, label: 'Storyboard', icon: '🖼️' },
     { href: `/universe/${universeId}/factions`, label: 'Factions', icon: '🏛️' },
     { href: `/universe/${universeId}/timeline`, label: 'Timeline', icon: '⏳' },
     { href: `/universe/${universeId}/arcs`, label: 'Story Arcs', icon: '⌁' },
     { href: `/universe/${universeId}/lore`, label: 'World Bible', icon: '◈' },
-    { href: `/universe/${universeId}/stories`, label: 'Writing Room', icon: '✎' },
     { href: `/universe/${universeId}/export`, label: 'Publish & Export', icon: '⇩' },
     { href: `/universe/${universeId}/history`, label: 'Production History', icon: '↺' },
   ] : [];
