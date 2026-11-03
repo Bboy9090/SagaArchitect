@@ -262,3 +262,26 @@ export function vectorPathSvgD(layer: Pick<PhoenixPathLayer, 'points' | 'closed'
   }
   return commands.join(' ');
 }
+
+
+export function moveVectorPoint(point: PhoenixVectorPoint, x: number, y: number): PhoenixVectorPoint {
+  const dx = x - point.x;
+  const dy = y - point.y;
+  return {
+    ...point,
+    x,
+    y,
+    in: point.in ? { x: point.in.x + dx, y: point.in.y + dy } : undefined,
+    out: point.out ? { x: point.out.x + dx, y: point.out.y + dy } : undefined,
+  };
+}
+
+export function scaleVectorPoints(points: PhoenixVectorPoint[], scaleX: number, scaleY: number): PhoenixVectorPoint[] {
+  return points.map(point => ({
+    ...point,
+    x: point.x * scaleX,
+    y: point.y * scaleY,
+    in: point.in ? { x: point.in.x * scaleX, y: point.in.y * scaleY } : undefined,
+    out: point.out ? { x: point.out.x * scaleX, y: point.out.y * scaleY } : undefined,
+  }));
+}
