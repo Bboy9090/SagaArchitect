@@ -51,7 +51,8 @@ export const PHOENIX_STUDIOS: PhoenixStudioCapability[] = [
     icon: '◫',
     status: 'foundation',
     summary: 'Layered raster editing, selections, masks, adjustments, and generative edits.',
-    capabilities: ['Image asset storage', 'Upload validation', 'Storyboard image reuse'],
+    capabilities: ['Persistent layers', 'Text and shapes', 'Transforms', 'Blend modes', 'Asset Library images'],
+    route: id => `/universe/${id}/image`,
     productionTypes: ['design', 'illustration'],
   },
   {
