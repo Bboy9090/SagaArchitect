@@ -74,3 +74,77 @@ export function normalizeDirectorPlan(value: unknown): PhoenixDirectorPlan {
     actions,
   };
 }
+
+
+export type PhoenixDirectorActionStatus = 'pending' | 'in_progress' | 'done';
+
+export interface PhoenixDirectorExecutionState {
+  plan: PhoenixDirectorPlan;
+  action_status: Record<string, PhoenixDirectorActionStatus>;
+  updated_at: string;
+}
+
+export function createDirectorActionStatus(plan: PhoenixDirectorPlan): Record<string, PhoenixDirectorActionStatus> {
+  return Object.fromEntries(plan.actions.map(action => [action.id, 'pending'])) as Record<string, PhoenixDirectorActionStatus>;
+}
+
+export function isDirectorActionReady(
+  action: PhoenixDirectorAction,
+  statuses: Record<string, PhoenixDirectorActionStatus>,
+): boolean {
+  return action.depends_on.every(id => statuses[id] === 'done');
+}
+
+export function directorExecutionProgress(
+  plan: PhoenixDirectorPlan,
+  statuses: Record<string, PhoenixDirectorActionStatus>,
+): { complete: number; total: number; percent: number } {
+  const total = plan.actions.length;
+  const complete = plan.actions.filter(action => statuses[action.id] === 'done').length;
+  return { complete, total, percent: total === 0 ? 0 : Math.round((complete / total) * 100) };
+}
+
+function directorExecutionStorageKey(projectId: string): string {
+  return `phoenix:director:${projectId}:execution`;
+}
+
+export function loadDirectorExecutionState(projectId: string): PhoenixDirectorExecutionState | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(directorExecutionStorageKey(projectId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PhoenixDirectorExecutionState>;
+    const plan = normalizeDirectorPlan(parsed.plan);
+    const sourceStatuses = parsed.action_status && typeof parsed.action_status === 'object' ? parsed.action_status : {};
+    const action_status = Object.fromEntries(plan.actions.map(action => {
+      const value = (sourceStatuses as Record<string, unknown>)[action.id];
+      return [action.id, value === 'in_progress' || value === 'done' ? value : 'pending'];
+    })) as Record<string, PhoenixDirectorActionStatus>;
+    return {
+      plan,
+      action_status,
+      updated_at: typeof parsed.updated_at === 'string' ? parsed.updated_at : new Date(0).toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function saveDirectorExecutionState(
+  projectId: string,
+  plan: PhoenixDirectorPlan,
+  actionStatus: Record<string, PhoenixDirectorActionStatus>,
+): void {
+  if (typeof window === 'undefined') return;
+  const state: PhoenixDirectorExecutionState = {
+    plan,
+    action_status: Object.fromEntries(plan.actions.map(action => [
+      action.id,
+      actionStatus[action.id] === 'in_progress' || actionStatus[action.id] === 'done'
+        ? actionStatus[action.id]
+        : 'pending',
+    ])) as Record<string, PhoenixDirectorActionStatus>,
+    updated_at: new Date().toISOString(),
+  };
+  window.localStorage.setItem(directorExecutionStorageKey(projectId), JSON.stringify(state));
+}
