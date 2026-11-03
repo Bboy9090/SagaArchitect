@@ -109,9 +109,10 @@ export const PHOENIX_STUDIOS: PhoenixStudioCapability[] = [
     id: 'audio',
     label: 'Audio',
     icon: '♫',
-    status: 'planned',
-    summary: 'Voice, music, SFX, cleanup, mixing, and timeline audio production.',
-    capabilities: ['Character speech metadata', 'Scene dialogue source'],
+    status: 'foundation',
+    summary: 'Voice, music, SFX, waveform editing, and timeline audio production.',
+    capabilities: ['WAV/MP3 ingest', 'Decoded waveforms', 'Voice/Music/SFX buses', 'Trim and timing', 'Gain/pan/fades', 'Mute/solo'],
+    route: id => `/universe/${id}/audio`,
     productionTypes: ['audio', 'video', 'film', 'motion_comic'],
   },
   {
