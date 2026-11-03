@@ -36,6 +36,7 @@ import {
   exportPhoenixMediaDocument,
   type PhoenixRasterExportFormat,
 } from '@/lib/media-renderer';
+import { createComicIssueCbz, downloadComicIssueCbz, printComicIssueProof } from '@/lib/comic-issue-export';
 import type { Universe } from '@/lib/types';
 
 interface ComicStudioPageProps {
@@ -99,6 +100,7 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
   const [loading, setLoading] = useState(true);
   const [exportingFormat, setExportingFormat] = useState<PhoenixRasterExportFormat | null>(null);
   const [exportError, setExportError] = useState('');
+  const [issueExporting, setIssueExporting] = useState<'cbz' | 'print' | null>(null);
   const {
     zoom,
     setZoom,
@@ -467,6 +469,43 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
     }
   };
 
+  const currentIssuePages = () => {
+    if (!document) return pages;
+    return pages
+      .map(page => page.kind === document.kind ? document : page)
+      .sort((a, b) => (a.pageOrder ?? Number.MAX_SAFE_INTEGER) - (b.pageOrder ?? Number.MAX_SAFE_INTEGER)
+        || a.createdAt.localeCompare(b.createdAt));
+  };
+
+  const issueTitle = () => project?.name ? `${project.name} Comic Issue` : 'Phoenix Comic Issue';
+
+  const exportIssueCbz = async () => {
+    if (!document || issueExporting) return;
+    setIssueExporting('cbz');
+    setExportError('');
+    try {
+      const blob = await createComicIssueCbz(currentIssuePages(), issueTitle());
+      downloadComicIssueCbz(blob, issueTitle());
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : 'Issue CBZ export failed.');
+    } finally {
+      setIssueExporting(null);
+    }
+  };
+
+  const printIssueProof = async () => {
+    if (!document || issueExporting) return;
+    setIssueExporting('print');
+    setExportError('');
+    try {
+      await printComicIssueProof(currentIssuePages(), issueTitle());
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : 'Issue print/PDF proof failed.');
+    } finally {
+      setIssueExporting(null);
+    }
+  };
+
   if (loading || !document || !history) {
     return <Navigation><div className="flex min-h-[60vh] items-center justify-center"><Spinner text="Opening Comic Studio..." /></div></Navigation>;
   }
@@ -495,6 +534,8 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
             <Button size="sm" variant="secondary" loading={exportingFormat === 'png'} onClick={() => void exportFlattened('png')}>PNG</Button>
             <Button size="sm" variant="secondary" loading={exportingFormat === 'jpeg'} onClick={() => void exportFlattened('jpeg')}>JPEG</Button>
             <Button size="sm" variant="secondary" loading={exportingFormat === 'webp'} onClick={() => void exportFlattened('webp')}>WebP</Button>
+            <Button size="sm" variant="gold" loading={issueExporting === 'cbz'} onClick={() => void exportIssueCbz()}>Issue CBZ</Button>
+            <Button size="sm" variant="secondary" loading={issueExporting === 'print'} onClick={() => void printIssueProof()}>Print/PDF</Button>
           </div>
         }
       />
