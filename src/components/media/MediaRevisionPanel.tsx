@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import {
   dbCreateMediaDocumentSnapshot,
@@ -43,11 +43,6 @@ export function MediaRevisionPanel({
       onError?.(message);
     }
   };
-
-  useEffect(() => {
-    if (open && enabled) void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, enabled, projectId, kind]);
 
   if (!enabled) {
     return (
@@ -93,7 +88,17 @@ export function MediaRevisionPanel({
 
   return (
     <div className="relative">
-      <Button size="sm" variant="ghost" onClick={() => setOpen(value => !value)}>Versions</Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => {
+          const nextOpen = !open;
+          setOpen(nextOpen);
+          if (nextOpen) void load();
+        }}
+      >
+        Versions
+      </Button>
       {open && (
         <div className="absolute right-0 top-11 z-[12000] w-[340px] rounded-xl border border-white/10 bg-[#070b15] p-3 shadow-2xl">
           <div className="flex items-center justify-between gap-2">
