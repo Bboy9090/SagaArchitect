@@ -21,7 +21,6 @@ import {
   addTimelineTrack,
   clipTransitionOpacity,
   clipTransformAt,
-  moveTimelineTrack,
   removeEmptyTimelineTrack,
   timelineClipDuration,
   timelineDuration,
@@ -226,19 +225,24 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
 
   const continueInVideoStudio = async () => {
     if (!timeline) return;
-    const promoted: PhoenixVideoTimeline = {
-      ...timeline,
-      id: crypto.randomUUID(),
-      title: timeline.title.replace(/\s+Motion Comic$/i, '') + ' — Video Edit',
-      updatedAt: new Date().toISOString(),
-    };
-    const saved = savePhoenixVideoTimeline(promoted);
-    if (isDbMode()) {
-      await dbGetStudioDocument<PhoenixVideoTimeline>(id, 'video_timeline');
-      await dbSaveStudioDocument(id, 'video_timeline', saved);
+    setStatus('Promoting Motion timeline to Video Studio…');
+    try {
+      const promoted: PhoenixVideoTimeline = {
+        ...timeline,
+        id: crypto.randomUUID(),
+        title: timeline.title.replace(/\s+Motion Comic$/i, '') + ' — Video Edit',
+        updatedAt: new Date().toISOString(),
+      };
+      const saved = savePhoenixVideoTimeline(promoted);
+      if (isDbMode()) {
+        await dbGetStudioDocument<PhoenixVideoTimeline>(id, 'video_timeline');
+        await dbSaveStudioDocument(id, 'video_timeline', saved);
+      }
+      setStatus('Motion timeline promoted to Video Studio without flattening.');
+      router.push(`/universe/${id}/video`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Failed to promote Motion timeline to Video Studio.');
     }
-    setStatus('Motion timeline promoted to Video Studio without flattening.');
-    router.push(`/universe/${id}/video`);
   };
 
   const patchClip = (clipId: string, patch: Partial<PhoenixTimelineClip>) => {
@@ -288,8 +292,25 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
     setStatus(`Added ${asset.name} as a motion overlay at ${playhead.toFixed(2)}s.`);
   };
 
-  const shiftTrack = (trackId: string, direction: -1 | 1) => {
-    setTimeline(current => current ? moveTimelineTrack(current, trackId, direction) : current);
+  const shiftVisualTrack = (trackId: string, direction: -1 | 1) => {
+    setTimeline(current => {
+      if (!current) return current;
+      const visualTracks = current.tracks
+        .filter(track => track.kind === 'video')
+        .sort((a, b) => a.order - b.order);
+      const index = visualTracks.findIndex(track => track.id === trackId);
+      const swapIndex = index + direction;
+      if (index < 0 || swapIndex < 0 || swapIndex >= visualTracks.length) return current;
+      [visualTracks[index], visualTracks[swapIndex]] = [visualTracks[swapIndex], visualTracks[index]];
+      const audioTracks = current.tracks
+        .filter(track => track.kind === 'audio')
+        .sort((a, b) => a.order - b.order);
+      return {
+        ...current,
+        tracks: [...visualTracks, ...audioTracks].map((track, order) => ({ ...track, order })),
+        updatedAt: new Date().toISOString(),
+      };
+    });
   };
 
   const deleteEmptyTrack = (trackId: string) => {
@@ -468,7 +489,7 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
                 })}
                 {activeCaption && (
                   <div
-                    className={`pointer-events-none absolute left-1/2 z-20 max-w-[88%] -translate-x-1/2 rounded px-4 py-2 text-center font-bold ${activeCaption.position === 'top' ? 'top-[8%]' : activeCaption.position === 'center' ? 'top-1/2 -translate-y-1/2' : 'bottom-[8%]'}`}
+                    className={`pointer-events-none absolute left-1/2 z-[1000] max-w-[88%] -translate-x-1/2 rounded px-4 py-2 text-center font-bold ${activeCaption.position === 'top' ? 'top-[8%]' : activeCaption.position === 'center' ? 'top-1/2 -translate-y-1/2' : 'bottom-[8%]'}`}
                     style={{
                       color: activeCaption.color,
                       background: activeCaption.background,
@@ -556,8 +577,8 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
                           <span className="text-[9px] text-slate-500">{track.clips.length} clips</span>
                         </button>
                         <div className="mt-2 grid grid-cols-3 gap-1">
-                          <Button size="sm" variant="ghost" disabled={index === 0} onClick={() => shiftTrack(track.id, -1)}>↑</Button>
-                          <Button size="sm" variant="ghost" disabled={index === ordered.length - 1} onClick={() => shiftTrack(track.id, 1)}>↓</Button>
+                          <Button size="sm" variant="ghost" disabled={index === 0} onClick={() => shiftVisualTrack(track.id, -1)}>↑</Button>
+                          <Button size="sm" variant="ghost" disabled={index === ordered.length - 1} onClick={() => shiftVisualTrack(track.id, 1)}>↓</Button>
                           <Button size="sm" variant="ghost" disabled={!canRemove} onClick={() => deleteEmptyTrack(track.id)}>×</Button>
                         </div>
                         <div className="mt-2 space-y-1">
