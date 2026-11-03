@@ -117,7 +117,10 @@ function buildStoredZip(files: Array<{ name: string; bytes: Uint8Array }>): Blob
     u16(0),
   ]);
 
-  return new Blob([...locals, ...central, end], { type: 'application/vnd.comicbook+zip' });
+  const archive = concat([...locals, ...central, end]);
+  const buffer = new ArrayBuffer(archive.byteLength);
+  new Uint8Array(buffer).set(archive);
+  return new Blob([buffer], { type: 'application/vnd.comicbook+zip' });
 }
 
 function safeFilename(value: string): string {
