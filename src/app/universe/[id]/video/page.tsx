@@ -8,7 +8,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { AudioWaveform } from '@/components/media/AudioWaveform';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
-import { dbGetAssets, dbGetProject, dbUploadAsset, type ProjectAsset } from '@/lib/db-client';
+import { dbGetAssets, dbGetProject, dbGetStudioDocument, dbSaveStudioDocument, dbUploadAsset, type ProjectAsset } from '@/lib/db-client';
 import {
   activeCaptionAt,
   addClipToTimeline,
@@ -25,6 +25,7 @@ import {
   type PhoenixVideoTimeline,
 } from '@/lib/video-timeline';
 import { downloadVideoBlob, renderPhoenixTimelineWebm } from '@/lib/video-renderer';
+import { newestStudioDocument } from '@/lib/studio-document';
 import type { Universe } from '@/lib/types';
 
 interface VideoStudioPageProps {
@@ -80,7 +81,9 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
         const loadedProject = isDbMode() ? await dbGetProject(id) : getUniverseById(id) || null;
         if (cancelled) return;
         setProject(loadedProject);
-        setTimeline(loadPhoenixVideoTimeline(id) || createPhoenixVideoTimeline(id));
+        const localTimeline = loadPhoenixVideoTimeline(id);
+        const cloudTimeline = isDbMode() ? await dbGetStudioDocument<PhoenixVideoTimeline>(id, 'video_timeline') : null;
+        setTimeline(newestStudioDocument(localTimeline, cloudTimeline) || createPhoenixVideoTimeline(id));
         if (isDbMode()) setAssets(await dbGetAssets(id));
       } finally {
         if (!cancelled) setLoading(false);
@@ -91,9 +94,15 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
 
   useEffect(() => {
     if (!timeline || loading) return;
-    const handle = window.setTimeout(() => savePhoenixVideoTimeline(timeline), 250);
+    const handle = window.setTimeout(() => {
+      const saved = savePhoenixVideoTimeline(timeline);
+      if (isDbMode()) {
+        void dbSaveStudioDocument(id, 'video_timeline', saved)
+          .catch(error => setStatus(error instanceof Error ? error.message : 'Studio Cloud video autosave failed.'));
+      }
+    }, 500);
     return () => window.clearTimeout(handle);
-  }, [timeline, loading]);
+  }, [timeline, id, loading]);
 
   const duration = useMemo(() => timeline ? timelineDuration(timeline) : 1, [timeline]);
   const selectedClip = useMemo(
