@@ -365,6 +365,7 @@ export async function dbDeleteComicPage(projectId: string, kind: PhoenixMediaDoc
 // STUDIO TIMELINE DOCUMENTS
 const studioDocumentVersions = new Map<string, number>();
 const studioDocumentSaveQueues = new Map<string, Promise<PhoenixStudioDocument>>();
+const studioDocumentFingerprints = new Map<string, string>();
 
 function studioDocumentKey(projectId: string, kind: PhoenixStudioDocumentKind): string {
   return `${projectId}:${kind}`;
@@ -376,11 +377,14 @@ export async function dbGetStudioDocument<T extends PhoenixStudioDocument>(
 ): Promise<T | null> {
   const res = await fetch(`/api/db/projects/${projectId}/studio-documents?kind=${encodeURIComponent(kind)}`);
   const envelope = await handleResponse<PhoenixStudioDocumentEnvelope<T> | null>(res);
+  const key = studioDocumentKey(projectId, kind);
   if (!envelope) {
-    studioDocumentVersions.set(studioDocumentKey(projectId, kind), 0);
+    studioDocumentVersions.set(key, 0);
+    studioDocumentFingerprints.delete(key);
     return null;
   }
-  studioDocumentVersions.set(studioDocumentKey(projectId, kind), envelope.version);
+  studioDocumentVersions.set(key, envelope.version);
+  studioDocumentFingerprints.set(key, JSON.stringify(envelope.document));
   return envelope.document;
 }
 
@@ -390,6 +394,8 @@ export function dbSaveStudioDocument<T extends PhoenixStudioDocument>(
   document: T,
 ): Promise<T> {
   const key = studioDocumentKey(projectId, kind);
+  const fingerprint = JSON.stringify(document);
+  if (studioDocumentFingerprints.get(key) === fingerprint) return Promise.resolve(document);
   const previous = studioDocumentSaveQueues.get(key) || Promise.resolve(document);
   const next = previous.catch(() => document).then(async () => {
     const expectedVersion = studioDocumentVersions.get(key) ?? 0;
@@ -400,6 +406,7 @@ export function dbSaveStudioDocument<T extends PhoenixStudioDocument>(
     });
     const envelope = await handleResponse<PhoenixStudioDocumentEnvelope<T>>(res);
     studioDocumentVersions.set(key, envelope.version);
+    studioDocumentFingerprints.set(key, fingerprint);
     return envelope.document;
   });
   studioDocumentSaveQueues.set(key, next as Promise<PhoenixStudioDocument>);
