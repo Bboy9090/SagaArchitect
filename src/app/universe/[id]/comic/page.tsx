@@ -635,6 +635,15 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
     setSelectedLayerId(text.id);
   };
 
+  const selectedBalloonTailDirection = (): 'left' | 'down' | 'right' => {
+    if (!selectedLayer || selectedLayer.type !== 'path' || selectedLayer.name !== 'Balloon Tail') return 'down';
+    const tip = selectedLayer.points[selectedLayer.points.length - 1];
+    if (!tip) return 'down';
+    if (tip.x <= selectedLayer.transform.width * 0.25) return 'left';
+    if (tip.x >= selectedLayer.transform.width * 0.75) return 'right';
+    return 'down';
+  };
+
   const reshapeSelectedBalloonTail = (direction: 'left' | 'down' | 'right', length?: number) => {
     if (!document || !selectedLayer || selectedLayer.type !== 'path' || selectedLayer.name !== 'Balloon Tail' || !selectedLayer.groupId) return;
     const body = document.layers.find(layer =>
@@ -1038,7 +1047,7 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
                       min={60}
                       max={360}
                       value={Math.round(selectedLayer.transform.height)}
-                      onChange={event => reshapeSelectedBalloonTail('down', Number(event.target.value))}
+                      onChange={event => reshapeSelectedBalloonTail(selectedBalloonTailDirection(), Number(event.target.value))}
                       className="mt-1 w-full"
                     />
                   </label>
