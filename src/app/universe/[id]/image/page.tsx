@@ -715,7 +715,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                           strokeLinejoin="round"
                           strokeLinecap="round"
                         />
-                        {selectedLayerId === layer.id && layer.points.map((point, index) => (
+                        {selectedLayerId === layer.id && !layer.symbolId && layer.points.map((point, index) => (
                           <g key={index} className="pointer-events-none">
                             {point.in && (
                               <>
@@ -739,22 +739,27 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                       <img src={layer.src} alt="" className="h-full w-full" style={{ objectFit: layer.fit }} />
                     )}
                     {layer.type === 'raster' && (
-                      <RasterPaintCanvas
-                        layer={layer}
-                        scale={scale}
-                        selected={selectedLayerId === layer.id}
-                        brushColor={brushColor}
-                        brushSize={brushSize}
-                        brushOpacity={brushOpacity}
-                        erase={eraseMode}
-                        onSelect={() => setSelectedLayerId(layer.id)}
-                        onCommit={(src) => {
-                          updateDocument(current => ({
-                            ...current,
-                            layers: current.layers.map(item => item.id === layer.id ? { ...item, src } : item),
-                          }));
-                        }}
-                      />
+                      layer.symbolId ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={layer.src} alt="" className="h-full w-full" style={{ objectFit: 'fill' }} />
+                      ) : (
+                        <RasterPaintCanvas
+                          layer={layer}
+                          scale={scale}
+                          selected={selectedLayerId === layer.id}
+                          brushColor={brushColor}
+                          brushSize={brushSize}
+                          brushOpacity={brushOpacity}
+                          erase={eraseMode}
+                          onSelect={() => setSelectedLayerId(layer.id)}
+                          onCommit={(src) => {
+                            updateDocument(current => ({
+                              ...current,
+                              layers: current.layers.map(item => item.id === layer.id ? { ...item, src } : item),
+                            }));
+                          }}
+                        />
+                      )
                     )}
                   </button>
                 );
