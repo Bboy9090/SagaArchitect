@@ -60,6 +60,7 @@ export interface PhoenixBaseLayer {
   zIndex: number;
   transform: PhoenixLayerTransform;
   mask?: PhoenixLayerMask;
+  vectorMask?: PhoenixVectorMask;
   adjustments?: PhoenixLayerAdjustments;
 }
 
@@ -115,6 +116,10 @@ export interface PhoenixVectorPoint {
   y: number;
   in?: PhoenixVectorHandle;
   out?: PhoenixVectorHandle;
+}
+
+export interface PhoenixVectorMask {
+  points: PhoenixVectorPoint[];
 }
 
 export interface PhoenixVectorContour {
@@ -428,6 +433,7 @@ function instanceBaseFields(layer: PhoenixMediaLayer) {
     transform: { ...layer.transform },
     groupId: layer.groupId,
     mask: layer.mask ? { ...layer.mask } : undefined,
+    vectorMask: layer.vectorMask ? { points: structuredClone(layer.vectorMask.points) } : undefined,
     adjustments: layer.adjustments ? { ...layer.adjustments } : undefined,
     symbolId: layer.symbolId,
   };
@@ -519,5 +525,52 @@ export function removeLayerPreservingSymbols(
     ...document,
     layers,
     symbols: (document.symbols || []).filter(symbol => !masteredIds.has(symbol.id)),
+  };
+}
+
+
+export function vectorMaskCssClipPath(
+  layer: Pick<PhoenixBaseLayer, 'vectorMask' | 'transform'>,
+): string | undefined {
+  if (!layer.vectorMask || layer.vectorMask.points.length < 3) return undefined;
+  const width = Math.max(1, layer.transform.width);
+  const height = Math.max(1, layer.transform.height);
+  const points = layer.vectorMask.points
+    .map(point => {
+      const x = Math.max(0, Math.min(100, (point.x / width) * 100));
+      const y = Math.max(0, Math.min(100, (point.y / height) * 100));
+      return `${x}% ${y}%`;
+    })
+    .join(', ');
+  return `polygon(${points})`;
+}
+
+export function scaleVectorMask(
+  mask: PhoenixVectorMask | undefined,
+  scaleX: number,
+  scaleY: number,
+): PhoenixVectorMask | undefined {
+  if (!mask) return undefined;
+  return {
+    points: scaleVectorPoints(mask.points, scaleX, scaleY),
+  };
+}
+
+export function defaultVectorMask(
+  width: number,
+  height: number,
+  inset = 0.08,
+): PhoenixVectorMask {
+  const x = Math.max(0, width * inset);
+  const y = Math.max(0, height * inset);
+  const right = Math.max(x + 1, width - x);
+  const bottom = Math.max(y + 1, height - y);
+  return {
+    points: [
+      { x, y },
+      { x: right, y },
+      { x: right, y: bottom },
+      { x, y: bottom },
+    ],
   };
 }

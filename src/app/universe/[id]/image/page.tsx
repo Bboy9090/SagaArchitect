@@ -12,6 +12,7 @@ import { LayerTransformControls } from '@/components/media/LayerTransformControl
 import { LayerGroupPanel } from '@/components/media/LayerGroupPanel';
 import { CompoundContourPanel } from '@/components/media/CompoundContourPanel';
 import { SymbolPanel } from '@/components/media/SymbolPanel';
+import { VectorMaskPanel } from '@/components/media/VectorMaskPanel';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
@@ -34,9 +35,11 @@ import {
   moveVectorPoint,
   normalizeLayerAdjustments,
   scaleVectorContours,
+  scaleVectorMask,
   scaleVectorPoints,
   textLetterSpacing,
   textLineHeight,
+  vectorMaskCssClipPath,
   vectorPathFillRule,
   vectorPathFillSvgD,
   vectorPathSvgD,
@@ -341,25 +344,31 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
     }));
   };
 
+  const commitSelectedTransform = (transform: PhoenixMediaLayer['transform']) => {
+    if (!selectedLayer || !document) return;
+    const nextTransform = clampLayerTransform(transform, document);
+    const scaleX = selectedLayer.transform.width > 0 ? nextTransform.width / selectedLayer.transform.width : 1;
+    const scaleY = selectedLayer.transform.height > 0 ? nextTransform.height / selectedLayer.transform.height : 1;
+    const patch: Partial<PhoenixMediaLayer> = {
+      transform: nextTransform,
+      vectorMask: scaleVectorMask(selectedLayer.vectorMask, scaleX, scaleY),
+    } as Partial<PhoenixMediaLayer>;
+    if (selectedLayer.type === 'path' && !selectedLayer.symbolId) {
+      Object.assign(patch, {
+        points: scaleVectorPoints(selectedLayer.points, scaleX, scaleY),
+        contours: scaleVectorContours(selectedLayer.contours, scaleX, scaleY),
+      });
+    }
+    patchSelectedLayer(patch);
+  };
+
   const patchTransform = (key: keyof PhoenixMediaLayer['transform'], value: number) => {
     if (!selectedLayer) return;
     const nextValue = key === 'rotation' ? value : snapValue(value);
-    if (selectedLayer.type === 'path' && (key === 'width' || key === 'height')) {
-      const previousSize = selectedLayer.transform[key];
-      const safeNext = Math.max(1, nextValue);
-      const ratio = previousSize > 0 ? safeNext / previousSize : 1;
-      const scaleX = key === 'width' ? ratio : 1;
-      const scaleY = key === 'height' ? ratio : 1;
-      const points = scaleVectorPoints(selectedLayer.points, scaleX, scaleY);
-      const contours = scaleVectorContours(selectedLayer.contours, scaleX, scaleY);
-      patchSelectedLayer({
-        transform: { ...selectedLayer.transform, [key]: safeNext },
-        points,
-        contours,
-      } as Partial<PhoenixMediaLayer>);
-      return;
-    }
-    patchSelectedLayer({ transform: { ...selectedLayer.transform, [key]: nextValue } } as Partial<PhoenixMediaLayer>);
+    commitSelectedTransform({
+      ...selectedLayer.transform,
+      [key]: key === 'width' || key === 'height' ? Math.max(1, nextValue) : nextValue,
+    });
   };
 
   const deleteSelectedLayer = () => {
@@ -382,6 +391,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
         y: Math.min(document.height - selectedLayer.transform.height, selectedLayer.transform.y + 24),
       },
       mask: selectedLayer.mask ? { ...selectedLayer.mask } : undefined,
+      vectorMask: selectedLayer.vectorMask ? { points: structuredClone(selectedLayer.vectorMask.points) } : undefined,
       adjustments: selectedLayer.adjustments ? { ...selectedLayer.adjustments } : undefined,
     } as PhoenixMediaLayer;
     updateDocument(current => ({ ...current, layers: [...current.layers, duplicate] }));
@@ -437,6 +447,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
     const bottom = Math.min(selected.y + selected.height, selectedLayer.transform.y + selectedLayer.transform.height);
     if (right <= left || bottom <= top) return;
     patchSelectedLayer({
+      vectorMask: undefined,
       mask: {
         x: left - selectedLayer.transform.x,
         y: top - selectedLayer.transform.y,
@@ -647,7 +658,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                   outline: selectedLayerId === layer.id ? '2px solid #60a5fa' : undefined,
                   outlineOffset: 2,
                   cursor: isLayerEffectivelyLocked(layer, document) ? 'not-allowed' : 'pointer',
-                  clipPath: selectedLayerClipPath(layer),
+                  clipPath: vectorMaskCssClipPath(layer) || selectedLayerClipPath(layer),
                   filter: layerCssFilter(layer),
                 };
 
@@ -781,7 +792,7 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                   locked={isLayerEffectivelyLocked(selectedLayer, document)}
                   allowMove={selectedLayer.type !== 'raster'}
                   snapValue={snapValue}
-                  onCommit={transform => patchSelectedLayer({ transform } as Partial<PhoenixMediaLayer>)}
+                  onCommit={commitSelectedTransform}
                 />
               )}
                 <div
@@ -1194,6 +1205,11 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                   Reset Adjustments
                 </Button>
               </div>
+
+              <VectorMaskPanel
+                layer={selectedLayer}
+                onChange={patch => patchSelectedLayer(patch)}
+              />
 
               {selectedLayer.mask && (
                 <div className="rounded-lg border border-cyan-400/20 bg-cyan-400/5 p-3">

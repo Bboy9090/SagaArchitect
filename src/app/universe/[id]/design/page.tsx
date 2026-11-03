@@ -11,6 +11,7 @@ import { LayerTransformControls } from '@/components/media/LayerTransformControl
 import { LayerGroupPanel } from '@/components/media/LayerGroupPanel';
 import { CompoundContourPanel } from '@/components/media/CompoundContourPanel';
 import { SymbolPanel } from '@/components/media/SymbolPanel';
+import { VectorMaskPanel } from '@/components/media/VectorMaskPanel';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
@@ -31,9 +32,11 @@ import {
   layerCssFilter,
   moveVectorPoint,
   scaleVectorContours,
+  scaleVectorMask,
   scaleVectorPoints,
   textLetterSpacing,
   textLineHeight,
+  vectorMaskCssClipPath,
   vectorPathFillRule,
   vectorPathFillSvgD,
   vectorPathSvgD,
@@ -103,13 +106,15 @@ function buildSvg(document: PhoenixMediaDocument): string {
         : `<defs><linearGradient id="${gradientId}" x1="0%" y1="50%" x2="100%" y2="50%" gradientTransform="rotate(${gradient.angle - 90} .5 .5)"><stop offset="0%" stop-color="${gradient.start}"/><stop offset="100%" stop-color="${gradient.end}"/></linearGradient></defs>`
       : '';
     const layerFill = gradient ? `url(#${gradientId})` : (layer.type === 'shape' || layer.type === 'path' ? layer.fill : '');
-    const maskDefinition = layer.mask
-      ? `<defs><clipPath id="${clipId}" clipPathUnits="userSpaceOnUse"><rect x="${x + layer.mask.x}" y="${y + layer.mask.y}" width="${layer.mask.width}" height="${layer.mask.height}" transform="${transform}" /></clipPath></defs>`
-      : '';
+    const maskDefinition = layer.vectorMask && layer.vectorMask.points.length >= 3
+      ? `<defs><clipPath id="${clipId}" clipPathUnits="userSpaceOnUse"><polygon points="${layer.vectorMask.points.map(point => `${x + point.x},${y + point.y}`).join(' ')}" transform="${transform}" /></clipPath></defs>`
+      : layer.mask
+        ? `<defs><clipPath id="${clipId}" clipPathUnits="userSpaceOnUse"><rect x="${x + layer.mask.x}" y="${y + layer.mask.y}" width="${layer.mask.width}" height="${layer.mask.height}" transform="${transform}" /></clipPath></defs>`
+        : '';
     const wrap = (element: string) => {
       const filtered = `<g style="filter:${escapeXml(layerCssFilter(layer))}">${element}</g>`;
       const definitions = `${gradientDefinition}${maskDefinition}`;
-      return layer.mask
+      return layer.mask || (layer.vectorMask && layer.vectorMask.points.length >= 3)
         ? `${definitions}<g clip-path="url(#${clipId})">${filtered}</g>`
         : `${definitions}${filtered}`;
     };
@@ -394,25 +399,35 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
     }));
   };
 
+  const commitSelectedTransform = (transform: PhoenixMediaLayer['transform']) => {
+    if (!selected) return;
+    const nextTransform = {
+      ...transform,
+      width: Math.max(1, transform.width),
+      height: Math.max(1, transform.height),
+    };
+    const scaleX = selected.transform.width > 0 ? nextTransform.width / selected.transform.width : 1;
+    const scaleY = selected.transform.height > 0 ? nextTransform.height / selected.transform.height : 1;
+    const patch: Partial<PhoenixMediaLayer> = {
+      transform: nextTransform,
+      vectorMask: scaleVectorMask(selected.vectorMask, scaleX, scaleY),
+    } as Partial<PhoenixMediaLayer>;
+    if (selected.type === 'path' && !selected.symbolId) {
+      Object.assign(patch, {
+        points: scaleVectorPoints(selected.points, scaleX, scaleY),
+        contours: scaleVectorContours(selected.contours, scaleX, scaleY),
+      });
+    }
+    patchLayer(patch);
+  };
+
   const patchTransform = (key: keyof PhoenixMediaLayer['transform'], value: number) => {
     if (!selected) return;
     const nextValue = key === 'rotation' ? value : quantize(value);
-    if (selected.type === 'path' && (key === 'width' || key === 'height')) {
-      const previousSize = selected.transform[key];
-      const safeNext = Math.max(1, nextValue);
-      const ratio = previousSize > 0 ? safeNext / previousSize : 1;
-      const scaleX = key === 'width' ? ratio : 1;
-      const scaleY = key === 'height' ? ratio : 1;
-      const points = scaleVectorPoints(selected.points, scaleX, scaleY);
-      const contours = scaleVectorContours(selected.contours, scaleX, scaleY);
-      patchLayer({
-        transform: { ...selected.transform, [key]: safeNext },
-        points,
-        contours,
-      } as Partial<PhoenixMediaLayer>);
-      return;
-    }
-    patchLayer({ transform: { ...selected.transform, [key]: nextValue } } as Partial<PhoenixMediaLayer>);
+    commitSelectedTransform({
+      ...selected.transform,
+      [key]: key === 'width' || key === 'height' ? Math.max(1, nextValue) : nextValue,
+    });
   };
 
   const exportFlattened = async (format: PhoenixRasterExportFormat) => {
@@ -568,7 +583,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                   transformOrigin: 'center',
                   outline: selectedLayerId === layer.id ? '2px solid #38bdf8' : undefined,
                   outlineOffset: 2,
-                  clipPath: cssMaskClipPath(layer),
+                  clipPath: vectorMaskCssClipPath(layer) || cssMaskClipPath(layer),
                   filter: layerCssFilter(layer),
                 };
                 return (
@@ -635,7 +650,7 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                   locked={isLayerEffectivelyLocked(selected, document)}
                   allowMove={selected.type !== 'raster'}
                   snapValue={snapValue}
-                  onCommit={transform => patchLayer({ transform } as Partial<PhoenixMediaLayer>)}
+                  onCommit={commitSelectedTransform}
                 />
               )}
               </div>
@@ -669,6 +684,11 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                   {(document.groups || []).map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
                 </select>
               </label>
+
+              <VectorMaskPanel
+                layer={selected}
+                onChange={patch => patchLayer(patch)}
+              />
 
               {!selected.symbolId && selected.type === 'text' && (
                 <>
