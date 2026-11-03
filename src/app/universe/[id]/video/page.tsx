@@ -6,6 +6,7 @@ import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { AudioWaveform } from '@/components/media/AudioWaveform';
+import { StudioRevisionPanel } from '@/components/media/StudioRevisionPanel';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
 import { dbGetAssets, dbGetProject, dbGetStudioDocument, dbSaveStudioDocument, dbUploadAsset, type ProjectAsset } from '@/lib/db-client';
@@ -326,6 +327,19 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
         subtitle={`Timeline production for ${project?.name || 'Phoenix project'}`}
         actions={
           <div className="flex flex-wrap gap-2">
+            <StudioRevisionPanel<PhoenixVideoTimeline>
+              projectId={id}
+              kind="video_timeline"
+              enabled={isDbMode()}
+              onRestore={restored => {
+                setTimeline(restored);
+                setSelectedClipId('');
+                setPlaying(false);
+                setPlayhead(0);
+                setStatus('Video timeline restored from Studio Cloud.');
+              }}
+              onError={setStatus}
+            />
             <Button size="sm" variant={timeline.width > timeline.height ? 'gold' : 'ghost'} onClick={() => setCanvasPreset(1920,1080)}>16:9</Button>
             <Button size="sm" variant={timeline.height > timeline.width ? 'gold' : 'ghost'} onClick={() => setCanvasPreset(1080,1920)}>9:16</Button>
             <Button size="sm" variant={timeline.height === timeline.width ? 'gold' : 'ghost'} onClick={() => setCanvasPreset(1080,1080)}>1:1</Button>

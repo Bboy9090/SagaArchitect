@@ -6,6 +6,7 @@ import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { AudioWaveform } from '@/components/media/AudioWaveform';
+import { StudioRevisionPanel } from '@/components/media/StudioRevisionPanel';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
 import { dbGetAssets, dbGetProject, dbGetStudioDocument, dbSaveStudioDocument, dbUploadAsset, type ProjectAsset } from '@/lib/db-client';
@@ -200,9 +201,22 @@ export default function AudioStudioPage({ params }: AudioStudioPageProps) {
         title="Audio Studio"
         subtitle={`Voice, music, SFX, and mix timing for ${project?.name || 'Phoenix project'}`}
         actions={
-          <Button size="sm" variant="gold" loading={rendering} onClick={() => void renderMix()}>
-            Export WAV Mix
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <StudioRevisionPanel<PhoenixAudioMix>
+              projectId={id}
+              kind="audio_mix"
+              enabled={isDbMode()}
+              onRestore={restored => {
+                setMix(restored);
+                setSelectedClipId('');
+                setStatus('Audio mix restored from Studio Cloud.');
+              }}
+              onError={setStatus}
+            />
+            <Button size="sm" variant="gold" loading={rendering} onClick={() => void renderMix()}>
+              Export WAV Mix
+            </Button>
+          </div>
         }
       />
 
