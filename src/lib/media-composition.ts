@@ -433,6 +433,7 @@ function instanceBaseFields(layer: PhoenixMediaLayer) {
     transform: { ...layer.transform },
     groupId: layer.groupId,
     mask: layer.mask ? { ...layer.mask } : undefined,
+    vectorMask: layer.vectorMask ? { points: structuredClone(layer.vectorMask.points) } : undefined,
     adjustments: layer.adjustments ? { ...layer.adjustments } : undefined,
     symbolId: layer.symbolId,
   };
