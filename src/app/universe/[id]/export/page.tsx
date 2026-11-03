@@ -338,6 +338,14 @@ export default function ExportPage({ params }: ExportPageProps) {
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {[
               {
+                title: 'Book Production',
+                icon: '📚',
+                formats: 'DOCX · EPUB · Print-layout PDF',
+                detail: 'Run manuscript preflight, publishing metadata, trim/bleed/gutter settings, and professional book package export.',
+                href: `/universe/${id}/book`,
+                action: 'Open Book Production',
+              },
+              {
                 title: 'Image & Illustration',
                 icon: '◫',
                 formats: 'PNG · JPEG · WebP',
