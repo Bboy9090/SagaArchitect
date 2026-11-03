@@ -261,6 +261,19 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
   const patchTransform = (key: keyof PhoenixMediaLayer['transform'], value: number) => {
     if (!selectedLayer) return;
     const nextValue = key === 'rotation' ? value : snapValue(value);
+    if (selectedLayer.type === 'path' && (key === 'width' || key === 'height')) {
+      const previousSize = selectedLayer.transform[key];
+      const safeNext = Math.max(1, nextValue);
+      const ratio = previousSize > 0 ? safeNext / previousSize : 1;
+      const points = selectedLayer.points.map(point => key === 'width'
+        ? { ...point, x: point.x * ratio }
+        : { ...point, y: point.y * ratio });
+      patchSelectedLayer({
+        transform: { ...selectedLayer.transform, [key]: safeNext },
+        points,
+      } as Partial<PhoenixMediaLayer>);
+      return;
+    }
     patchSelectedLayer({ transform: { ...selectedLayer.transform, [key]: nextValue } } as Partial<PhoenixMediaLayer>);
   };
 
@@ -576,14 +589,25 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                     )}
                     {layer.type === 'path' && (
                       <svg viewBox={`0 0 ${layer.transform.width} ${layer.transform.height}`} className="h-full w-full overflow-visible">
-                        <polygon
-                          points={layer.points.map(point => `${point.x},${point.y}`).join(' ')}
-                          fill={layer.closed ? layer.fill : 'none'}
-                          stroke={layer.stroke}
-                          strokeWidth={layer.strokeWidth}
-                          strokeLinejoin="round"
-                          strokeLinecap="round"
-                        />
+                        {layer.closed ? (
+                          <polygon
+                            points={layer.points.map(point => `${point.x},${point.y}`).join(' ')}
+                            fill={layer.fill}
+                            stroke={layer.stroke}
+                            strokeWidth={layer.strokeWidth}
+                            strokeLinejoin="round"
+                            strokeLinecap="round"
+                          />
+                        ) : (
+                          <polyline
+                            points={layer.points.map(point => `${point.x},${point.y}`).join(' ')}
+                            fill="none"
+                            stroke={layer.stroke}
+                            strokeWidth={layer.strokeWidth}
+                            strokeLinejoin="round"
+                            strokeLinecap="round"
+                          />
+                        )}
                       </svg>
                     )}
                     {layer.type === 'image' && (
