@@ -29,6 +29,31 @@ function applyCommonLayerState(ctx: CanvasRenderingContext2D, layer: PhoenixMedi
   ctx.globalCompositeOperation = layer.blendMode === 'normal' ? 'source-over' : layer.blendMode;
 }
 
+function layerFillStyle(
+  ctx: CanvasRenderingContext2D,
+  layer: Extract<PhoenixMediaLayer, { type: 'shape' | 'path' }>,
+  width: number,
+  height: number,
+): string | CanvasGradient {
+  if (!layer.gradient) return layer.fill;
+  if (layer.gradient.kind === 'radial') {
+    const radius = Math.max(width, height) / 2;
+    const gradient = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, radius);
+    gradient.addColorStop(0, layer.gradient.start);
+    gradient.addColorStop(1, layer.gradient.end);
+    return gradient;
+  }
+  const angle = Number.isFinite(layer.gradient.angle) ? layer.gradient.angle : 0;
+  const radians = (angle * Math.PI) / 180;
+  const radius = Math.sqrt(width * width + height * height) / 2;
+  const dx = Math.sin(radians) * radius;
+  const dy = -Math.cos(radians) * radius;
+  const gradient = ctx.createLinearGradient(width / 2 - dx, height / 2 - dy, width / 2 + dx, height / 2 + dy);
+  gradient.addColorStop(0, layer.gradient.start);
+  gradient.addColorStop(1, layer.gradient.end);
+  return gradient;
+}
+
 function imageRect(
   layer: PhoenixImageLayer,
   image: HTMLImageElement,
@@ -80,7 +105,7 @@ async function renderLayerBitmap(layer: PhoenixMediaLayer): Promise<HTMLCanvasEl
   ctx.filter = layerCssFilter(layer);
 
   if (layer.type === 'shape') {
-    ctx.fillStyle = layer.fill;
+    ctx.fillStyle = layerFillStyle(ctx, layer, width, height);
     ctx.strokeStyle = layer.stroke;
     ctx.lineWidth = Math.max(0, layer.strokeWidth);
     if (layer.shape === 'ellipse') {
@@ -117,7 +142,7 @@ async function renderLayerBitmap(layer: PhoenixMediaLayer): Promise<HTMLCanvasEl
         ctx.closePath();
       }
       if (layer.closed && layer.fill !== 'transparent') {
-        ctx.fillStyle = layer.fill;
+        ctx.fillStyle = layerFillStyle(ctx, layer, width, height);
         ctx.fill();
       }
       if (layer.strokeWidth > 0) {
