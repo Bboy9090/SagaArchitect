@@ -72,8 +72,8 @@ export const PHOENIX_STUDIOS: PhoenixStudioCapability[] = [
     icon: '▤',
     status: 'foundation',
     summary: 'Script-to-panel production with page composition, lettering, and motion-comic handoff.',
-    capabilities: ['Comic scripts', 'Scenes', 'Storyboard panels', 'Character canon'],
-    route: id => `/universe/${id}/storyboard`,
+    capabilities: ['Panel templates', 'Panel art placement', 'Speech balloons', 'Captions', 'Direct transforms', 'Raster export'],
+    route: id => `/universe/${id}/comic`,
     productionTypes: ['comic', 'motion_comic'],
   },
   {
