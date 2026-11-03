@@ -1,6 +1,7 @@
 'use client';
 
 import { use, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
@@ -51,6 +52,7 @@ const PRIORITY_CLASS = {
 
 export default function DirectorPage({ params }: DirectorPageProps) {
   const { id } = use(params);
+  const router = useRouter();
   const [project, setProject] = useState<Universe | null>(null);
   const [loading, setLoading] = useState(true);
   const [brief, setBrief] = useState('');
@@ -123,7 +125,7 @@ export default function DirectorPage({ params }: DirectorPageProps) {
   };
 
   const openStudio = (studio: PhoenixDirectorStudio) => {
-    window.location.href = DIRECTOR_STUDIO_ROUTES[studio](id);
+    router.push(DIRECTOR_STUDIO_ROUTES[studio](id));
   };
 
   if (loading || !project) {
