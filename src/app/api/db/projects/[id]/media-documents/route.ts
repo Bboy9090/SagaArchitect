@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, like, or } from 'drizzle-orm';
 import { db } from '@/db';
 import { mediaDocuments } from '@/db/schema';
 import { AuthError, requireOwnedProject, requireUser } from '@/lib/auth-helpers';
@@ -15,7 +15,10 @@ function errorResponse(error: unknown) {
 }
 
 function validKind(value: unknown): value is PhoenixMediaDocumentKind {
-  return typeof value === 'string' && KINDS.has(value as PhoenixMediaDocumentKind);
+  return typeof value === 'string' && (
+    KINDS.has(value as PhoenixMediaDocumentKind)
+    || /^comic_page:[A-Za-z0-9_-]{1,64}$/.test(value)
+  );
 }
 
 function validDocument(value: unknown, projectId: string, kind: PhoenixMediaDocumentKind): value is PhoenixMediaDocument {
@@ -44,7 +47,24 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const { id: projectId } = await params;
     const userId = await requireUser();
     await requireOwnedProject(projectId, userId);
-    const kind = new URL(request.url).searchParams.get('kind');
+    const url = new URL(request.url);
+    const prefix = url.searchParams.get('prefix');
+    if (prefix === 'comic_page') {
+      const rows = await db.select().from(mediaDocuments)
+        .where(and(
+          eq(mediaDocuments.projectId, projectId),
+          or(eq(mediaDocuments.kind, 'comic_page'), like(mediaDocuments.kind, 'comic_page:%')),
+        ));
+      const documents = rows
+        .map(row => ({ ...row.document, version: row.version, updatedAt: row.updatedAt.toISOString() }))
+        .sort((a, b) =>
+          (a.pageOrder ?? Number.MAX_SAFE_INTEGER) - (b.pageOrder ?? Number.MAX_SAFE_INTEGER)
+          || a.createdAt.localeCompare(b.createdAt)
+        );
+      return NextResponse.json({ ok: true, data: documents });
+    }
+
+    const kind = url.searchParams.get('kind');
     if (!validKind(kind)) return NextResponse.json({ ok: false, error: 'Unsupported media document kind.' }, { status: 400 });
     const [row] = await db.select().from(mediaDocuments)
       .where(and(eq(mediaDocuments.projectId, projectId), eq(mediaDocuments.kind, kind))).limit(1);
@@ -106,6 +126,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       });
     }
     return NextResponse.json({ ok: true, data: stored });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (!db) return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 503 });
+  try {
+    const { id: projectId } = await params;
+    const userId = await requireUser();
+    await requireOwnedProject(projectId, userId);
+    const kind = new URL(request.url).searchParams.get('kind');
+    if (!validKind(kind) || !kind.startsWith('comic_page')) {
+      return NextResponse.json({ ok: false, error: 'Only comic page documents can be deleted through this endpoint.' }, { status: 400 });
+    }
+    await db.delete(mediaDocuments)
+      .where(and(eq(mediaDocuments.projectId, projectId), eq(mediaDocuments.kind, kind)));
+    return NextResponse.json({ ok: true, data: null });
   } catch (error) {
     return errorResponse(error);
   }
