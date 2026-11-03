@@ -32,3 +32,9 @@ export const STORYBOARD_BASE64_BODY: BodyLimitPolicy = {
   name: 'storyboard-base64-body',
   maxBytes: 6 * 1024 * 1024,
 };
+
+
+export const MEDIA_ASSET_UPLOAD_BODY: BodyLimitPolicy = {
+  name: 'media-asset-upload-body',
+  maxBytes: 65 * 1024 * 1024,
+};
