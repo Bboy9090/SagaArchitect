@@ -11,6 +11,8 @@ interface RasterPaintCanvasProps {
   brushSize: number;
   brushOpacity: number;
   erase: boolean;
+  stabilization?: number;
+  symmetry?: 'none' | 'vertical' | 'horizontal' | 'both';
   onSelect: () => void;
   onCommit: (src: string) => void;
 }
@@ -23,6 +25,8 @@ export function RasterPaintCanvas({
   brushSize,
   brushOpacity,
   erase,
+  stabilization = 0,
+  symmetry = 'none',
   onSelect,
   onCommit,
 }: RasterPaintCanvasProps) {
@@ -66,7 +70,12 @@ export function RasterPaintCanvas({
     const canvas = ref.current;
     const previous = last.current;
     if (!canvas || !previous) return;
-    const next = point(event);
+    const raw = point(event);
+    const amount = Math.max(0, Math.min(0.95, stabilization));
+    const next = {
+      x: previous.x * amount + raw.x * (1 - amount),
+      y: previous.y * amount + raw.y * (1 - amount),
+    };
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const pressure = event.pressure && event.pressure > 0 ? event.pressure : 0.5;
@@ -77,10 +86,22 @@ export function RasterPaintCanvas({
     ctx.lineWidth = Math.max(1, brushSize * (0.5 + pressure));
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.beginPath();
-    ctx.moveTo(previous.x, previous.y);
-    ctx.lineTo(next.x, next.y);
-    ctx.stroke();
+    const drawSegment = (fromX: number, fromY: number, toX: number, toY: number) => {
+      ctx.beginPath();
+      ctx.moveTo(fromX, fromY);
+      ctx.lineTo(toX, toY);
+      ctx.stroke();
+    };
+    drawSegment(previous.x, previous.y, next.x, next.y);
+    if (symmetry === 'vertical' || symmetry === 'both') {
+      drawSegment(canvas.width - previous.x, previous.y, canvas.width - next.x, next.y);
+    }
+    if (symmetry === 'horizontal' || symmetry === 'both') {
+      drawSegment(previous.x, canvas.height - previous.y, next.x, canvas.height - next.y);
+    }
+    if (symmetry === 'both') {
+      drawSegment(canvas.width - previous.x, canvas.height - previous.y, canvas.width - next.x, canvas.height - next.y);
+    }
     ctx.restore();
     last.current = next;
   };
