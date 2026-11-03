@@ -13,6 +13,7 @@ import { CompoundContourPanel } from '@/components/media/CompoundContourPanel';
 import { SymbolPanel } from '@/components/media/SymbolPanel';
 import { VectorMaskPanel } from '@/components/media/VectorMaskPanel';
 import { LayerShadowPanel } from '@/components/media/LayerShadowPanel';
+import { MediaDocumentIO } from '@/components/media/MediaDocumentIO';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
@@ -473,6 +474,15 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
             <Button size="sm" variant="secondary" loading={exportingFormat === 'jpeg'} onClick={() => void exportFlattened('jpeg')}>JPEG</Button>
             <Button size="sm" variant="secondary" loading={exportingFormat === 'webp'} onClick={() => void exportFlattened('webp')}>WebP</Button>
             <Button size="sm" variant="gold" onClick={exportSvg}>SVG</Button>
+            <MediaDocumentIO
+              document={document}
+              onImport={imported => {
+                setHistory(createDocumentHistory(imported));
+                setSelectedLayerId('');
+                setExportError('');
+              }}
+              onError={setExportError}
+            />
           </div>
         }
       />

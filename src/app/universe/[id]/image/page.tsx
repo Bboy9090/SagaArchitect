@@ -14,6 +14,7 @@ import { CompoundContourPanel } from '@/components/media/CompoundContourPanel';
 import { SymbolPanel } from '@/components/media/SymbolPanel';
 import { VectorMaskPanel } from '@/components/media/VectorMaskPanel';
 import { LayerShadowPanel } from '@/components/media/LayerShadowPanel';
+import { MediaDocumentIO } from '@/components/media/MediaDocumentIO';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
@@ -510,6 +511,15 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
             <Button size="sm" variant="secondary" loading={exportingFormat === 'png'} onClick={() => void exportFlattened('png')}>PNG</Button>
             <Button size="sm" variant="secondary" loading={exportingFormat === 'jpeg'} onClick={() => void exportFlattened('jpeg')}>JPEG</Button>
             <Button size="sm" variant="secondary" loading={exportingFormat === 'webp'} onClick={() => void exportFlattened('webp')}>WebP</Button>
+            <MediaDocumentIO
+              document={document}
+              onImport={imported => {
+                setHistory(createDocumentHistory(imported));
+                setSelectedLayerId('');
+                setExportError('');
+              }}
+              onError={setExportError}
+            />
             <div className="flex items-center gap-2 text-xs text-slate-500">
               <span>{document.width} × {document.height}</span>
               <span>•</span>

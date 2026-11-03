@@ -615,3 +615,101 @@ export function layerCssEffects(
   }
   return filters.join(' ');
 }
+
+
+const PHOENIX_MEDIA_FILE_FORMAT = 'phoenix-media-document';
+const PHOENIX_MEDIA_FILE_VERSION = 1;
+
+export interface PhoenixMediaDocumentFile {
+  format: typeof PHOENIX_MEDIA_FILE_FORMAT;
+  fileVersion: number;
+  exportedAt: string;
+  document: PhoenixMediaDocument;
+}
+
+export function createPhoenixMediaDocumentFile(document: PhoenixMediaDocument): PhoenixMediaDocumentFile {
+  return {
+    format: PHOENIX_MEDIA_FILE_FORMAT,
+    fileVersion: PHOENIX_MEDIA_FILE_VERSION,
+    exportedAt: new Date().toISOString(),
+    document: structuredClone(document),
+  };
+}
+
+function isFiniteBoundedNumber(value: unknown, min: number, max: number): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
+}
+
+function isPhoenixLayerType(value: unknown): value is PhoenixLayerType {
+  return value === 'text' || value === 'shape' || value === 'image' || value === 'raster' || value === 'path';
+}
+
+export function parsePhoenixMediaDocumentFile(
+  raw: string,
+  targetProjectId: string,
+  expectedKind: PhoenixMediaDocumentKind,
+  targetVersion: number,
+): PhoenixMediaDocument {
+  if (raw.length > 12 * 1024 * 1024) throw new Error('Phoenix document exceeds the 12 MB editor limit.');
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('This file is not valid Phoenix document JSON.');
+  }
+
+  if (!parsed || typeof parsed !== 'object') throw new Error('Invalid Phoenix document file.');
+  const wrapper = parsed as Partial<PhoenixMediaDocumentFile>;
+  if (wrapper.format !== PHOENIX_MEDIA_FILE_FORMAT || wrapper.fileVersion !== PHOENIX_MEDIA_FILE_VERSION) {
+    throw new Error('Unsupported Phoenix document format or version.');
+  }
+  const document = wrapper.document;
+  if (!document || typeof document !== 'object') throw new Error('Phoenix document payload is missing.');
+  if (document.kind !== expectedKind) {
+    throw new Error(`This is a ${document.kind || 'different'} document, not a ${expectedKind} document.`);
+  }
+  if (!isFiniteBoundedNumber(document.width, 1, 16384) || !isFiniteBoundedNumber(document.height, 1, 16384)) {
+    throw new Error('Phoenix document canvas dimensions are invalid.');
+  }
+  if (!Array.isArray(document.layers) || document.layers.length > 500) {
+    throw new Error('Phoenix document layer count is invalid.');
+  }
+  for (const layer of document.layers) {
+    if (!layer || typeof layer !== 'object' || !isPhoenixLayerType(layer.type)) {
+      throw new Error('Phoenix document contains an unsupported layer.');
+    }
+    if (!layer.transform
+      || !isFiniteBoundedNumber(layer.transform.width, 1, 16384)
+      || !isFiniteBoundedNumber(layer.transform.height, 1, 16384)
+      || typeof layer.transform.x !== 'number'
+      || typeof layer.transform.y !== 'number'
+      || typeof layer.transform.rotation !== 'number') {
+      throw new Error('Phoenix document contains invalid layer geometry.');
+    }
+  }
+  if (document.groups && (!Array.isArray(document.groups) || document.groups.length > 200)) {
+    throw new Error('Phoenix document group data is invalid.');
+  }
+  if (document.symbols && (!Array.isArray(document.symbols) || document.symbols.length > 200)) {
+    throw new Error('Phoenix document symbol data is invalid.');
+  }
+
+  const now = new Date().toISOString();
+  return {
+    ...structuredClone(document),
+    id: crypto.randomUUID(),
+    projectId: targetProjectId,
+    kind: expectedKind,
+    groups: Array.isArray(document.groups) ? document.groups : [],
+    symbols: Array.isArray(document.symbols) ? document.symbols : [],
+    version: Math.max(1, targetVersion || 1),
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export function phoenixMediaDocumentFileName(document: Pick<PhoenixMediaDocument, 'title' | 'kind'>): string {
+  const safeTitle = document.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'untitled';
+  return `${safeTitle}.${document.kind}.phoenix.json`;
+}
