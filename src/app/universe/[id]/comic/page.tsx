@@ -12,13 +12,16 @@ import { MediaRevisionPanel } from '@/components/media/MediaRevisionPanel';
 import { useMediaViewport } from '@/hooks/use-media-viewport';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
-import { dbGetAssets, dbGetMediaDocument, dbGetProject, dbSaveMediaDocument, type ProjectAsset } from '@/lib/db-client';
+import { dbDeleteComicPage, dbGetAssets, dbGetComicPages, dbGetProject, dbSaveMediaDocument, type ProjectAsset } from '@/lib/db-client';
 import {
   createPhoenixMediaDocument,
-  loadPhoenixMediaDocument,
+  listPhoenixMediaDocuments,
+  mediaDocumentStorageKey,
   nextLayerZIndex,
   savePhoenixMediaDocument,
+  vectorPathSvgD,
   type PhoenixMediaDocument,
+  type PhoenixMediaDocumentKind,
   type PhoenixMediaLayer,
 } from '@/lib/media-composition';
 import {
@@ -47,6 +50,13 @@ interface ComicTemplate {
 
 const PAGE_WIDTH = 1650;
 const PAGE_HEIGHT = 2550;
+
+const COMIC_LETTERING_STYLES = [
+  { id: 'dialogue', label: 'Dialogue', fontFamily: 'Arial, sans-serif', fontWeight: 700, fontSize: 44, italic: false, letterSpacing: 0, lineHeight: 1.05 },
+  { id: 'caption', label: 'Caption', fontFamily: 'Arial, sans-serif', fontWeight: 800, fontSize: 50, italic: false, letterSpacing: 1.5, lineHeight: 1.08 },
+  { id: 'whisper', label: 'Whisper', fontFamily: 'Georgia, serif', fontWeight: 500, fontSize: 40, italic: true, letterSpacing: 0.5, lineHeight: 1.12 },
+  { id: 'shout', label: 'Shout', fontFamily: 'Arial Black, Arial, sans-serif', fontWeight: 900, fontSize: 56, italic: false, letterSpacing: 1, lineHeight: 1 },
+] as const;
 const TEMPLATES: ComicTemplate[] = [
   { id: 'single', label: '1 Panel', panels: [{ x: 90, y: 90, width: 1470, height: 2370 }] },
   { id: 'two-row', label: '2 Rows', panels: [
@@ -82,6 +92,8 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
   const { id } = use(params);
   const [project, setProject] = useState<Universe | null>(null);
   const [history, setHistory] = useState<PhoenixDocumentHistory | null>(null);
+  const [pages, setPages] = useState<PhoenixMediaDocument[]>([]);
+  const [activePageKind, setActivePageKind] = useState<PhoenixMediaDocumentKind>('comic_page');
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
   const [selectedLayerId, setSelectedLayerId] = useState('');
   const [loading, setLoading] = useState(true);
@@ -107,18 +119,25 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
     void (async () => {
       try {
         const loadedProject = isDbMode() ? await dbGetProject(id) : getUniverseById(id) || null;
-        const localDocument = loadPhoenixMediaDocument(id, 'comic_page');
-        const cloudDocument = isDbMode() ? await dbGetMediaDocument(id, 'comic_page') : null;
-        const loaded = cloudDocument || localDocument || {
+        const localPages = listPhoenixMediaDocuments(id, 'comic_page');
+        const cloudPages = isDbMode() ? await dbGetComicPages(id) : [];
+        const loadedPages = (cloudPages.length > 0 ? cloudPages : localPages)
+          .sort((a, b) => (a.pageOrder ?? Number.MAX_SAFE_INTEGER) - (b.pageOrder ?? Number.MAX_SAFE_INTEGER)
+            || a.createdAt.localeCompare(b.createdAt));
+        const firstPage = loadedPages[0] || {
           ...createPhoenixMediaDocument(id, 'comic_page'),
           title: 'Comic Page 1',
+          pageOrder: 0,
           width: PAGE_WIDTH,
           height: PAGE_HEIGHT,
           background: '#ffffff',
         };
+        const normalizedPages = loadedPages.length > 0 ? loadedPages : [firstPage];
         if (cancelled) return;
         setProject(loadedProject);
-        setHistory(createDocumentHistory(loaded));
+        setPages(normalizedPages);
+        setActivePageKind(firstPage.kind);
+        setHistory(createDocumentHistory(firstPage));
         if (isDbMode()) setAssets(await dbGetAssets(id));
       } finally {
         if (!cancelled) setLoading(false);
@@ -138,8 +157,14 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
     if (!document || loading) return;
     const handle = window.setTimeout(() => {
       const saved = savePhoenixMediaDocument(document);
+      setPages(current => current
+        .map(page => page.kind === saved.kind ? saved : page)
+        .sort((a, b) => (a.pageOrder ?? 0) - (b.pageOrder ?? 0)));
       if (isDbMode()) {
         void dbSaveMediaDocument(id, saved)
+          .then(cloudSaved => {
+            setPages(current => current.map(page => page.kind === cloudSaved.kind ? cloudSaved : page));
+          })
           .catch(error => console.error('Phoenix cloud media autosave failed:', error));
       }
     }, 500);
@@ -152,10 +177,132 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
 
   const patchSelected = (patch: Partial<PhoenixMediaLayer>) => {
     if (!selectedLayer) return;
-    commit(current => ({
-      ...current,
-      layers: current.layers.map(layer => layer.id === selectedLayer.id ? ({ ...layer, ...patch } as PhoenixMediaLayer) : layer),
-    }));
+    commit(current => {
+      const nextTransform = patch.transform;
+      const balloonGroup = selectedLayer.groupId?.startsWith('balloon:') ? selectedLayer.groupId : null;
+      const dx = nextTransform ? nextTransform.x - selectedLayer.transform.x : 0;
+      const dy = nextTransform ? nextTransform.y - selectedLayer.transform.y : 0;
+      return {
+        ...current,
+        layers: current.layers.map(layer => {
+          if (layer.id === selectedLayer.id) return { ...layer, ...patch } as PhoenixMediaLayer;
+          if (balloonGroup && nextTransform && layer.groupId === balloonGroup) {
+            return {
+              ...layer,
+              transform: {
+                ...layer.transform,
+                x: layer.transform.x + dx,
+                y: layer.transform.y + dy,
+              },
+            } as PhoenixMediaLayer;
+          }
+          return layer;
+        }),
+      };
+    });
+  };
+
+  const applyLetteringStyle = (styleId: string) => {
+    if (!selectedLayer || selectedLayer.type !== 'text') return;
+    const style = COMIC_LETTERING_STYLES.find(candidate => candidate.id === styleId);
+    if (!style) return;
+    patchSelected({
+      fontFamily: style.fontFamily,
+      fontWeight: style.fontWeight,
+      fontSize: style.fontSize,
+      italic: style.italic,
+      letterSpacing: style.letterSpacing,
+      lineHeight: style.lineHeight,
+    } as Partial<PhoenixMediaLayer>);
+  };
+
+  const persistPageOrder = (orderedPages: PhoenixMediaDocument[]) => {
+    const normalized = orderedPages.map((page, index) => ({ ...page, pageOrder: index }));
+    setPages(normalized);
+    for (const page of normalized) {
+      const saved = savePhoenixMediaDocument(page);
+      if (isDbMode()) {
+        void dbSaveMediaDocument(id, saved)
+          .catch(error => console.error('Comic page order save failed:', error));
+      }
+    }
+  };
+
+  const openPage = (kind: PhoenixMediaDocumentKind) => {
+    if (document) {
+      setPages(current => current.map(page => page.kind === document.kind ? document : page));
+    }
+    const target = pages.find(page => page.kind === kind);
+    if (!target) return;
+    setActivePageKind(kind);
+    setSelectedLayerId('');
+    setHistory(createDocumentHistory(target));
+  };
+
+  const addPage = () => {
+    const kind = `comic_page:${crypto.randomUUID()}` as PhoenixMediaDocumentKind;
+    const page = {
+      ...createPhoenixMediaDocument(id, kind),
+      title: `Comic Page ${pages.length + 1}`,
+      pageOrder: pages.length,
+      width: PAGE_WIDTH,
+      height: PAGE_HEIGHT,
+      background: '#ffffff',
+    };
+    const next = [...pages.map(existing => existing.kind === document?.kind ? document : existing), page];
+    setPages(next);
+    setActivePageKind(kind);
+    setSelectedLayerId('');
+    setHistory(createDocumentHistory(page));
+    const saved = savePhoenixMediaDocument(page);
+    if (isDbMode()) void dbSaveMediaDocument(id, saved).catch(error => console.error('Comic page create failed:', error));
+  };
+
+  const duplicatePage = () => {
+    if (!document) return;
+    const kind = `comic_page:${crypto.randomUUID()}` as PhoenixMediaDocumentKind;
+    const now = new Date().toISOString();
+    const page: PhoenixMediaDocument = {
+      ...structuredClone(document),
+      id: crypto.randomUUID(),
+      kind,
+      title: `${document.title} Copy`,
+      pageOrder: pages.length,
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const next = [...pages.map(existing => existing.kind === document.kind ? document : existing), page];
+    setPages(next);
+    setActivePageKind(kind);
+    setSelectedLayerId('');
+    setHistory(createDocumentHistory(page));
+    const saved = savePhoenixMediaDocument(page);
+    if (isDbMode()) void dbSaveMediaDocument(id, saved).catch(error => console.error('Comic page duplicate failed:', error));
+  };
+
+  const movePage = (direction: -1 | 1) => {
+    const index = pages.findIndex(page => page.kind === activePageKind);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= pages.length) return;
+    const next = [...pages];
+    [next[index], next[target]] = [next[target], next[index]];
+    persistPageOrder(next);
+  };
+
+  const deletePage = () => {
+    if (!document || pages.length <= 1) return;
+    const index = pages.findIndex(page => page.kind === document.kind);
+    const next = pages.filter(page => page.kind !== document.kind);
+    window.localStorage.removeItem(mediaDocumentStorageKey(id, document.kind));
+    if (isDbMode()) void dbDeleteComicPage(id, document.kind).catch(error => console.error('Comic page delete failed:', error));
+    const normalized = next.map((page, pageIndex) => ({ ...page, pageOrder: pageIndex }));
+    setPages(normalized);
+    const fallback = normalized[Math.min(index, normalized.length - 1)];
+    setActivePageKind(fallback.kind);
+    setSelectedLayerId('');
+    setHistory(createDocumentHistory(fallback));
+    persistPageOrder(normalized);
   };
 
   const applyTemplate = (template: ComicTemplate) => {
@@ -212,9 +359,11 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
   const addSpeechBalloon = () => {
     if (!document) return;
     const z = nextLayerZIndex(document.layers);
+    const groupId = `balloon:${crypto.randomUUID()}`;
     const balloon: PhoenixMediaLayer = {
       id: crypto.randomUUID(),
       type: 'shape',
+      groupId,
       name: 'Speech Balloon',
       visible: true,
       locked: false,
@@ -227,15 +376,37 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
       stroke: '#111827',
       strokeWidth: 10,
     };
-    const text: PhoenixMediaLayer = {
+    const tail: PhoenixMediaLayer = {
       id: crypto.randomUUID(),
-      type: 'text',
-      name: 'Balloon Text',
+      type: 'path',
+      groupId,
+      name: 'Balloon Tail',
       visible: true,
       locked: false,
       opacity: 1,
       blendMode: 'normal',
       zIndex: z + 1,
+      transform: { x: 520, y: 455, width: 140, height: 150, rotation: -8 },
+      points: [
+        { x: 0, y: 0 },
+        { x: 110, y: 0 },
+        { x: 70, y: 145 },
+      ],
+      closed: true,
+      fill: '#ffffff',
+      stroke: '#111827',
+      strokeWidth: 10,
+    };
+    const text: PhoenixMediaLayer = {
+      id: crypto.randomUUID(),
+      type: 'text',
+      groupId,
+      name: 'Balloon Text',
+      visible: true,
+      locked: false,
+      opacity: 1,
+      blendMode: 'normal',
+      zIndex: z + 2,
       transform: { x: 310, y: 300, width: 420, height: 160, rotation: 0 },
       text: 'Dialogue goes here.',
       color: '#111827',
@@ -243,8 +414,20 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
       fontFamily: 'Arial, sans-serif',
       fontWeight: 700,
       align: 'center',
+      lineHeight: 1.05,
+      letterSpacing: 0,
     };
-    commit(current => ({ ...current, layers: [...current.layers, balloon, text] }));
+    commit(current => ({
+      ...current,
+      groups: [...(current.groups || []), {
+        id: groupId,
+        name: 'Speech Balloon',
+        visible: true,
+        locked: false,
+        opacity: 1,
+      }],
+      layers: [...current.layers, balloon, tail, text],
+    }));
     setSelectedLayerId(text.id);
   };
 
@@ -292,7 +475,7 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
     <Navigation>
       <Header
         title="Comic Studio"
-        subtitle={`Panel layout and lettering for ${project?.name || 'Phoenix project'}`}
+        subtitle={`Panel layout and lettering for ${project?.name || 'Phoenix project'} • Page ${Math.max(1, pages.findIndex(page => page.kind === activePageKind) + 1)} of ${Math.max(1, pages.length)}`}
         actions={
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="ghost" disabled={history.past.length === 0} onClick={() => setHistory(current => current ? undoDocumentHistory(current) : current)}>Undo</Button>
@@ -320,6 +503,28 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
 
       <div className="grid min-h-[calc(100vh-80px)] grid-cols-1 2xl:grid-cols-[280px_minmax(0,1fr)_320px]">
         <aside className="border-r border-white/10 bg-[#070b15] p-4">
+          <p className="mb-3 text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Issue Pages</p>
+          <div className="mb-5 space-y-2">
+            {pages.map((page, index) => (
+              <button
+                key={page.kind}
+                type="button"
+                onClick={() => openPage(page.kind)}
+                className={`flex min-h-10 w-full items-center justify-between rounded-lg border px-3 text-left text-xs ${page.kind === activePageKind ? 'border-blue-400/50 bg-blue-400/10 text-blue-100' : 'border-white/5 text-slate-400 hover:border-blue-400/30'}`}
+              >
+                <span className="truncate">{page.title || `Comic Page ${index + 1}`}</span>
+                <span className="text-[10px] text-slate-500">{index + 1}</span>
+              </button>
+            ))}
+            <div className="grid grid-cols-2 gap-2">
+              <Button size="sm" variant="secondary" onClick={addPage}>+ Page</Button>
+              <Button size="sm" variant="secondary" onClick={duplicatePage}>Duplicate</Button>
+              <Button size="sm" variant="ghost" disabled={pages.findIndex(page => page.kind === activePageKind) <= 0} onClick={() => movePage(-1)}>Move Up</Button>
+              <Button size="sm" variant="ghost" disabled={pages.findIndex(page => page.kind === activePageKind) >= pages.length - 1} onClick={() => movePage(1)}>Move Down</Button>
+            </div>
+            <Button size="sm" variant="danger" className="w-full" disabled={pages.length <= 1} onClick={deletePage}>Delete Page</Button>
+          </div>
+
           <p className="mb-3 text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Page Templates</p>
           <div className="grid grid-cols-2 gap-2">
             {TEMPLATES.map(template => (
@@ -393,6 +598,17 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
                     <button key={layer.id} type="button" data-media-interactive="true" onClick={() => setSelectedLayerId(layer.id)} className="block border-0 bg-transparent p-0 text-left" style={style}>
                       {layer.type === 'shape' && <div className="h-full w-full" style={{ background: layer.fill, border: layer.strokeWidth ? `${Math.max(1, layer.strokeWidth * zoom)}px solid ${layer.stroke}` : undefined, borderRadius: layer.shape === 'ellipse' ? '9999px' : 0 }} />}
                       {layer.type === 'text' && <div className="h-full w-full overflow-hidden" style={{ color: layer.color, fontSize: layer.fontSize * zoom, fontFamily: layer.fontFamily, fontWeight: layer.fontWeight, lineHeight: 1.05, textAlign: layer.align }}>{layer.text}</div>}
+                      {layer.type === 'path' && (
+                        <svg viewBox={`0 0 ${layer.transform.width} ${layer.transform.height}`} className="h-full w-full overflow-visible">
+                          <path
+                            d={vectorPathSvgD(layer)}
+                            fill={layer.fill}
+                            stroke={layer.stroke}
+                            strokeWidth={layer.strokeWidth}
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      )}
                       {layer.type === 'image' && (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={layer.src} alt="" className="h-full w-full" style={{ objectFit: layer.fit }} />
@@ -438,9 +654,21 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
                 <input value={selectedLayer.name} onChange={event => patchSelected({ name: event.target.value })} className="mt-1 min-h-10 w-full rounded border border-white/10 bg-black/20 px-2 text-white" />
               </label>
               {selectedLayer.type === 'text' && (
-                <label className="block text-[10px] uppercase text-slate-500">Text
-                  <textarea value={selectedLayer.text} onChange={event => patchSelected({ text: event.target.value } as Partial<PhoenixMediaLayer>)} className="mt-1 min-h-24 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
-                </label>
+                <>
+                  <label className="block text-[10px] uppercase text-slate-500">Text
+                    <textarea value={selectedLayer.text} onChange={event => patchSelected({ text: event.target.value } as Partial<PhoenixMediaLayer>)} className="mt-1 min-h-24 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                  </label>
+                  <div>
+                    <div className="mb-2 text-[10px] uppercase text-slate-500">Lettering Style</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {COMIC_LETTERING_STYLES.map(style => (
+                        <Button key={style.id} size="sm" variant="ghost" onClick={() => applyLetteringStyle(style.id)}>
+                          {style.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </>
               )}
               <Button size="sm" variant="ghost" className="w-full" onClick={() => patchSelected({ locked: !selectedLayer.locked })}>{selectedLayer.locked ? 'Unlock Layer' : 'Lock Layer'}</Button>
               <Button size="sm" variant="danger" className="w-full" onClick={() => {
@@ -453,8 +681,8 @@ export default function ComicStudioPage({ params }: ComicStudioPageProps) {
           <div className="mt-6 rounded-xl border border-amber-400/15 bg-amber-400/[0.04] p-3">
             <div className="text-xs font-bold text-amber-200">Comic foundation</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              Page templates, panel frames, image placement, captions, speech balloons, direct transforms, and raster export are active.
-              Linked panel groups, balloon tails, lettering styles, multi-page issues, and motion-comic handoff are next.
+              Multi-page issues, page duplication/reordering, page templates, panel frames, image placement, grouped speech balloons with vector tails, lettering presets, direct transforms, and raster export are active.
+              Linked panel groups, advanced balloon geometry, issue-level export, and motion-comic handoff are next.
             </p>
           </div>
         </aside>

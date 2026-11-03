@@ -1,8 +1,10 @@
+export type PhoenixComicPageDocumentKind = 'comic_page' | `comic_page:${string}`;
+
 export type PhoenixMediaDocumentKind =
   | 'image'
   | 'design'
   | 'illustration'
-  | 'comic_page'
+  | PhoenixComicPageDocumentKind
   | 'video_frame';
 
 export type PhoenixBlendMode =
@@ -190,6 +192,7 @@ export interface PhoenixMediaDocument {
   version: number;
   createdAt: string;
   updatedAt: string;
+  pageOrder?: number;
 }
 
 const STORAGE_PREFIX = 'phoenix_media_document:';
@@ -218,6 +221,35 @@ export function createPhoenixMediaDocument(
 
 export function mediaDocumentStorageKey(projectId: string, kind: PhoenixMediaDocumentKind): string {
   return `${STORAGE_PREFIX}${projectId}:${kind}`;
+}
+
+export function isComicPageDocumentKind(kind: string): kind is PhoenixComicPageDocumentKind {
+  return kind === 'comic_page' || /^comic_page:[A-Za-z0-9_-]{1,64}$/.test(kind);
+}
+
+export function listPhoenixMediaDocuments(
+  projectId: string,
+  prefix: 'comic_page',
+): PhoenixMediaDocument[] {
+  if (typeof window === 'undefined') return [];
+  const storagePrefix = `${STORAGE_PREFIX}${projectId}:${prefix}`;
+  const documents: PhoenixMediaDocument[] = [];
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index);
+    if (!key || !key.startsWith(storagePrefix)) continue;
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(key) || '') as PhoenixMediaDocument;
+      if (parsed?.projectId === projectId && isComicPageDocumentKind(parsed.kind) && Array.isArray(parsed.layers)) {
+        documents.push(parsed);
+      }
+    } catch {
+      // Ignore malformed local documents rather than blocking the rest of the issue.
+    }
+  }
+  return documents.sort((a, b) =>
+    (a.pageOrder ?? Number.MAX_SAFE_INTEGER) - (b.pageOrder ?? Number.MAX_SAFE_INTEGER)
+    || a.createdAt.localeCompare(b.createdAt)
+  );
 }
 
 export function loadPhoenixMediaDocument(

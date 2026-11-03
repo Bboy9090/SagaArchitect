@@ -274,6 +274,15 @@ export async function dbGetMediaDocument(projectId: string, kind: PhoenixMediaDo
   return document;
 }
 
+export async function dbGetComicPages(projectId: string): Promise<PhoenixMediaDocument[]> {
+  const res = await fetch(`/api/db/projects/${projectId}/media-documents?prefix=comic_page`);
+  const documents = await handleResponse<PhoenixMediaDocument[]>(res);
+  for (const document of documents) {
+    mediaDocumentVersions.set(mediaDocumentKey(projectId, document.kind), document.version || 1);
+  }
+  return documents;
+}
+
 export function dbSaveMediaDocument(projectId: string, document: PhoenixMediaDocument): Promise<PhoenixMediaDocument> {
   const key = mediaDocumentKey(projectId, document.kind);
   const previous = mediaDocumentSaveQueues.get(key) || Promise.resolve(document);
@@ -340,4 +349,14 @@ export async function dbRestoreMediaDocument(
   const restored = await handleResponse<PhoenixMediaDocument>(res);
   mediaDocumentVersions.set(mediaDocumentKey(projectId, kind), restored.version || expectedVersion + 1);
   return restored;
+}
+
+export async function dbDeleteComicPage(projectId: string, kind: PhoenixMediaDocumentKind): Promise<void> {
+  const res = await fetch(`/api/db/projects/${projectId}/media-documents?kind=${encodeURIComponent(kind)}`, { method: 'DELETE' });
+  const json = await res.json();
+  if (!res.ok || !json.ok) throw new Error(json.error || 'Failed to delete comic page');
+  const key = mediaDocumentKey(projectId, kind);
+  mediaDocumentVersions.delete(key);
+  mediaDocumentSaveQueues.delete(key);
+}
 }

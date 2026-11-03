@@ -8,7 +8,7 @@ import type { PhoenixMediaDocument, PhoenixMediaDocumentKind } from '@/lib/media
 const KINDS = new Set<PhoenixMediaDocumentKind>(['image', 'design', 'illustration', 'comic_page', 'video_frame']);
 
 function validKind(value: unknown): value is PhoenixMediaDocumentKind {
-  return typeof value === 'string' && KINDS.has(value as PhoenixMediaDocumentKind);
+  return typeof value === 'string' && (KINDS.has(value as PhoenixMediaDocumentKind) || /^comic_page:[A-Za-z0-9_-]{1,64}$/.test(value));
 }
 
 function errorResponse(error: unknown) {
