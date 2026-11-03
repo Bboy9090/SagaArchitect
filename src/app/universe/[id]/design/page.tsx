@@ -28,6 +28,7 @@ import {
   scaleVectorContours,
   scaleVectorPoints,
   vectorPathFillRule,
+  vectorPathFillSvgD,
   vectorPathSvgD,
   type PhoenixMediaDocument,
   type PhoenixMediaLayer,
@@ -119,10 +120,14 @@ function buildSvg(document: PhoenixMediaDocument): string {
     }
 
     if (layer.type === 'path') {
-      const d = escapeXml(vectorPathSvgD(layer));
+      const fillD = escapeXml(vectorPathFillSvgD(layer));
+      const strokeD = escapeXml(vectorPathSvgD(layer));
       const localTransform = `translate(${x} ${y}) rotate(${rotation} ${width / 2} ${height / 2})`;
-      const element = `<path d="${d}" fill="${layer.closed ? layerFill : 'none'}" fill-rule="${vectorPathFillRule(layer)}" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${localTransform}" stroke-linejoin="round" stroke-linecap="round" />`;
-      return wrap(element);
+      const fillElement = fillD
+        ? `<path d="${fillD}" fill="${layerFill}" fill-rule="${vectorPathFillRule(layer)}" stroke="none" opacity="${opacity}" transform="${localTransform}" />`
+        : '';
+      const strokeElement = `<path d="${strokeD}" fill="none" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${localTransform}" stroke-linejoin="round" stroke-linecap="round" />`;
+      return wrap(`${fillElement}${strokeElement}`);
     }
 
     const preserveAspectRatio = layer.type === 'image'
@@ -531,7 +536,10 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                             )}
                           </defs>
                         )}
-                        <path d={vectorPathSvgD(layer)} fill={layer.closed ? (layer.gradient ? `url(#design-gradient-${layer.id})` : layer.fill) : 'none'} fillRule={vectorPathFillRule(layer)} stroke={layer.stroke} strokeWidth={layer.strokeWidth} strokeLinejoin="round" strokeLinecap="round" />
+                        {vectorPathFillSvgD(layer) && (
+                          <path d={vectorPathFillSvgD(layer)} fill={layer.gradient ? `url(#design-gradient-${layer.id})` : layer.fill} fillRule={vectorPathFillRule(layer)} stroke="none" />
+                        )}
+                        <path d={vectorPathSvgD(layer)} fill="none" stroke={layer.stroke} strokeWidth={layer.strokeWidth} strokeLinejoin="round" strokeLinecap="round" />
                         {selectedLayerId === layer.id && layer.points.map((point, index) => (
                           <g key={index} className="pointer-events-none">
                             {point.in && (
