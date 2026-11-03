@@ -88,9 +88,6 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
     setAdditionalLayerIds([]);
   };
 
-  useEffect(() => {
-    setAdditionalLayerIds([]);
-  }, [selectedLayerId]);
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [savedAt, setSavedAt] = useState('');
