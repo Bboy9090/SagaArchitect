@@ -17,7 +17,8 @@ import {
 import { buildRainstormsSyncPayload, syncToRainstorms, pingRainstorms } from '@/lib/rainstorms';
 import type { Universe, Faction, Character, Location } from '@/lib/types';
 import { isDbMode } from '@/lib/storage-mode';
-import { dbGetProject, dbGetCharacters, dbSaveCharacter, dbGetAssets, dbUploadAsset, dbDeleteAsset, dbRenameAsset, type ProjectAsset } from '@/lib/db-client';
+import { dbGetProject, dbGetCharacters, dbSaveCharacter, dbGetAssets, dbUploadAsset, dbDeleteAsset, dbRenameAsset, dbGetStudioDocument, dbSaveStudioDocument, type ProjectAsset } from '@/lib/db-client';
+import type { PhoenixAssetLibraryDocument, PhoenixAssetLibraryEntry } from '@/lib/studio-document';
 
 interface Section {
   id: string;
@@ -31,6 +32,19 @@ interface CanonPageProps {
 }
 
 const RAINSTORMS_URL_KEY = 'loreengine_rainstorms_url';
+
+function createAssetLibraryDocument(projectId: string): PhoenixAssetLibraryDocument {
+  const now = new Date().toISOString();
+  return {
+    id: crypto.randomUUID(),
+    projectId,
+    title: 'Project Asset Library',
+    folders: [],
+    entries: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
 
 export default function CanonCorePage({ params }: CanonPageProps) {
   const { id } = use(params);
@@ -50,18 +64,34 @@ export default function CanonCorePage({ params }: CanonPageProps) {
   const [assetUploadStatus, setAssetUploadStatus] = useState('');
   const [renamingAssetId, setRenamingAssetId] = useState<string | null>(null);
   const [renameAssetValue, setRenameAssetValue] = useState('');
+  const [assetLibraryDocument, setAssetLibraryDocument] = useState<PhoenixAssetLibraryDocument | null>(null);
+  const [assetFolderFilter, setAssetFolderFilter] = useState('all');
+  const [assetFavoritesOnly, setAssetFavoritesOnly] = useState(false);
+  const [newAssetFolderName, setNewAssetFolderName] = useState('');
+  const [assetTagDrafts, setAssetTagDrafts] = useState<Record<string, string>>({});
+
+  const assetMetadataById = useMemo(
+    () => new Map((assetLibraryDocument?.entries || []).map(entry => [entry.assetId, entry])),
+    [assetLibraryDocument?.entries],
+  );
 
   const filteredAssets = useMemo(() => {
     const query = assetQuery.trim().toLowerCase();
     const matches = assetsList.filter(asset => {
+      const meta = assetMetadataById.get(asset.id);
       const typeMatches = assetType === 'all'
         || (assetType === 'image' && asset.mime_type.startsWith('image/'))
         || (assetType === 'video' && asset.mime_type.startsWith('video/'))
         || (assetType === 'audio' && asset.mime_type.startsWith('audio/'));
+      const folderMatches = assetFolderFilter === 'all'
+        || (assetFolderFilter === 'unfiled' && !meta?.folderId)
+        || meta?.folderId === assetFolderFilter;
+      const favoriteMatches = !assetFavoritesOnly || meta?.favorite === true;
       const queryMatches = !query
         || asset.name.toLowerCase().includes(query)
-        || asset.mime_type.toLowerCase().includes(query);
-      return typeMatches && queryMatches;
+        || asset.mime_type.toLowerCase().includes(query)
+        || (meta?.tags || []).some(tag => tag.toLowerCase().includes(query));
+      return typeMatches && folderMatches && favoriteMatches && queryMatches;
     });
     return [...matches].sort((a, b) => {
       if (assetSort === 'name') return a.name.localeCompare(b.name);
@@ -70,7 +100,72 @@ export default function CanonCorePage({ params }: CanonPageProps) {
       const bTime = Date.parse(b.created_at || '') || 0;
       return assetSort === 'oldest' ? aTime - bTime : bTime - aTime;
     });
-  }, [assetsList, assetQuery, assetType, assetSort]);
+  }, [assetsList, assetMetadataById, assetQuery, assetType, assetSort, assetFolderFilter, assetFavoritesOnly]);
+
+  useEffect(() => {
+    if (!assetLibraryDocument || !isDbMode()) return;
+    const handle = window.setTimeout(() => {
+      void dbSaveStudioDocument(id, 'asset_library', assetLibraryDocument)
+        .then(saved => setAssetLibraryDocument(current => current && current.id === saved.id ? saved : current))
+        .catch(error => console.error('Phoenix Asset Library cloud autosave failed:', error));
+    }, 600);
+    return () => window.clearTimeout(handle);
+  }, [assetLibraryDocument, id]);
+
+  const updateAssetLibraryDocument = (updater: (current: PhoenixAssetLibraryDocument) => PhoenixAssetLibraryDocument) => {
+    setAssetLibraryDocument(current => {
+      if (!current) return current;
+      return { ...updater(current), updatedAt: new Date().toISOString() };
+    });
+  };
+
+  const patchAssetMetadata = (assetId: string, patch: Partial<PhoenixAssetLibraryEntry>) => {
+    updateAssetLibraryDocument(current => {
+      const existing = current.entries.find(entry => entry.assetId === assetId) || { assetId, tags: [] };
+      const next = { ...existing, ...patch, assetId, tags: patch.tags || existing.tags || [] };
+      return {
+        ...current,
+        entries: [...current.entries.filter(entry => entry.assetId !== assetId), next],
+      };
+    });
+  };
+
+  const addAssetFolder = () => {
+    const name = newAssetFolderName.trim();
+    if (!name) return;
+    updateAssetLibraryDocument(current => {
+      if (current.folders.some(folder => folder.name.toLowerCase() === name.toLowerCase())) return current;
+      return {
+        ...current,
+        folders: [...current.folders, { id: crypto.randomUUID(), name: name.slice(0, 120) }].slice(0, 100),
+      };
+    });
+    setNewAssetFolderName('');
+  };
+
+  const removeAssetFolder = (folderId: string) => {
+    updateAssetLibraryDocument(current => ({
+      ...current,
+      folders: current.folders.filter(folder => folder.id !== folderId),
+      entries: current.entries.map(entry => entry.folderId === folderId ? { ...entry, folderId: undefined } : entry),
+    }));
+    if (assetFolderFilter === folderId) setAssetFolderFilter('all');
+  };
+
+  const addAssetTag = (assetId: string) => {
+    const raw = (assetTagDrafts[assetId] || '').trim();
+    if (!raw) return;
+    const tag = raw.slice(0, 40);
+    const existing = assetMetadataById.get(assetId);
+    const tags = [...new Set([...(existing?.tags || []), tag])].slice(0, 20);
+    patchAssetMetadata(assetId, { tags });
+    setAssetTagDrafts(current => ({ ...current, [assetId]: '' }));
+  };
+
+  const removeAssetTag = (assetId: string, tag: string) => {
+    const existing = assetMetadataById.get(assetId);
+    patchAssetMetadata(assetId, { tags: (existing?.tags || []).filter(entry => entry !== tag) });
+  };
 
   // Rainstorms sync state
   const [showRainstormsModal, setShowRainstormsModal] = useState(false);
@@ -89,6 +184,8 @@ export default function CanonCorePage({ params }: CanonPageProps) {
         chars = await dbGetCharacters(id);
         const dbAssets = await dbGetAssets(id);
         setAssetsList(dbAssets);
+        const cloudAssetLibrary = await dbGetStudioDocument<PhoenixAssetLibraryDocument>(id, 'asset_library');
+        setAssetLibraryDocument(cloudAssetLibrary || createAssetLibraryDocument(id));
       } else {
         u = getUniverseById(id) || null;
         chars = getCharacters(id);
@@ -501,8 +598,33 @@ export default function CanonCorePage({ params }: CanonPageProps) {
                 {assetUploadStatus && <span className="text-xs text-emerald-300/80">{assetUploadStatus}</span>}
               </div>
 
+              <div className="rounded-lg border border-violet-400/10 bg-violet-400/[0.03] p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-violet-300/70">Folders</span>
+                  <input
+                    value={newAssetFolderName}
+                    maxLength={120}
+                    onChange={event => setNewAssetFolderName(event.target.value)}
+                    onKeyDown={event => { if (event.key === 'Enter') addAssetFolder(); }}
+                    placeholder="New folder name"
+                    className="min-h-9 min-w-0 flex-1 rounded border border-white/10 bg-black/20 px-2 text-xs text-white"
+                  />
+                  <Button size="sm" variant="ghost" disabled={!newAssetFolderName.trim()} onClick={addAssetFolder}>Add folder</Button>
+                </div>
+                {(assetLibraryDocument?.folders || []).length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(assetLibraryDocument?.folders || []).map(folder => (
+                      <div key={folder.id} className="flex items-center gap-1 rounded-full border border-white/10 bg-black/20 px-2 py-1">
+                        <button type="button" onClick={() => setAssetFolderFilter(folder.id)} className="text-[10px] text-slate-300 hover:text-white">{folder.name}</button>
+                        <button type="button" onClick={() => removeAssetFolder(folder.id)} className="text-[10px] text-slate-600 hover:text-rose-300" aria-label={`Delete folder ${folder.name}`}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {assetsList.length > 0 && (
-                <div className="grid grid-cols-1 gap-2 rounded-lg border border-white/5 bg-black/10 p-3 md:grid-cols-[minmax(0,1fr)_150px_150px]">
+                <div className="grid grid-cols-1 gap-2 rounded-lg border border-white/5 bg-black/10 p-3 md:grid-cols-[minmax(0,1fr)_140px_160px_150px]">
                   <input
                     value={assetQuery}
                     onChange={event => setAssetQuery(event.target.value)}
@@ -522,6 +644,16 @@ export default function CanonCorePage({ params }: CanonPageProps) {
                     <option value="audio">Audio</option>
                   </select>
                   <select
+                    value={assetFolderFilter}
+                    onChange={event => setAssetFolderFilter(event.target.value)}
+                    className="min-h-10 rounded border border-white/10 bg-[#0a0d14] px-2 text-xs text-white"
+                    aria-label="Filter assets by folder"
+                  >
+                    <option value="all">All folders</option>
+                    <option value="unfiled">Unfiled</option>
+                    {(assetLibraryDocument?.folders || []).map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+                  </select>
+                  <select
                     value={assetSort}
                     onChange={event => setAssetSort(event.target.value as 'newest' | 'oldest' | 'name' | 'size')}
                     className="min-h-10 rounded border border-white/10 bg-[#0a0d14] px-2 text-xs text-white"
@@ -532,6 +664,10 @@ export default function CanonCorePage({ params }: CanonPageProps) {
                     <option value="name">Name A–Z</option>
                     <option value="size">Largest first</option>
                   </select>
+                  <label className="flex min-h-10 items-center gap-2 rounded border border-white/10 bg-[#0a0d14] px-3 text-xs text-white md:col-span-4">
+                    <input type="checkbox" checked={assetFavoritesOnly} onChange={event => setAssetFavoritesOnly(event.target.checked)} />
+                    Favorites only
+                  </label>
                 </div>
               )}
 
@@ -651,6 +787,48 @@ export default function CanonCorePage({ params }: CanonPageProps) {
                             <span className="text-[10px] text-gray-500">{(asset.file_size / 1024).toFixed(0)} KB</span>
                           </>
                         )}
+                      </div>
+                      <div className="mt-2 space-y-2 border-t border-white/5 pt-2">
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            className={`text-sm ${assetMetadataById.get(asset.id)?.favorite ? 'text-amber-300' : 'text-gray-600 hover:text-amber-300'}`}
+                            onClick={() => patchAssetMetadata(asset.id, { favorite: !assetMetadataById.get(asset.id)?.favorite })}
+                            aria-label={assetMetadataById.get(asset.id)?.favorite ? 'Remove from favorites' : 'Add to favorites'}
+                          >
+                            ★
+                          </button>
+                          <select
+                            value={assetMetadataById.get(asset.id)?.folderId || ''}
+                            onChange={event => patchAssetMetadata(asset.id, { folderId: event.target.value || undefined })}
+                            className="min-h-7 min-w-0 flex-1 rounded border border-white/10 bg-black/20 px-1 text-[9px] text-gray-400"
+                            aria-label={`Folder for ${asset.name}`}
+                          >
+                            <option value="">Unfiled</option>
+                            {(assetLibraryDocument?.folders || []).map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+                          </select>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {(assetMetadataById.get(asset.id)?.tags || []).map(tag => (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => removeAssetTag(asset.id, tag)}
+                              className="rounded-full border border-cyan-400/15 bg-cyan-400/[0.04] px-1.5 py-0.5 text-[8px] text-cyan-200/70 hover:border-rose-400/30 hover:text-rose-200"
+                              title="Remove tag"
+                            >
+                              {tag} ×
+                            </button>
+                          ))}
+                        </div>
+                        <input
+                          value={assetTagDrafts[asset.id] || ''}
+                          maxLength={40}
+                          onChange={event => setAssetTagDrafts(current => ({ ...current, [asset.id]: event.target.value }))}
+                          onKeyDown={event => { if (event.key === 'Enter') addAssetTag(asset.id); }}
+                          placeholder="Add tag + Enter"
+                          className="min-h-7 w-full rounded border border-white/10 bg-black/20 px-1.5 text-[9px] text-gray-300 placeholder:text-gray-700"
+                        />
                       </div>
                       <button
                         onClick={async () => {
