@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use, useCallback } from 'react';
+import { useState, useEffect, use, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
@@ -44,6 +44,30 @@ export default function CanonCorePage({ params }: CanonPageProps) {
   const [genLoading, setGenLoading] = useState<string | null>(null);
   const [exportCopied, setExportCopied] = useState(false);
   const [assetsList, setAssetsList] = useState<ProjectAsset[]>([]);
+  const [assetQuery, setAssetQuery] = useState('');
+  const [assetType, setAssetType] = useState<'all' | 'image' | 'video' | 'audio'>('all');
+  const [assetSort, setAssetSort] = useState<'newest' | 'oldest' | 'name' | 'size'>('newest');
+
+  const filteredAssets = useMemo(() => {
+    const query = assetQuery.trim().toLowerCase();
+    const matches = assetsList.filter(asset => {
+      const typeMatches = assetType === 'all'
+        || (assetType === 'image' && asset.mime_type.startsWith('image/'))
+        || (assetType === 'video' && asset.mime_type.startsWith('video/'))
+        || (assetType === 'audio' && asset.mime_type.startsWith('audio/'));
+      const queryMatches = !query
+        || asset.name.toLowerCase().includes(query)
+        || asset.mime_type.toLowerCase().includes(query);
+      return typeMatches && queryMatches;
+    });
+    return [...matches].sort((a, b) => {
+      if (assetSort === 'name') return a.name.localeCompare(b.name);
+      if (assetSort === 'size') return b.file_size - a.file_size;
+      const aTime = Date.parse(a.created_at || '') || 0;
+      const bTime = Date.parse(b.created_at || '') || 0;
+      return assetSort === 'oldest' ? aTime - bTime : bTime - aTime;
+    });
+  }, [assetsList, assetQuery, assetType, assetSort]);
 
   // Rainstorms sync state
   const [showRainstormsModal, setShowRainstormsModal] = useState(false);
@@ -458,11 +482,60 @@ export default function CanonCorePage({ params }: CanonPageProps) {
                 <span className="text-xs text-gray-500">Images: 5MB max. MP4/WebM/WAV/MP3: 64MB max.</span>
               </div>
 
+              {assetsList.length > 0 && (
+                <div className="grid grid-cols-1 gap-2 rounded-lg border border-white/5 bg-black/10 p-3 md:grid-cols-[minmax(0,1fr)_150px_150px]">
+                  <input
+                    value={assetQuery}
+                    onChange={event => setAssetQuery(event.target.value)}
+                    placeholder="Search assets by name or type…"
+                    className="min-h-10 rounded border border-white/10 bg-[#0a0d14] px-3 text-sm text-white placeholder:text-gray-600"
+                    aria-label="Search project assets"
+                  />
+                  <select
+                    value={assetType}
+                    onChange={event => setAssetType(event.target.value as 'all' | 'image' | 'video' | 'audio')}
+                    className="min-h-10 rounded border border-white/10 bg-[#0a0d14] px-2 text-xs text-white"
+                    aria-label="Filter assets by media type"
+                  >
+                    <option value="all">All media</option>
+                    <option value="image">Images</option>
+                    <option value="video">Video</option>
+                    <option value="audio">Audio</option>
+                  </select>
+                  <select
+                    value={assetSort}
+                    onChange={event => setAssetSort(event.target.value as 'newest' | 'oldest' | 'name' | 'size')}
+                    className="min-h-10 rounded border border-white/10 bg-[#0a0d14] px-2 text-xs text-white"
+                    aria-label="Sort project assets"
+                  >
+                    <option value="newest">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                    <option value="name">Name A–Z</option>
+                    <option value="size">Largest first</option>
+                  </select>
+                </div>
+              )}
+
               {assetsList.length === 0 ? (
                 <p className="text-gray-500 text-sm text-center py-6">No assets uploaded to this project yet.</p>
+              ) : filteredAssets.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-white/10 py-8 text-center">
+                  <p className="text-sm text-gray-500">No assets match this search/filter.</p>
+                  <button
+                    type="button"
+                    className="mt-2 text-xs text-[#c9a84c] hover:text-[#e1c76f]"
+                    onClick={() => { setAssetQuery(''); setAssetType('all'); }}
+                  >
+                    Clear filters
+                  </button>
+                </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  {assetsList.map((asset) => (
+                <>
+                  <div className="text-[10px] uppercase tracking-wider text-gray-600">
+                    Showing {filteredAssets.length} of {assetsList.length} assets
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  {filteredAssets.map((asset) => (
                     <div key={asset.id} className="relative group bg-[#121217] border border-[#c9a84c]/10 hover:border-[#c9a84c]/30 rounded-lg p-2 flex flex-col justify-between overflow-hidden">
                       <div className="aspect-video w-full relative bg-black/40 rounded overflow-hidden mb-2 flex items-center justify-center">
                         {asset.mime_type.startsWith('image/') ? (
@@ -512,7 +585,8 @@ export default function CanonCorePage({ params }: CanonPageProps) {
                       </button>
                     </div>
                   ))}
-                </div>
+                  </div>
+                </>
               )}
             </div>
           )}
