@@ -7,7 +7,7 @@ type PhoenixBrandProps = {
 
 export function PhoenixBrand({ compact = false, href = '/dashboard' }: PhoenixBrandProps) {
   return (
-    <Link href={href} className="phoenix-brand" aria-label="Phoenix Creator Studio home">
+    <Link href={href} className="phoenix-brand" aria-label="Phoenix Creator Bench home">
       <span className="phoenix-mark" aria-hidden="true">
         <span className="phoenix-wing phoenix-wing-left" />
         <span className="phoenix-core">P</span>
@@ -16,7 +16,7 @@ export function PhoenixBrand({ compact = false, href = '/dashboard' }: PhoenixBr
       {!compact && (
         <span className="min-w-0">
           <span className="phoenix-brand-kicker">Bobby&apos;s Workshop presents</span>
-          <span className="phoenix-brand-name">Phoenix Creator Studio</span>
+          <span className="phoenix-brand-name">Phoenix Creator Bench</span>
           <span className="phoenix-brand-line">Write it. Build it. Bring it to life.</span>
         </span>
       )}
