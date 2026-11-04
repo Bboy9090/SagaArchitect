@@ -214,15 +214,28 @@ async function renderLayerBitmap(layer: PhoenixMediaLayer): Promise<HTMLCanvasEl
         ctx.fillStyle = layerFillStyle(ctx, layer, width, height);
         ctx.fill(vectorPathFillRule(layer));
       }
-      if (layer.strokeWidth > 0) {
+      if (layer.strokeWidth > 0 && layer.points.length > 0) {
         ctx.beginPath();
         traceContour(layer.points, layer.closed);
-        for (const contour of layer.contours || []) traceContour(contour.points, contour.closed);
         ctx.strokeStyle = layer.stroke;
         ctx.lineWidth = layer.strokeWidth;
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
         ctx.stroke();
+      }
+      for (const contour of layer.contours || []) {
+        const strokeWidth = Number.isFinite(contour.strokeWidth) ? Math.max(0, contour.strokeWidth as number) : layer.strokeWidth;
+        if (strokeWidth <= 0 || contour.points.length === 0) continue;
+        ctx.save();
+        ctx.beginPath();
+        traceContour(contour.points, contour.closed);
+        ctx.globalAlpha *= Number.isFinite(contour.opacity) ? Math.max(0, Math.min(1, contour.opacity as number)) : 1;
+        ctx.strokeStyle = contour.stroke || layer.stroke;
+        ctx.lineWidth = strokeWidth;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.stroke();
+        ctx.restore();
       }
     }
   } else if (layer.type === 'text') {
