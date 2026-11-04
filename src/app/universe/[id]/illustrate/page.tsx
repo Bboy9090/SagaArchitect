@@ -34,6 +34,7 @@ interface IllustrationStudioPageProps {
 
 type BrushPreset = 'pencil' | 'ink' | 'paint';
 type SymmetryMode = 'none' | 'vertical' | 'horizontal' | 'both';
+type PerspectiveGuideMode = 'off' | 'one-point' | 'two-point';
 
 const BRUSH_PRESETS: Record<BrushPreset, { size: number; opacity: number; label: string }> = {
   pencil: { size: 8, opacity: 0.45, label: 'Pencil' },
@@ -55,6 +56,10 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
   const [eraseMode, setEraseMode] = useState(false);
   const [stabilization, setStabilization] = useState(0.35);
   const [symmetry, setSymmetry] = useState<SymmetryMode>('none');
+  const [perspectiveMode, setPerspectiveMode] = useState<PerspectiveGuideMode>('off');
+  const [horizonPercent, setHorizonPercent] = useState(50);
+  const [leftVanishingPercent, setLeftVanishingPercent] = useState(25);
+  const [rightVanishingPercent, setRightVanishingPercent] = useState(75);
   const [exporting, setExporting] = useState(false);
   const [status, setStatus] = useState('');
 
@@ -252,6 +257,28 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
                 <option value="both">Four-way</option>
               </select>
             </label>
+            <label className="block text-[10px] uppercase text-slate-500">Perspective guides
+              <select value={perspectiveMode} onChange={event => setPerspectiveMode(event.target.value as PerspectiveGuideMode)} className="mt-1 min-h-11 w-full rounded border border-white/10 bg-[#0a0d14] px-3 text-white">
+                <option value="off">Off</option>
+                <option value="one-point">One-point</option>
+                <option value="two-point">Two-point</option>
+              </select>
+            </label>
+            {perspectiveMode !== 'off' && (
+              <div className="space-y-3 rounded-lg border border-cyan-400/10 bg-cyan-400/[0.03] p-3">
+                <label className="block text-[10px] uppercase text-slate-500">Horizon {Math.round(horizonPercent)}%
+                  <input type="range" min={5} max={95} value={horizonPercent} onChange={event => setHorizonPercent(Number(event.target.value))} className="mt-1 w-full" />
+                </label>
+                <label className="block text-[10px] uppercase text-slate-500">{perspectiveMode === 'one-point' ? 'Vanishing point' : 'Left vanishing point'} {Math.round(leftVanishingPercent)}%
+                  <input type="range" min={0} max={100} value={leftVanishingPercent} onChange={event => setLeftVanishingPercent(Number(event.target.value))} className="mt-1 w-full" />
+                </label>
+                {perspectiveMode === 'two-point' && (
+                  <label className="block text-[10px] uppercase text-slate-500">Right vanishing point {Math.round(rightVanishingPercent)}%
+                    <input type="range" min={0} max={100} value={rightVanishingPercent} onChange={event => setRightVanishingPercent(Number(event.target.value))} className="mt-1 w-full" />
+                  </label>
+                )}
+              </div>
+            )}
             <Button className="w-full" size="sm" variant={eraseMode ? 'gold' : 'ghost'} onClick={() => setEraseMode(value => !value)}>
               {eraseMode ? 'Eraser On' : 'Eraser'}
             </Button>
@@ -292,6 +319,38 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
             >
               {(symmetry === 'vertical' || symmetry === 'both') && <div className="pointer-events-none absolute bottom-0 left-1/2 top-0 z-[9999] w-px bg-cyan-300/40" />}
               {(symmetry === 'horizontal' || symmetry === 'both') && <div className="pointer-events-none absolute left-0 right-0 top-1/2 z-[9999] h-px bg-cyan-300/40" />}
+              {perspectiveMode !== 'off' && (
+                <svg
+                  className="pointer-events-none absolute inset-0 z-[9998] h-full w-full"
+                  viewBox={`0 0 ${document.width} ${document.height}`}
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                >
+                  {(() => {
+                    const horizonY = document.height * (horizonPercent / 100);
+                    const leftX = document.width * (leftVanishingPercent / 100);
+                    const rightX = document.width * (rightVanishingPercent / 100);
+                    const rays = [0, document.height * 0.2, document.height * 0.4, document.height * 0.6, document.height * 0.8, document.height];
+                    return (
+                      <>
+                        <line x1={0} y1={horizonY} x2={document.width} y2={horizonY} stroke="rgba(103,232,249,0.72)" strokeWidth={2 / scale} />
+                        {rays.map((y, index) => (
+                          <line key={`left-${index}`} x1={leftX} y1={horizonY} x2={index % 2 === 0 ? 0 : document.width} y2={y} stroke="rgba(103,232,249,0.3)" strokeWidth={1 / scale} />
+                        ))}
+                        <circle cx={leftX} cy={horizonY} r={5 / scale} fill="rgba(103,232,249,0.95)" />
+                        {perspectiveMode === 'two-point' && (
+                          <>
+                            {rays.map((y, index) => (
+                              <line key={`right-${index}`} x1={rightX} y1={horizonY} x2={index % 2 === 0 ? document.width : 0} y2={y} stroke="rgba(167,139,250,0.3)" strokeWidth={1 / scale} />
+                            ))}
+                            <circle cx={rightX} cy={horizonY} r={5 / scale} fill="rgba(167,139,250,0.95)" />
+                          </>
+                        )}
+                      </>
+                    );
+                  })()}
+                </svg>
+              )}
               {sortedLayers.map(layer => {
                 if (!layer.visible) return null;
                 const wrapperStyle: React.CSSProperties = {
@@ -388,8 +447,8 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
           <div className="mt-6 rounded-xl border border-violet-400/15 bg-violet-400/[0.04] p-3">
             <div className="text-xs font-bold text-violet-200">Illustration foundation</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              Pressure-aware raster painting, brush presets, smoothing, symmetry, reference layers, undo/redo, autosave,
-              and PNG export are active. Perspective guides, vector ink, brush texture engines, pose tools, and advanced color assistance are next.
+              Pressure-aware raster painting, brush presets, smoothing, symmetry, adjustable one-point/two-point perspective guides,
+              reference layers, undo/redo, autosave, and PNG export are active. Vector ink, brush texture engines, pose tools, and advanced color assistance are next.
             </p>
           </div>
         </aside>
