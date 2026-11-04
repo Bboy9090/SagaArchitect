@@ -8,6 +8,56 @@ import { createLogger } from '@/lib/logger';
 import { deleteAssetObject } from '@/lib/storage/asset-storage';
 import type { StorageProviderName } from '@/lib/storage/storage-provider';
 
+export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (!db) return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 503 });
+
+  const { id } = await params;
+  try {
+    const userId = await requireUser();
+    const asset = await requireOwnedAsset(id, userId);
+    const body = await req.json() as { name?: unknown };
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    if (!name) return NextResponse.json({ ok: false, error: 'Asset name is required.' }, { status: 400 });
+    if (name.length > 255) return NextResponse.json({ ok: false, error: 'Asset name must be 255 characters or fewer.' }, { status: 400 });
+
+    const [updated] = await db.transaction(async (tx) => {
+      await logVersion(tx, {
+        projectId: asset.projectId,
+        userId,
+        action: 'update',
+        entityType: 'asset',
+        entityId: id,
+        changeData: { previousName: asset.name, name },
+      });
+      return await tx.update(assets)
+        .set({ name, updatedAt: new Date() })
+        .where(eq(assets.id, id))
+        .returning();
+    });
+
+    return NextResponse.json({
+      ok: true,
+      data: {
+        id: updated.id,
+        project_id: updated.projectId,
+        name: updated.name,
+        file_size: updated.fileSize,
+        mime_type: updated.mimeType,
+        storage_provider: updated.storageProvider,
+        created_at: updated.createdAt.toISOString(),
+        updated_at: updated.updatedAt.toISOString(),
+        serve_url: `/api/db/assets/${updated.id}/serve`,
+      },
+    });
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
+    createLogger().error('asset.rename.failed', { assetId: id, error });
+    return NextResponse.json({ ok: false, error: 'Asset rename failed.' }, { status: 500 });
+  }
+}
+
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!db) return NextResponse.json({ ok: false, error: 'Database not initialized' }, { status: 503 });
 
