@@ -19,7 +19,8 @@ import {
   activeCaptionAt,
   addClipToTimelineTrack,
   addTimelineTrack,
-  clipTransitionOpacity,
+  clipAudioGainAt,
+  clipTransitionState,
   clipTransformAt,
   removeEmptyTimelineTrack,
   timelineClipDuration,
@@ -184,7 +185,7 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
         audio.currentTime = Math.min(sourceTime, Math.max(0, audio.duration - 0.05));
       }
       audio.playbackRate = clip.playbackRate;
-      audio.volume = clip.muted ? 0 : Math.max(0, Math.min(1, clip.volume));
+      audio.volume = clipAudioGainAt(clip, playhead);
       if (playing) void audio.play().catch(() => undefined);
       else audio.pause();
     }
@@ -324,6 +325,7 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
     const keyframes = [...(selectedClip.keyframes || []).filter(frame => Math.abs(frame.time - localTime) > 0.02), {
       time: localTime,
       transform: { ...selectedClip.transform },
+      easing: 'ease-in-out' as const,
     }].sort((a, b) => a.time - b.time);
     patchClip(selectedClip.id, { keyframes });
     setStatus(`Added transform keyframe at ${playhead.toFixed(2)}s.`);
@@ -451,16 +453,16 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
                 {activeVisualLayers.length === 0 && <div className="text-sm text-slate-600">Build a motion timeline to preview storyboard animation.</div>}
                 {activeVisualLayers.map(({ clip, trackOrder }) => {
                   const transform = clipTransformAt(clip, playhead);
-                  const opacity = clipTransitionOpacity(clip, playhead);
+                  const transition = clipTransitionState(clip, playhead);
                   const layerStyle: React.CSSProperties = {
                     position: 'absolute',
                     inset: 0,
                     width: '100%',
                     height: '100%',
                     objectFit: 'cover',
-                    opacity,
+                    opacity: transition.opacity,
                     zIndex: trackOrder + 1,
-                    transform: `translate(${(transform.x / Math.max(1, timeline?.width || 1920)) * 100}%, ${(transform.y / Math.max(1, timeline?.height || 1080)) * 100}%) scale(${transform.scale}) rotate(${transform.rotation}deg)`,
+                    transform: `translate(${((transform.x / Math.max(1, timeline?.width || 1920)) + transition.x) * 100}%, ${((transform.y / Math.max(1, timeline?.height || 1080)) + transition.y) * 100}%) scale(${transform.scale * transition.scale}) rotate(${transform.rotation}deg)`,
                     transformOrigin: 'center',
                   };
                   if (clip.kind === 'image') {
@@ -642,10 +644,40 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
                       </label>
                     ))}
                   </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <label className="text-[9px] uppercase text-slate-500">Transition In
+                      <select value={selectedClip.transitionIn} onChange={event => patchClip(selectedClip.id, { transitionIn: event.target.value as PhoenixTimelineClip['transitionIn'] })} className="mt-1 min-h-9 w-full rounded border border-white/10 bg-[#0a0d14] px-2 text-[10px] text-white">
+                        <option value="none">None</option><option value="fade">Fade</option><option value="slide-left">Slide Left</option><option value="slide-right">Slide Right</option><option value="zoom">Zoom</option>
+                      </select>
+                    </label>
+                    <label className="text-[9px] uppercase text-slate-500">Transition Out
+                      <select value={selectedClip.transitionOut} onChange={event => patchClip(selectedClip.id, { transitionOut: event.target.value as PhoenixTimelineClip['transitionOut'] })} className="mt-1 min-h-9 w-full rounded border border-white/10 bg-[#0a0d14] px-2 text-[10px] text-white">
+                        <option value="none">None</option><option value="fade">Fade</option><option value="slide-left">Slide Left</option><option value="slide-right">Slide Right</option><option value="zoom">Zoom</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label className="mt-2 block text-[9px] uppercase text-slate-500">Transition Duration
+                    <input type="number" min={0.05} max={5} step={0.05} value={selectedClip.transitionDuration} onChange={event => patchClip(selectedClip.id, { transitionDuration: Math.max(0.05, Number(event.target.value)) })} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-xs text-white" />
+                  </label>
                   <Button size="sm" variant="secondary" className="mt-3 w-full" onClick={addTransformKeyframe}>
                     Keyframe Transform Here
                   </Button>
-                  <div className="mt-2 text-[9px] text-slate-500">{selectedClip.keyframes.length} transform keyframes</div>
+                  <div className="mt-3 space-y-2">
+                    {[...selectedClip.keyframes].sort((a, b) => a.time - b.time).map((frame, index) => (
+                      <div key={frame.time + '-' + index} className="grid grid-cols-[66px_1fr] items-center gap-2">
+                        <span className="font-mono text-[9px] text-slate-500">{frame.time.toFixed(2)}s</span>
+                        <select
+                          value={frame.easing || 'linear'}
+                          onChange={event => patchClip(selectedClip.id, {
+                            keyframes: selectedClip.keyframes.map(item => item === frame ? { ...item, easing: event.target.value as typeof frame.easing } : item),
+                          })}
+                          className="min-h-8 rounded border border-white/10 bg-[#0a0d14] px-2 text-[9px] text-white"
+                        >
+                          <option value="linear">Linear</option><option value="ease-in">Ease In</option><option value="ease-out">Ease Out</option><option value="ease-in-out">Ease In/Out</option><option value="hold">Hold</option>
+                        </select>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 

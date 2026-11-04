@@ -1,6 +1,6 @@
 import {
   activeCaptionAt,
-  clipTransitionOpacity,
+  clipTransitionState,
   clipTransformAt,
   timelineClipDuration,
   timelineDuration,
@@ -82,12 +82,12 @@ function drawVisual(
 ): void {
   const clip = visual.clip;
   const transform = clipTransformAt(clip, timelineTime);
-  const opacity = clipTransitionOpacity(clip, timelineTime);
+  const transition = clipTransitionState(clip, timelineTime);
   ctx.save();
-  ctx.globalAlpha = opacity;
-  ctx.translate(width / 2 + transform.x, height / 2 + transform.y);
+  ctx.globalAlpha = transition.opacity;
+  ctx.translate(width / 2 + transform.x + transition.x * width, height / 2 + transform.y + transition.y * height);
   ctx.rotate((transform.rotation * Math.PI) / 180);
-  ctx.scale(transform.scale, transform.scale);
+  ctx.scale(transform.scale * transition.scale, transform.scale * transition.scale);
   ctx.translate(-width / 2, -height / 2);
 
   if (clip.kind === 'image' && visual.image) {
@@ -176,7 +176,20 @@ async function prepareAudio(
     const gain = context.createGain();
     source.buffer = buffer;
     source.playbackRate.value = Math.max(0.05, clip.playbackRate);
-    gain.gain.value = Math.max(0, Math.min(1, clip.volume));
+    gain.gain.setValueAtTime(Math.max(0, Math.min(1, clip.volume)), context.currentTime + Math.max(0, clip.start));
+    if (clip.transitionIn === 'fade') {
+      gain.gain.setValueAtTime(0, context.currentTime + Math.max(0, clip.start));
+      gain.gain.linearRampToValueAtTime(
+        Math.max(0, Math.min(1, clip.volume)),
+        context.currentTime + Math.max(0, clip.start) + Math.max(0.05, Math.min(clip.transitionDuration || 0.5, timelineClipDuration(clip) / 2)),
+      );
+    }
+    if (clip.transitionOut === 'fade') {
+      const clipEnd = context.currentTime + Math.max(0, clip.start) + timelineClipDuration(clip);
+      const fadeDuration = Math.max(0.05, Math.min(clip.transitionDuration || 0.5, timelineClipDuration(clip) / 2));
+      gain.gain.setValueAtTime(Math.max(0, Math.min(1, clip.volume)), Math.max(context.currentTime, clipEnd - fadeDuration));
+      gain.gain.linearRampToValueAtTime(0, clipEnd);
+    }
     source.connect(gain).connect(destination);
     const offset = Math.max(0, Math.min(clip.inPoint, buffer.duration));
     const span = Math.max(0.01, Math.min(clip.outPoint, buffer.duration) - offset);
