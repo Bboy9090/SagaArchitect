@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { use, useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
@@ -300,6 +300,46 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
       });
     });
     setSelectedClipId(clipId);
+  };
+
+  const startTrimDrag = (
+    clip: PhoenixTimelineClip,
+    edge: 'in' | 'out',
+    event: ReactPointerEvent<HTMLSpanElement>,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!timeline) return;
+
+    const initialTimeline = timeline;
+    const initialX = event.clientX;
+    const initialStart = clip.start;
+    const initialEnd = clip.start + timelineClipDuration(clip);
+    setSelectedClipId(clip.id);
+    setPlaying(false);
+
+    const onPointerMove = (pointerEvent: PointerEvent) => {
+      const delta = (pointerEvent.clientX - initialX) / PIXELS_PER_SECOND;
+      const rawTime = edge === 'in' ? initialStart + delta : initialEnd + delta;
+      const targetTime = snapEditing
+        ? snapTimelineTime(initialTimeline, rawTime, 0.12, clip.id)
+        : rawTime;
+      setTimeline(trimTimelineClipAt(
+        initialTimeline,
+        clip.id,
+        targetTime,
+        edge,
+        rippleEditing,
+      ));
+    };
+
+    const onPointerUp = () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp, { once: true });
   };
 
   const createTrack = (kind: 'video' | 'audio') => {
@@ -825,11 +865,21 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
                             setSelectedClipId(clip.id);
                           }}
                           onClick={() => setSelectedClipId(clip.id)}
-                          className={`absolute top-2 h-16 cursor-grab overflow-hidden rounded border px-2 text-left active:cursor-grabbing ${selectedClipId === clip.id ? 'border-blue-300 bg-blue-500/25' : track.kind === 'audio' ? 'border-violet-400/30 bg-violet-500/15' : 'border-blue-400/30 bg-blue-500/15'}`}
+                          className={`group absolute top-2 h-16 cursor-grab overflow-hidden rounded border px-3 text-left active:cursor-grabbing ${selectedClipId === clip.id ? 'border-blue-300 bg-blue-500/25' : track.kind === 'audio' ? 'border-violet-400/30 bg-violet-500/15' : 'border-blue-400/30 bg-blue-500/15'}`}
                           style={{ left: clip.start * PIXELS_PER_SECOND, width: Math.max(34, clipDuration * PIXELS_PER_SECOND) }}
                         >
+                          <span
+                            role="presentation"
+                            onPointerDown={event => startTrimDrag(clip, 'in', event)}
+                            className="absolute inset-y-0 left-0 w-2 cursor-ew-resize border-r border-white/20 bg-white/5 opacity-60 group-hover:opacity-100"
+                          />
                           <span className="block truncate text-[10px] font-bold text-white">{clip.name}</span>
                           <span className="block text-[9px] text-slate-400">{clipDuration.toFixed(2)}s</span>
+                          <span
+                            role="presentation"
+                            onPointerDown={event => startTrimDrag(clip, 'out', event)}
+                            className="absolute inset-y-0 right-0 w-2 cursor-ew-resize border-l border-white/20 bg-white/5 opacity-60 group-hover:opacity-100"
+                          />
                         </button>
                       );
                     })}
