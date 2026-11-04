@@ -131,6 +131,7 @@ export interface PhoenixVectorHandle {
 export interface PhoenixVectorPoint {
   x: number;
   y: number;
+  pressure?: number;
   in?: PhoenixVectorHandle;
   out?: PhoenixVectorHandle;
 }
