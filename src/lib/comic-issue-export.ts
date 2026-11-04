@@ -176,7 +176,7 @@ export async function createComicIssueCbz(
   <Title>${escapeXml(title || 'Phoenix Comic')}</Title>
   <PageCount>${ordered.length}</PageCount>
   <Format>Digital</Format>
-  <Notes>Exported from Phoenix Creator Bench</Notes>
+  <Notes>Exported from Phoenix Creator Studio</Notes>
 </ComicInfo>`;
   files.push({ name: 'ComicInfo.xml', bytes: textEncoder.encode(comicInfo) });
 
