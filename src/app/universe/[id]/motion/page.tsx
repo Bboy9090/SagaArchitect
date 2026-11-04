@@ -20,6 +20,7 @@ import {
   addClipToTimelineTrack,
   addTimelineTrack,
   clipAudioGainAt,
+  clipSourceAt,
   clipTransitionState,
   clipTransformAt,
   removeEmptyTimelineTrack,
@@ -293,6 +294,19 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
     setStatus(`Added ${asset.name} as a motion overlay at ${playhead.toFixed(2)}s.`);
   };
 
+  const setImageSourceKeyframe = (asset: ProjectAsset) => {
+    if (!selectedClip || selectedClip.kind !== 'image' || !asset.mime_type.startsWith('image/')) return;
+    const localTime = Math.max(0, Math.min(timelineClipDuration(selectedClip), playhead - selectedClip.start));
+    const sourceKeyframes = [...(selectedClip.sourceKeyframes || []).filter(frame => Math.abs(frame.time - localTime) > 0.02), {
+      time: localTime,
+      src: asset.serve_url || `/api/db/assets/${asset.id}/serve`,
+      assetId: asset.id,
+      name: asset.name,
+    }].sort((a, b) => a.time - b.time);
+    patchClip(selectedClip.id, { sourceKeyframes });
+    setStatus(`Set ${asset.name} as a pose/source swap at ${playhead.toFixed(2)}s.`);
+  };
+
   const shiftVisualTrack = (trackId: string, direction: -1 | 1) => {
     setTimeline(current => {
       if (!current) return current;
@@ -468,7 +482,7 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
                   if (clip.kind === 'image') {
                     return (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img key={clip.id} src={clip.src} alt="" style={layerStyle} />
+                      <img key={clip.id} src={clipSourceAt(clip, playhead).src} alt="" style={layerStyle} />
                     );
                   }
                   if (clip.kind === 'video') {
@@ -659,6 +673,41 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
                   <label className="mt-2 block text-[9px] uppercase text-slate-500">Transition Duration
                     <input type="number" min={0.05} max={5} step={0.05} value={selectedClip.transitionDuration} onChange={event => patchClip(selectedClip.id, { transitionDuration: Math.max(0.05, Number(event.target.value)) })} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-xs text-white" />
                   </label>
+                  {selectedClip.kind === 'image' && isDbMode() && (
+                    <div className="mt-3 rounded border border-pink-400/15 bg-pink-400/[0.04] p-3">
+                      <div className="text-[9px] font-bold uppercase tracking-wider text-pink-300">Pose / Mouth Swaps</div>
+                      <p className="mt-1 text-[9px] leading-4 text-slate-500">Choose a project image to switch this clip&apos;s source at the current playhead without splitting the clip.</p>
+                      <div className="mt-2 grid grid-cols-3 gap-1">
+                        {assets.filter(asset => asset.mime_type.startsWith('image/')).slice(0, 12).map(asset => (
+                          <button
+                            key={asset.id}
+                            type="button"
+                            onClick={() => setImageSourceKeyframe(asset)}
+                            className="overflow-hidden rounded border border-white/10 bg-black/20 hover:border-pink-400/40"
+                            title={asset.name}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={asset.serve_url || `/api/db/assets/${asset.id}/serve`} alt="" className="aspect-square w-full object-cover" />
+                          </button>
+                        ))}
+                      </div>
+                      {(selectedClip.sourceKeyframes || []).length > 0 && (
+                        <div className="mt-3 space-y-1">
+                          {[...(selectedClip.sourceKeyframes || [])].sort((a, b) => a.time - b.time).map((frame, index) => (
+                            <div key={frame.time + '-' + index} className="flex items-center justify-between gap-2 rounded border border-white/5 bg-black/10 px-2 py-1">
+                              <button type="button" onClick={() => setPlayhead(selectedClip.start + frame.time)} className="min-w-0 flex-1 truncate text-left text-[9px] text-slate-400">
+                                {frame.time.toFixed(2)}s · {frame.name || 'Image swap'}
+                              </button>
+                              <Button size="sm" variant="ghost" onClick={() => patchClip(selectedClip.id, {
+                                sourceKeyframes: (selectedClip.sourceKeyframes || []).filter(item => item !== frame),
+                              })}>×</Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="mt-3 rounded border border-cyan-400/15 bg-cyan-400/[0.04] p-3">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[9px] font-bold uppercase tracking-wider text-cyan-300">Depth Parallax</span>

@@ -22,6 +22,13 @@ export interface PhoenixAudioGainKeyframe {
   easing?: PhoenixKeyframeEasing;
 }
 
+export interface PhoenixSourceKeyframe {
+  time: number;
+  src: string;
+  assetId?: string;
+  name?: string;
+}
+
 export interface PhoenixClipTransitionState {
   opacity: number;
   x: number;
@@ -70,6 +77,7 @@ export interface PhoenixTimelineClip {
   transform: PhoenixClipTransform;
   keyframes: PhoenixClipKeyframe[];
   gainKeyframes?: PhoenixAudioGainKeyframe[];
+  sourceKeyframes?: PhoenixSourceKeyframe[];
   parallax?: PhoenixClipParallax;
   createdAt: string;
 }
@@ -407,6 +415,21 @@ export function clipAudioGainAt(clip: PhoenixTimelineClip, timelineTime: number)
   if (clip.transitionIn === 'fade' && localTime < transitionDuration) gain *= localTime / transitionDuration;
   if (clip.transitionOut === 'fade' && duration - localTime < transitionDuration) gain *= (duration - localTime) / transitionDuration;
   return Math.max(0, Math.min(1, gain));
+}
+
+
+export function clipSourceAt(
+  clip: PhoenixTimelineClip,
+  timelineTime: number,
+): { src: string; assetId?: string; name?: string } {
+  const localTime = Math.max(0, timelineTime - clip.start);
+  const frames = [...(clip.sourceKeyframes || [])].sort((a, b) => a.time - b.time);
+  let resolved = { src: clip.src, assetId: clip.assetId, name: clip.name };
+  for (const frame of frames) {
+    if (frame.time > localTime) break;
+    resolved = { src: frame.src, assetId: frame.assetId, name: frame.name || clip.name };
+  }
+  return resolved;
 }
 
 export function activeCaptionAt(timeline: PhoenixVideoTimeline, time: number): PhoenixCaptionCue | null {
