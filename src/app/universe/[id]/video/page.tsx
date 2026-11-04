@@ -84,6 +84,7 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState('');
   const [captionText, setCaptionText] = useState('');
+  const [markerLabel, setMarkerLabel] = useState('');
   const [rendering, setRendering] = useState(false);
   const [renderProgress, setRenderProgress] = useState(0);
   const [snapEditing, setSnapEditing] = useState(true);
@@ -312,6 +313,29 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
   const deleteEmptyTrack = (trackId: string) => {
     setTimeline(current => current ? removeEmptyTimelineTrack(current, trackId) : current);
     if (selectedTrackId === trackId) setSelectedTrackId('');
+  };
+
+  const addMarker = () => {
+    if (!timeline) return;
+    const label = markerLabel.trim() || `Marker ${(timeline.markers || []).length + 1}`;
+    setTimeline(current => current ? ({
+      ...current,
+      markers: [...(current.markers || []), {
+        id: crypto.randomUUID(),
+        time: Math.max(0, playhead),
+        label,
+      }].sort((a, b) => a.time - b.time),
+      updatedAt: new Date().toISOString(),
+    }) : current);
+    setMarkerLabel('');
+  };
+
+  const removeMarker = (markerId: string) => {
+    setTimeline(current => current ? ({
+      ...current,
+      markers: (current.markers || []).filter(marker => marker.id !== markerId),
+      updatedAt: new Date().toISOString(),
+    }) : current);
   };
 
   const addCaption = () => {
@@ -675,6 +699,20 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
                     {second}s
                   </span>
                 ))}
+                {(timeline.markers || []).map(marker => (
+                  <button
+                    key={marker.id}
+                    type="button"
+                    title={marker.label}
+                    onClick={() => {
+                      setPlaying(false);
+                      setPlayhead(marker.time);
+                    }}
+                    className="absolute top-3 z-20 h-3 w-3 -translate-x-1/2 rotate-45 border border-amber-300 bg-amber-400/80"
+                    style={{ left: 112 + marker.time * PIXELS_PER_SECOND }}
+                    aria-label={`Go to marker ${marker.label}`}
+                  />
+                ))}
               </div>
               {[...timeline.tracks].sort((a,b) => a.order-b.order).map(track => (
                 <div key={track.id} className="relative flex h-20 border-b border-white/5">
@@ -723,6 +761,39 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
         </main>
 
         <aside className="border-l border-white/10 bg-[#070b15] p-4">
+          <div className="mb-6">
+            <p className="mb-3 text-[10px] font-black uppercase tracking-[.3em] text-amber-300/70">Markers</p>
+            <input
+              value={markerLabel}
+              onChange={event => setMarkerLabel(event.target.value)}
+              placeholder="Marker label"
+              className="min-h-10 w-full rounded border border-white/10 bg-black/20 px-2 text-sm text-white"
+            />
+            <Button size="sm" variant="secondary" className="mt-2 w-full" onClick={addMarker}>
+              Add Marker at {playhead.toFixed(2)}s
+            </Button>
+            {(timeline.markers || []).length > 0 && (
+              <div className="mt-3 space-y-1">
+                {[...(timeline.markers || [])].sort((a, b) => a.time - b.time).map(marker => (
+                  <div key={marker.id} className="flex items-center gap-2 rounded border border-white/5 bg-black/10 p-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPlaying(false);
+                        setPlayhead(marker.time);
+                      }}
+                      className="min-w-0 flex-1 text-left"
+                    >
+                      <span className="block truncate text-[10px] font-bold text-white">{marker.label}</span>
+                      <span className="block font-mono text-[9px] text-slate-500">{marker.time.toFixed(2)}s</span>
+                    </button>
+                    <Button size="sm" variant="ghost" onClick={() => removeMarker(marker.id)}>×</Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="mb-6">
             <p className="mb-3 text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Caption</p>
             <textarea
