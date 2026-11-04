@@ -56,6 +56,12 @@ export interface PhoenixCaptionCue {
   background: string;
 }
 
+export interface PhoenixTimelineMarker {
+  id: string;
+  time: number;
+  label: string;
+}
+
 export interface PhoenixTimelineClip {
   id: string;
   trackId: string;
@@ -109,6 +115,7 @@ export interface PhoenixVideoTimeline {
   fps: number;
   tracks: PhoenixTimelineTrack[];
   captions: PhoenixCaptionCue[];
+  markers?: PhoenixTimelineMarker[];
   createdAt: string;
   updatedAt: string;
 }
@@ -129,6 +136,7 @@ export function createPhoenixVideoTimeline(projectId: string): PhoenixVideoTimel
       { id: crypto.randomUUID(), name: 'Audio 1', kind: 'audio', order: 1, clips: [] },
     ],
     captions: [],
+    markers: [],
     createdAt: now,
     updatedAt: now,
   };
@@ -148,6 +156,7 @@ export function loadPhoenixVideoTimeline(projectId: string): PhoenixVideoTimelin
     return {
       ...parsed,
       captions: Array.isArray(parsed.captions) ? parsed.captions : [],
+      markers: Array.isArray(parsed.markers) ? parsed.markers : [],
       tracks: parsed.tracks.map(track => ({
         ...track,
         clips: track.clips.map(clip => ({
@@ -510,6 +519,9 @@ export function timelineEditPoints(
   for (const cue of timeline.captions) {
     points.add(Math.max(0, cue.start));
     points.add(Math.max(0, cue.end));
+  }
+  for (const marker of timeline.markers || []) {
+    points.add(Math.max(0, marker.time));
   }
   return [...points].filter(Number.isFinite).sort((a, b) => a - b);
 }
