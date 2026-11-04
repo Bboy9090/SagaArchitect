@@ -518,7 +518,8 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
                     width: '100%',
                     height: '100%',
                     objectFit: 'cover',
-                    opacity: transition.opacity,
+                    opacity: transition.opacity * Math.max(0, Math.min(1, clip.opacity ?? 1)),
+                    mixBlendMode: clip.blendMode || 'normal',
                     zIndex: trackOrder + 1,
                     transform: `translate(${((transform.x / Math.max(1, timeline?.width || 1920)) + transition.x) * 100}%, ${((transform.y / Math.max(1, timeline?.height || 1080)) + transition.y) * 100}%) scale(${transform.scale * transition.scale}) rotate(${transform.rotation}deg)`,
                     transformOrigin: 'center',
@@ -713,6 +714,34 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
               {selectedClip && selectedClip.kind !== 'audio' && (
                 <div className="mt-5 rounded-xl border border-violet-400/15 bg-violet-400/[0.04] p-3">
                   <div className="text-xs font-bold text-violet-100">Motion Layer</div>
+                  <div className="mt-3 rounded border border-fuchsia-400/15 bg-fuchsia-400/[0.04] p-2">
+                    <div className="text-[9px] font-bold uppercase tracking-wider text-fuchsia-300">Compositing</div>
+                    <label className="mt-2 block text-[9px] uppercase text-slate-500">Opacity {Math.round((selectedClip.opacity ?? 1) * 100)}%
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={selectedClip.opacity ?? 1}
+                        disabled={selectedClipLocked}
+                        onChange={event => patchClip(selectedClip.id, { opacity: Number(event.target.value) })}
+                        className="mt-1 w-full"
+                      />
+                    </label>
+                    <select
+                      value={selectedClip.blendMode || 'normal'}
+                      disabled={selectedClipLocked}
+                      onChange={event => patchClip(selectedClip.id, { blendMode: event.target.value as NonNullable<PhoenixTimelineClip['blendMode']> })}
+                      className="mt-2 min-h-9 w-full rounded border border-white/10 bg-[#0a0d14] px-2 text-[10px] text-white"
+                    >
+                      <option value="normal">Normal</option>
+                      <option value="multiply">Multiply</option>
+                      <option value="screen">Screen</option>
+                      <option value="overlay">Overlay</option>
+                      <option value="darken">Darken</option>
+                      <option value="lighten">Lighten</option>
+                    </select>
+                  </div>
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     {(['scale', 'x', 'y', 'rotation'] as const).map(key => (
                       <label key={key} className="text-[9px] uppercase text-slate-500">{key}
