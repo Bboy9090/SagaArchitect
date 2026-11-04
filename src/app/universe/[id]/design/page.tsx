@@ -82,6 +82,19 @@ const PRESETS = [
   { id: 'comic-page', label: 'Comic Page', width: 1650, height: 2550 },
 ] as const;
 
+const FONT_PRESETS = [
+  { label: 'Arial', value: 'Arial, sans-serif' },
+  { label: 'Helvetica', value: 'Helvetica, Arial, sans-serif' },
+  { label: 'Georgia', value: 'Georgia, serif' },
+  { label: 'Times New Roman', value: '"Times New Roman", Times, serif' },
+  { label: 'Trebuchet MS', value: '"Trebuchet MS", Arial, sans-serif' },
+  { label: 'Verdana', value: 'Verdana, Geneva, sans-serif' },
+  { label: 'Courier New', value: '"Courier New", Courier, monospace' },
+  { label: 'System UI', value: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
+] as const;
+
+const FONT_WEIGHTS = [300, 400, 500, 600, 700, 800, 900] as const;
+
 function escapeXml(value: string): string {
   return value.replace(/[<>&'"]/g, char => ({
     '<': '&lt;',
@@ -918,6 +931,27 @@ export default function DesignStudioPage({ params }: DesignStudioPageProps) {
                     </label>
                     <label className="text-[10px] uppercase text-slate-500">Size
                       <input type="number" min={8} max={300} value={selected.fontSize} onChange={event => patchLayer({ fontSize: Number(event.target.value) } as Partial<PhoenixMediaLayer>)} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                    </label>
+                    <label className="col-span-2 text-[10px] uppercase text-slate-500">Font family
+                      <select
+                        value={FONT_PRESETS.some(font => font.value === selected.fontFamily) ? selected.fontFamily : ''}
+                        onChange={event => {
+                          if (event.target.value) patchLayer({ fontFamily: event.target.value } as Partial<PhoenixMediaLayer>);
+                        }}
+                        className="mt-1 min-h-10 w-full rounded border border-white/10 bg-[#0a0d14] px-2 text-xs text-white"
+                      >
+                        <option value="" disabled>Custom: {selected.fontFamily}</option>
+                        {FONT_PRESETS.map(font => <option key={font.value} value={font.value}>{font.label}</option>)}
+                      </select>
+                    </label>
+                    <label className="col-span-2 text-[10px] uppercase text-slate-500">Font weight
+                      <select
+                        value={selected.fontWeight}
+                        onChange={event => patchLayer({ fontWeight: Number(event.target.value) } as Partial<PhoenixMediaLayer>)}
+                        className="mt-1 min-h-10 w-full rounded border border-white/10 bg-[#0a0d14] px-2 text-xs text-white"
+                      >
+                        {FONT_WEIGHTS.map(weight => <option key={weight} value={weight}>{weight}</option>)}
+                      </select>
                     </label>
                     <label className="text-[10px] uppercase text-slate-500">Line height
                       <input type="number" min={0.5} max={4} step={0.05} value={selected.lineHeight ?? 1.08} onChange={event => patchLayer({ lineHeight: Number(event.target.value) } as Partial<PhoenixMediaLayer>)} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
