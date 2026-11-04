@@ -1,5 +1,6 @@
 import {
   activeCaptionAt,
+  clipAudioGainAt,
   clipTransitionState,
   clipTransformAt,
   timelineClipDuration,
@@ -176,20 +177,19 @@ async function prepareAudio(
     const gain = context.createGain();
     source.buffer = buffer;
     source.playbackRate.value = Math.max(0.05, clip.playbackRate);
-    gain.gain.setValueAtTime(Math.max(0, Math.min(1, clip.volume)), context.currentTime + Math.max(0, clip.start));
-    if (clip.transitionIn === 'fade') {
-      gain.gain.setValueAtTime(0, context.currentTime + Math.max(0, clip.start));
-      gain.gain.linearRampToValueAtTime(
-        Math.max(0, Math.min(1, clip.volume)),
-        context.currentTime + Math.max(0, clip.start) + Math.max(0.05, Math.min(clip.transitionDuration || 0.5, timelineClipDuration(clip) / 2)),
+    const scheduledStart = context.currentTime + Math.max(0, clip.start);
+    const clipDuration = timelineClipDuration(clip);
+    const sampleStep = 1 / 30;
+    for (let localTime = 0; localTime < clipDuration; localTime += sampleStep) {
+      gain.gain.setValueAtTime(
+        clipAudioGainAt(clip, clip.start + localTime),
+        scheduledStart + localTime,
       );
     }
-    if (clip.transitionOut === 'fade') {
-      const clipEnd = context.currentTime + Math.max(0, clip.start) + timelineClipDuration(clip);
-      const fadeDuration = Math.max(0.05, Math.min(clip.transitionDuration || 0.5, timelineClipDuration(clip) / 2));
-      gain.gain.setValueAtTime(Math.max(0, Math.min(1, clip.volume)), Math.max(context.currentTime, clipEnd - fadeDuration));
-      gain.gain.linearRampToValueAtTime(0, clipEnd);
-    }
+    gain.gain.setValueAtTime(
+      clipAudioGainAt(clip, clip.start + clipDuration),
+      scheduledStart + clipDuration,
+    );
     source.connect(gain).connect(destination);
     const offset = Math.max(0, Math.min(clip.inPoint, buffer.duration));
     const span = Math.max(0.01, Math.min(clip.outPoint, buffer.duration) - offset);

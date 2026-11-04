@@ -16,6 +16,7 @@ import {
   addTimelineTrack,
   clipAudioGainAt,
   clipTransitionState,
+  clipVolumeAutomationAt,
   clipTransformAt,
   createPhoenixVideoTimeline,
   loadPhoenixVideoTimeline,
@@ -290,6 +291,18 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
       easing: 'ease-in-out' as const,
     }].sort((a,b) => a.time-b.time);
     patchClip(selectedClip.id, { keyframes: frames });
+  };
+
+  const addAudioGainKeyframe = () => {
+    if (!selectedClip || selectedClip.kind !== 'audio') return;
+    const localTime = Math.max(0, playhead - selectedClip.start);
+    const gain = clipVolumeAutomationAt(selectedClip, playhead);
+    const gainKeyframes = [...(selectedClip.gainKeyframes || []).filter(frame => Math.abs(frame.time - localTime) > 0.02), {
+      time: localTime,
+      gain,
+      easing: 'ease-in-out' as const,
+    }].sort((a, b) => a.time - b.time);
+    patchClip(selectedClip.id, { gainKeyframes });
   };
 
   const deleteClip = () => {
@@ -645,7 +658,56 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
                 <input type="range" min={0} max={1} step={0.01} value={selectedClip.volume} onChange={event => patchClip(selectedClip.id,{volume:Number(event.target.value)})} className="mt-1 w-full" />
               </label>
 
-              {selectedClip.kind === 'audio' && <AudioWaveform src={selectedClip.src} />}
+              {selectedClip.kind === 'audio' && (
+                <>
+                  <AudioWaveform src={selectedClip.src} />
+                  <div className="rounded-lg border border-emerald-400/15 bg-emerald-400/[0.04] p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-300">Gain Automation</span>
+                      <Button size="sm" variant="ghost" onClick={addAudioGainKeyframe}>+ Keyframe</Button>
+                    </div>
+                    {(selectedClip.gainKeyframes || []).length === 0 ? (
+                      <p className="mt-2 text-[10px] leading-4 text-slate-500">Add volume keyframes at the playhead for dialogue rides, music ducks, and SFX emphasis.</p>
+                    ) : (
+                      <div className="mt-3 space-y-2">
+                        {[...(selectedClip.gainKeyframes || [])].sort((a, b) => a.time - b.time).map((frame, index) => (
+                          <div key={frame.time + '-' + index} className="grid grid-cols-[58px_70px_1fr_auto] items-center gap-2 rounded border border-white/5 bg-black/10 p-2">
+                            <span className="font-mono text-[9px] text-slate-500">{frame.time.toFixed(2)}s</span>
+                            <input
+                              type="number"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={frame.gain}
+                              onChange={event => patchClip(selectedClip.id, {
+                                gainKeyframes: (selectedClip.gainKeyframes || []).map(item => item === frame ? { ...item, gain: Math.max(0, Math.min(1, Number(event.target.value))) } : item),
+                              })}
+                              className="min-w-0 rounded border border-white/10 bg-black/20 p-1 text-[10px] text-white"
+                              aria-label={'Gain keyframe ' + (index + 1)}
+                            />
+                            <select
+                              value={frame.easing || 'linear'}
+                              onChange={event => patchClip(selectedClip.id, {
+                                gainKeyframes: (selectedClip.gainKeyframes || []).map(item => item === frame ? { ...item, easing: event.target.value as typeof frame.easing } : item),
+                              })}
+                              className="min-h-8 min-w-0 rounded border border-white/10 bg-[#0a0d14] px-2 text-[9px] text-white"
+                            >
+                              <option value="linear">Linear</option>
+                              <option value="ease-in">Ease In</option>
+                              <option value="ease-out">Ease Out</option>
+                              <option value="ease-in-out">Ease In/Out</option>
+                              <option value="hold">Hold</option>
+                            </select>
+                            <Button size="sm" variant="ghost" onClick={() => patchClip(selectedClip.id, {
+                              gainKeyframes: (selectedClip.gainKeyframes || []).filter(item => item !== frame),
+                            })}>×</Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
 
               <div className="grid grid-cols-2 gap-2">
                 <label className="text-[10px] uppercase text-slate-500">Transition In
