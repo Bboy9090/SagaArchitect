@@ -29,6 +29,7 @@ import {
   type PhoenixDocumentHistory,
 } from '@/lib/media-history';
 import { downloadMediaBlob, exportPhoenixMediaDocument } from '@/lib/media-renderer';
+import { generateColorHarmony, normalizeHexColor, type PhoenixColorHarmony } from '@/lib/color-harmony';
 import type { Universe } from '@/lib/types';
 
 interface IllustrationStudioPageProps {
@@ -58,6 +59,8 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
   const [brushOpacity, setBrushOpacity] = useState(BRUSH_PRESETS.ink.opacity);
   const [brushTexture, setBrushTexture] = useState<RasterBrushTexture>('smooth');
   const [textureStrength, setTextureStrength] = useState(0.5);
+  const [colorHarmony, setColorHarmony] = useState<PhoenixColorHarmony>('complementary');
+  const [colorHarmonyBase, setColorHarmonyBase] = useState('#F8FAFC');
   const [eraseMode, setEraseMode] = useState(false);
   const [vectorInkMode, setVectorInkMode] = useState(false);
   const [vectorInkColor, setVectorInkColor] = useState('#f8fafc');
@@ -288,6 +291,29 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
 
   const scale = Math.min(0.72, 800 / Math.max(document.width, document.height));
   const imageAssets = assets.filter(asset => asset.mime_type.startsWith('image/'));
+  const harmonyColors = generateColorHarmony(colorHarmonyBase, colorHarmony);
+
+  const applyPaletteColor = (color: string) => {
+    const normalized = normalizeHexColor(color);
+    setBrushColor(normalized);
+    setVectorInkColor(normalized);
+    setColorHarmonyBase(normalized);
+  };
+
+  const addPaletteColor = (color: string) => {
+    const normalized = normalizeHexColor(color);
+    updateDocument(current => ({
+      ...current,
+      palette: [...new Set([...(current.palette || []), normalized])].slice(0, 32),
+    }));
+  };
+
+  const removePaletteColor = (color: string) => {
+    updateDocument(current => ({
+      ...current,
+      palette: (current.palette || []).filter(entry => entry !== color),
+    }));
+  };
 
   return (
     <Navigation>
@@ -402,6 +428,70 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
                 </Button>
               </div>
             </div>
+          </div>
+
+          <div className="mt-6 rounded-xl border border-emerald-400/15 bg-emerald-400/[0.03] p-3">
+            <div className="text-[10px] font-black uppercase tracking-[.22em] text-emerald-300/70">Color Assistant</div>
+            <div className="mt-3 grid grid-cols-[48px_1fr] gap-2">
+              <input
+                type="color"
+                value={colorHarmonyBase}
+                onChange={event => setColorHarmonyBase(normalizeHexColor(event.target.value))}
+                className="h-11 w-12 rounded border border-white/10 bg-black/20 p-1"
+                aria-label="Harmony base color"
+              />
+              <select
+                value={colorHarmony}
+                onChange={event => setColorHarmony(event.target.value as PhoenixColorHarmony)}
+                className="min-h-11 rounded border border-white/10 bg-[#0a0d14] px-3 text-xs text-white"
+              >
+                <option value="complementary">Complementary</option>
+                <option value="analogous">Analogous</option>
+                <option value="triadic">Triadic</option>
+                <option value="split-complementary">Split Complementary</option>
+                <option value="monochrome">Monochrome</option>
+              </select>
+            </div>
+            <div className="mt-3 grid grid-cols-5 gap-1">
+              {harmonyColors.map(color => (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => applyPaletteColor(color)}
+                  onDoubleClick={() => addPaletteColor(color)}
+                  className="aspect-square rounded border border-white/10"
+                  style={{ background: color }}
+                  title={`${color} · click to use · double-click to save`}
+                  aria-label={`Use color ${color}`}
+                />
+              ))}
+            </div>
+            <div className="mt-2 text-[9px] leading-4 text-slate-500">Click a swatch to use it for raster + vector ink. Double-click to save it to the project palette.</div>
+            {(document.palette || []).length > 0 && (
+              <div className="mt-3">
+                <div className="mb-2 text-[9px] font-bold uppercase tracking-wider text-slate-500">Saved Palette</div>
+                <div className="grid grid-cols-4 gap-2">
+                  {(document.palette || []).map(color => (
+                    <div key={color} className="rounded border border-white/10 bg-black/10 p-1">
+                      <button
+                        type="button"
+                        onClick={() => applyPaletteColor(color)}
+                        className="aspect-square w-full rounded"
+                        style={{ background: color }}
+                        aria-label={`Use saved color ${color}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removePaletteColor(color)}
+                        className="mt-1 w-full text-[9px] text-slate-500 hover:text-rose-300"
+                      >
+                        remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="mt-6 grid grid-cols-1 gap-2">
@@ -649,7 +739,7 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
               Pressure-aware raster painting, smooth/marker/chalk/spray textures, smoothing, symmetry, adjustable one-point/two-point
               perspective guides, independently styled editable vector ink, reference layers, undo/redo, autosave, and PNG export are active.
-              Pose tools and advanced color assistance are next.
+              Project color harmonies and saved palettes are active. Pose tools and pressure-aware vector tapering are next.
             </p>
           </div>
         </aside>
