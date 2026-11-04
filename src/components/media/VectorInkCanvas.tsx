@@ -14,6 +14,7 @@ interface VectorInkCanvasProps {
   stroke: string;
   strokeWidth: number;
   stabilization?: number;
+  pressureSensitivity?: number;
   onSelect: () => void;
   onCommitStroke: (points: PhoenixVectorPoint[]) => void;
 }
@@ -25,6 +26,7 @@ export function VectorInkCanvas({
   stroke,
   strokeWidth,
   stabilization = 0,
+  pressureSensitivity = 1,
   onSelect,
   onCommitStroke,
 }: VectorInkCanvasProps) {
@@ -40,9 +42,13 @@ export function VectorInkCanvas({
   const point = (event: React.PointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current!;
     const rect = svg.getBoundingClientRect();
+    const rawPressure = event.pressure && event.pressure > 0 ? event.pressure : 0.5;
+    const sensitivity = Math.max(0, Math.min(1, pressureSensitivity));
+    const pressure = 0.5 + (rawPressure - 0.5) * sensitivity;
     return {
       x: ((event.clientX - rect.left) / rect.width) * layer.transform.width,
       y: ((event.clientY - rect.top) / rect.height) * layer.transform.height,
+      pressure,
     };
   };
 
@@ -77,6 +83,8 @@ export function VectorInkCanvas({
         return {
           x: point.x * (1 - weight * 2) + (previous.x + next.x) * weight,
           y: point.y * (1 - weight * 2) + (previous.y + next.y) * weight,
+          pressure: (point.pressure ?? 0.5) * (1 - weight * 2)
+            + ((previous.pressure ?? 0.5) + (next.pressure ?? 0.5)) * weight,
         };
       });
     }
@@ -122,18 +130,46 @@ export function VectorInkCanvas({
           strokeLinejoin="round"
         />
       )}
-      {(layer.contours || []).map(contour => (
-        <path
-          key={contour.id}
-          d={vectorContourSvgD(contour.points, contour.closed)}
-          fill="none"
-          stroke={contour.stroke || layer.stroke || stroke}
-          strokeWidth={contour.strokeWidth || layer.strokeWidth || strokeWidth}
-          opacity={Number.isFinite(contour.opacity) ? contour.opacity : 1}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      ))}
+      {(layer.contours || []).map(contour => {
+        const baseWidth = contour.strokeWidth || layer.strokeWidth || strokeWidth;
+        const contourStroke = contour.stroke || layer.stroke || stroke;
+        const opacity = Number.isFinite(contour.opacity) ? contour.opacity : 1;
+        const hasPressure = contour.points.some(point => Number.isFinite(point.pressure));
+        if (!hasPressure) {
+          return (
+            <path
+              key={contour.id}
+              d={vectorContourSvgD(contour.points, contour.closed)}
+              fill="none"
+              stroke={contourStroke}
+              strokeWidth={baseWidth}
+              opacity={opacity}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          );
+        }
+        return (
+          <g key={contour.id} opacity={opacity}>
+            {contour.points.slice(1).map((point, index) => {
+              const previous = contour.points[index];
+              const pressure = ((previous.pressure ?? 0.5) + (point.pressure ?? 0.5)) / 2;
+              return (
+                <line
+                  key={index}
+                  x1={previous.x}
+                  y1={previous.y}
+                  x2={point.x}
+                  y2={point.y}
+                  stroke={contourStroke}
+                  strokeWidth={Math.max(0.5, baseWidth * (0.35 + pressure))}
+                  strokeLinecap="round"
+                />
+              );
+            })}
+          </g>
+        );
+      })}
     </svg>
   );
 }
