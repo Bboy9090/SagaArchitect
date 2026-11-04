@@ -19,11 +19,11 @@ import {
   activeCaptionAt,
   addClipToTimelineTrack,
   addTimelineTrack,
-  clipAudioGainAt,
   clipSourceAt,
   clipTransitionState,
   clipTransformAt,
   removeEmptyTimelineTrack,
+  timelineClipAudioGainAt,
   timelineClipDuration,
   timelineDuration,
   savePhoenixVideoTimeline,
@@ -186,11 +186,11 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
         audio.currentTime = Math.min(sourceTime, Math.max(0, audio.duration - 0.05));
       }
       audio.playbackRate = clip.playbackRate;
-      audio.volume = clipAudioGainAt(clip, playhead);
+      audio.volume = timeline ? timelineClipAudioGainAt(timeline, clip, playhead) : Math.max(0, Math.min(1, clip.volume));
       if (playing) void audio.play().catch(() => undefined);
       else audio.pause();
     }
-  }, [activeAudioClips, playhead, playing]);
+  }, [activeAudioClips, playhead, playing, timeline]);
 
   const generateFromStoryboard = () => {
       if (!scene) return;

@@ -1,7 +1,7 @@
 import {
   activeCaptionAt,
-  clipAudioGainAt,
   clipSourceAt,
+  timelineClipAudioGainAt,
   clipTransitionState,
   clipTransformAt,
   timelineClipDuration,
@@ -189,12 +189,12 @@ async function prepareAudio(
     const sampleStep = 1 / 30;
     for (let localTime = 0; localTime < clipDuration; localTime += sampleStep) {
       gain.gain.setValueAtTime(
-        clipAudioGainAt(clip, clip.start + localTime),
+        timelineClipAudioGainAt(timeline, clip, clip.start + localTime),
         scheduledStart + localTime,
       );
     }
     gain.gain.setValueAtTime(
-      clipAudioGainAt(clip, clip.start + clipDuration),
+      timelineClipAudioGainAt(timeline, clip, clip.start + clipDuration),
       scheduledStart + clipDuration,
     );
     source.connect(gain).connect(destination);
