@@ -67,6 +67,7 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
   const [vectorInkColor, setVectorInkColor] = useState('#f8fafc');
   const [vectorInkWidth, setVectorInkWidth] = useState(8);
   const [vectorInkOpacity, setVectorInkOpacity] = useState(1);
+  const [vectorPressureSensitivity, setVectorPressureSensitivity] = useState(1);
   const [stabilization, setStabilization] = useState(0.35);
   const [symmetry, setSymmetry] = useState<SymmetryMode>('none');
   const [perspectiveMode, setPerspectiveMode] = useState<PerspectiveGuideMode>('off');
@@ -457,6 +458,9 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
                 <label className="block text-[10px] uppercase text-slate-500">Ink opacity {Math.round(vectorInkOpacity * 100)}%
                   <input type="range" min={0.05} max={1} step={0.05} value={vectorInkOpacity} onChange={event => setVectorInkOpacity(Number(event.target.value))} className="mt-1 w-full" />
                 </label>
+                <label className="block text-[10px] uppercase text-slate-500">Pressure sensitivity {Math.round(vectorPressureSensitivity * 100)}%
+                  <input type="range" min={0} max={1} step={0.05} value={vectorPressureSensitivity} onChange={event => setVectorPressureSensitivity(Number(event.target.value))} className="mt-1 w-full" />
+                </label>
                 <Button className="w-full" size="sm" variant={vectorInkMode ? 'gold' : 'ghost'} onClick={() => setVectorInkMode(value => !value)}>
                   {vectorInkMode ? 'Vector Ink On' : 'Vector Ink Mode'}
                 </Button>
@@ -657,6 +661,7 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
                         stroke={vectorInkColor}
                         strokeWidth={vectorInkWidth}
                         stabilization={stabilization}
+                        pressureSensitivity={vectorPressureSensitivity}
                         onSelect={() => setSelectedLayerId(layer.id)}
                         onCommitStroke={points => {
                           if (!vectorInkMode) return;
@@ -783,7 +788,8 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
               Pressure-aware raster painting, smooth/marker/chalk/spray textures, smoothing, symmetry, adjustable one-point/two-point
               perspective guides, independently styled editable vector ink, reference layers, undo/redo, autosave, and PNG export are active.
-              Project color harmonies, saved palettes, and vector pose construction guides are active. Pressure-aware vector tapering is next.
+              Project color harmonies, saved palettes, vector pose construction guides, and pressure-aware tapered vector ink are active.
+              Advanced pose editing and custom brush libraries are next.
             </p>
           </div>
         </aside>
