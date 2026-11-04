@@ -30,6 +30,7 @@ import {
 } from '@/lib/media-history';
 import { downloadMediaBlob, exportPhoenixMediaDocument } from '@/lib/media-renderer';
 import { generateColorHarmony, normalizeHexColor, type PhoenixColorHarmony } from '@/lib/color-harmony';
+import { createPoseGuide, type PhoenixPoseGuidePreset } from '@/lib/pose-guides';
 import type { Universe } from '@/lib/types';
 
 interface IllustrationStudioPageProps {
@@ -218,6 +219,39 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
         ? layer
         : { ...layer, points: [] }),
     }));
+  };
+
+  const addPoseGuide = (preset: PhoenixPoseGuidePreset) => {
+    if (!document) return;
+    const definition = createPoseGuide(preset, document.width, document.height);
+    const layerId = crypto.randomUUID();
+    const layer: PhoenixPathLayer = {
+      id: layerId,
+      type: 'path',
+      name: `Pose Guide: ${definition.label}`,
+      visible: true,
+      locked: false,
+      opacity: 0.55,
+      blendMode: 'normal',
+      zIndex: nextLayerZIndex(document.layers),
+      transform: { x: 0, y: 0, width: document.width, height: document.height, rotation: 0 },
+      points: [],
+      contours: definition.contours.map(contour => ({
+        ...contour,
+        id: crypto.randomUUID(),
+        stroke: '#22D3EE',
+        strokeWidth: 3,
+        opacity: 0.9,
+      })),
+      closed: false,
+      fill: 'transparent',
+      stroke: '#22D3EE',
+      strokeWidth: 3,
+    };
+    updateDocument(current => ({ ...current, layers: [...current.layers, layer] }));
+    setSelectedLayerId(layerId);
+    setVectorInkMode(false);
+    setEraseMode(false);
   };
 
   const addReferenceLayer = (asset: ProjectAsset) => {
@@ -494,6 +528,16 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
             )}
           </div>
 
+          <div className="mt-6 rounded-xl border border-cyan-400/15 bg-cyan-400/[0.03] p-3">
+            <div className="text-[10px] font-black uppercase tracking-[.22em] text-cyan-300/70">Pose Guides</div>
+            <div className="mt-3 grid grid-cols-3 gap-1">
+              <Button size="sm" variant="ghost" onClick={() => addPoseGuide('front')}>Front</Button>
+              <Button size="sm" variant="ghost" onClick={() => addPoseGuide('action')}>Action</Button>
+              <Button size="sm" variant="ghost" onClick={() => addPoseGuide('run')}>Run</Button>
+            </div>
+            <p className="mt-2 text-[9px] leading-4 text-slate-500">Adds a normal vector construction layer you can hide, lock, restyle, or delete without touching paint.</p>
+          </div>
+
           <div className="mt-6 grid grid-cols-1 gap-2">
             <Button className="w-full" size="sm" variant="secondary" onClick={addPaintLayer}>+ Paint Layer</Button>
             <Button className="w-full" size="sm" variant="secondary" onClick={addVectorInkLayer}>+ Vector Ink Layer</Button>
@@ -739,7 +783,7 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
               Pressure-aware raster painting, smooth/marker/chalk/spray textures, smoothing, symmetry, adjustable one-point/two-point
               perspective guides, independently styled editable vector ink, reference layers, undo/redo, autosave, and PNG export are active.
-              Project color harmonies and saved palettes are active. Pose tools and pressure-aware vector tapering are next.
+              Project color harmonies, saved palettes, and vector pose construction guides are active. Pressure-aware vector tapering is next.
             </p>
           </div>
         </aside>
