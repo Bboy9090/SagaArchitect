@@ -231,6 +231,15 @@ export async function dbUploadAsset(projectId: string, file: File): Promise<Proj
   return handleResponse<ProjectAsset>(res);
 }
 
+export async function dbRenameAsset(assetId: string, name: string): Promise<ProjectAsset> {
+  const res = await fetch(`/api/db/assets/${assetId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  return handleResponse<ProjectAsset>(res);
+}
+
 export async function dbDeleteAsset(assetId: string): Promise<void> {
   const res = await fetch(`/api/db/assets/${assetId}`, {
     method: 'DELETE',

@@ -67,13 +67,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (existing && expectedVersion !== existing.version) {
       return NextResponse.json({
         ok: false,
-        error: 'This studio timeline changed on another device. Reload before saving.',
+        error: 'This studio document changed on another device. Reload before saving.',
         code: 'VERSION_CONFLICT',
         server_version: existing.version,
       }, { status: 409 });
     }
     if (!existing && expectedVersion !== 0) {
-      return NextResponse.json({ ok: false, error: 'Studio timeline does not exist at the expected version.' }, { status: 409 });
+      return NextResponse.json({ ok: false, error: 'Studio document does not exist at the expected version.' }, { status: 409 });
     }
 
     const now = new Date();
@@ -120,7 +120,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         }).where(and(eq(studioDocuments.id, existing.id), eq(studioDocuments.version, existing.version))).returning();
         return row;
       });
-      if (!updated) return NextResponse.json({ ok: false, error: 'Studio timeline version conflict.' }, { status: 409 });
+      if (!updated) return NextResponse.json({ ok: false, error: 'Studio document version conflict.' }, { status: 409 });
     } else {
       await db.insert(studioDocuments).values({
         projectId,

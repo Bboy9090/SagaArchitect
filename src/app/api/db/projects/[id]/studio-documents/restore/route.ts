@@ -28,11 +28,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const [studio] = await db.select().from(studioDocuments)
       .where(and(eq(studioDocuments.projectId, projectId), eq(studioDocuments.kind, payload.kind))).limit(1);
-    if (!studio) return NextResponse.json({ ok: false, error: 'Studio timeline not found.' }, { status: 404 });
+    if (!studio) return NextResponse.json({ ok: false, error: 'Studio document not found.' }, { status: 404 });
     if (studio.version !== expectedVersion) {
       return NextResponse.json({
         ok: false,
-        error: 'Studio timeline changed before restore. Reload history and try again.',
+        error: 'Studio document changed before restore. Reload history and try again.',
         code: 'VERSION_CONFLICT',
         server_version: studio.version,
       }, { status: 409 });
@@ -81,7 +81,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         version: nextVersion,
         updatedAt: now,
       }).where(and(eq(studioDocuments.id, studio.id), eq(studioDocuments.version, expectedVersion))).returning();
-      if (!updated) throw new Error('Studio timeline version conflict.');
+      if (!updated) throw new Error('Studio document version conflict.');
 
       await tx.insert(versionHistory).values({
         projectId,
