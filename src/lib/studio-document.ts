@@ -1,8 +1,31 @@
 import type { PhoenixAudioMix } from './audio-mix';
 import type { PhoenixVideoTimeline } from './video-timeline';
 
-export type PhoenixStudioDocumentKind = 'video_timeline' | 'motion_timeline' | 'audio_mix';
-export type PhoenixStudioDocument = PhoenixVideoTimeline | PhoenixAudioMix;
+export type PhoenixStudioDocumentKind = 'video_timeline' | 'motion_timeline' | 'audio_mix' | 'asset_library';
+
+export interface PhoenixAssetLibraryFolder {
+  id: string;
+  name: string;
+}
+
+export interface PhoenixAssetLibraryEntry {
+  assetId: string;
+  folderId?: string;
+  tags: string[];
+  favorite?: boolean;
+}
+
+export interface PhoenixAssetLibraryDocument {
+  id: string;
+  projectId: string;
+  title: string;
+  folders: PhoenixAssetLibraryFolder[];
+  entries: PhoenixAssetLibraryEntry[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PhoenixStudioDocument = PhoenixVideoTimeline | PhoenixAudioMix | PhoenixAssetLibraryDocument;
 
 export interface PhoenixStudioDocumentEnvelope<T extends PhoenixStudioDocument = PhoenixStudioDocument> {
   document: T;
@@ -11,7 +34,7 @@ export interface PhoenixStudioDocumentEnvelope<T extends PhoenixStudioDocument =
 }
 
 export function isPhoenixStudioDocumentKind(value: unknown): value is PhoenixStudioDocumentKind {
-  return value === 'video_timeline' || value === 'motion_timeline' || value === 'audio_mix';
+  return value === 'video_timeline' || value === 'motion_timeline' || value === 'audio_mix' || value === 'asset_library';
 }
 
 interface StudioDocumentBase {
@@ -25,6 +48,8 @@ interface StudioDocumentBase {
   height?: unknown;
   fps?: unknown;
   captions?: unknown;
+  folders?: unknown;
+  entries?: unknown;
 }
 
 function hasBoundedClipArray(track: unknown): boolean {
@@ -42,6 +67,32 @@ export function validatePhoenixStudioDocument(
   const doc = value as StudioDocumentBase;
   if (doc.projectId !== projectId || typeof doc.id !== 'string' || !doc.id || typeof doc.title !== 'string') return false;
   if (typeof doc.updatedAt !== 'string' || typeof doc.createdAt !== 'string') return false;
+
+  if (kind === 'asset_library') {
+    if (!Array.isArray(doc.folders) || doc.folders.length > 100) return false;
+    if (!doc.folders.every(folder => {
+      if (!folder || typeof folder !== 'object') return false;
+      const candidate = folder as { id?: unknown; name?: unknown };
+      return typeof candidate.id === 'string'
+        && candidate.id.length > 0
+        && candidate.id.length <= 128
+        && typeof candidate.name === 'string'
+        && candidate.name.trim().length > 0
+        && candidate.name.length <= 120;
+    })) return false;
+    if (!Array.isArray(doc.entries) || doc.entries.length > 5000) return false;
+    return doc.entries.every(entry => {
+      if (!entry || typeof entry !== 'object') return false;
+      const candidate = entry as { assetId?: unknown; folderId?: unknown; tags?: unknown; favorite?: unknown };
+      if (typeof candidate.assetId !== 'string' || candidate.assetId.length < 1 || candidate.assetId.length > 128) return false;
+      if (candidate.folderId !== undefined && (typeof candidate.folderId !== 'string' || candidate.folderId.length > 128)) return false;
+      if (!Array.isArray(candidate.tags) || candidate.tags.length > 20) return false;
+      if (!candidate.tags.every(tag => typeof tag === 'string' && tag.trim().length > 0 && tag.length <= 40)) return false;
+      if (candidate.favorite !== undefined && typeof candidate.favorite !== 'boolean') return false;
+      return true;
+    });
+  }
+
   if (!Array.isArray(doc.tracks) || doc.tracks.length > 64 || !doc.tracks.every(hasBoundedClipArray)) return false;
 
   if (kind === 'audio_mix') return true;
