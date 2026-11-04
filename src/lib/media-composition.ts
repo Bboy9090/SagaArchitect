@@ -143,6 +143,9 @@ export interface PhoenixVectorContour {
   id: string;
   points: PhoenixVectorPoint[];
   closed: boolean;
+  stroke?: string;
+  strokeWidth?: number;
+  opacity?: number;
 }
 
 export interface PhoenixPathLayer extends PhoenixBaseLayer {
@@ -341,7 +344,7 @@ function vectorSegmentCommand(from: PhoenixVectorPoint, to: PhoenixVectorPoint):
   return `L ${to.x} ${to.y}`;
 }
 
-function vectorContourSvgD(points: PhoenixVectorPoint[], closed: boolean): string {
+export function vectorContourSvgD(points: PhoenixVectorPoint[], closed: boolean): string {
   if (points.length === 0) return '';
   const [first, ...rest] = points;
   const commands = [`M ${first.x} ${first.y}`];
