@@ -13,6 +13,8 @@ import { dbGetAssets, dbGetProject, dbGetStudioDocument, dbSaveStudioDocument, d
 import {
   activeCaptionAt,
   addClipToTimelineTrack,
+  clipFilterCss,
+  DEFAULT_CLIP_ADJUSTMENTS,
   addTimelineTrack,
   clipPlaybackRateAt,
   clipSourceAt,
@@ -854,6 +856,7 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
                     objectFit: 'cover',
                     opacity: transition.opacity * Math.max(0, Math.min(1, clip.opacity ?? 1)),
                     mixBlendMode: clip.blendMode || 'normal',
+                    filter: clipFilterCss(clip),
                     zIndex: trackOrder + 1,
                     transform: `translate(${((transform.x / Math.max(1, timeline.width)) + transition.x) * 100}%, ${((transform.y / Math.max(1, timeline.height)) + transition.y) * 100}%) scale(${transform.scale * transition.scale}) rotate(${transform.rotation}deg)`,
                     transformOrigin: 'center',
@@ -1208,6 +1211,39 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
                       <option value="lighten">Lighten</option>
                     </select>
                   </label>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    {([
+                      ['brightness', 0, 3, 0.05],
+                      ['contrast', 0, 3, 0.05],
+                      ['saturation', 0, 3, 0.05],
+                      ['grayscale', 0, 1, 0.05],
+                      ['sepia', 0, 1, 0.05],
+                      ['blur', 0, 40, 0.5],
+                    ] as const).map(([key, min, max, step]) => (
+                      <label key={key} className="text-[9px] uppercase text-slate-500">{key}
+                        <input
+                          type="number"
+                          min={min}
+                          max={max}
+                          step={step}
+                          disabled={selectedClipLocked}
+                          value={(selectedClip.adjustments || DEFAULT_CLIP_ADJUSTMENTS)[key]}
+                          onChange={event => patchClip(selectedClip.id, {
+                            adjustments: {
+                              ...(selectedClip.adjustments || DEFAULT_CLIP_ADJUSTMENTS),
+                              [key]: Math.max(min, Math.min(max, Number(event.target.value))),
+                            },
+                          })}
+                          className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-xs text-white"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  {selectedClip.adjustments && (
+                    <Button size="sm" variant="ghost" className="mt-2 w-full" disabled={selectedClipLocked} onClick={() => patchClip(selectedClip.id, { adjustments: undefined })}>
+                      Reset Adjustments
+                    </Button>
+                  )}
                 </div>
               )}
 
