@@ -494,6 +494,116 @@ export function activeCaptionAt(timeline: PhoenixVideoTimeline, time: number): P
 }
 
 
+
+export function timelineEditPoints(
+  timeline: PhoenixVideoTimeline,
+  excludeClipId?: string,
+): number[] {
+  const points = new Set<number>([0, timelineDuration(timeline)]);
+  for (const track of timeline.tracks) {
+    for (const clip of track.clips) {
+      if (clip.id === excludeClipId) continue;
+      points.add(Math.max(0, clip.start));
+      points.add(Math.max(0, clip.start + timelineClipDuration(clip)));
+    }
+  }
+  for (const cue of timeline.captions) {
+    points.add(Math.max(0, cue.start));
+    points.add(Math.max(0, cue.end));
+  }
+  return [...points].filter(Number.isFinite).sort((a, b) => a - b);
+}
+
+export function snapTimelineTime(
+  timeline: PhoenixVideoTimeline,
+  time: number,
+  threshold = 0.12,
+  excludeClipId?: string,
+): number {
+  const target = Math.max(0, Number.isFinite(time) ? time : 0);
+  let best = target;
+  let bestDistance = Math.max(0, threshold);
+  for (const point of timelineEditPoints(timeline, excludeClipId)) {
+    const distance = Math.abs(point - target);
+    if (distance <= bestDistance) {
+      best = point;
+      bestDistance = distance;
+    }
+  }
+  return Math.max(0, best);
+}
+
+export function shiftTimelineTrackFrom(
+  timeline: PhoenixVideoTimeline,
+  trackId: string,
+  fromTime: number,
+  delta: number,
+  excludeClipId?: string,
+): PhoenixVideoTimeline {
+  if (!Number.isFinite(delta) || Math.abs(delta) < 0.0001) return timeline;
+  return {
+    ...timeline,
+    tracks: timeline.tracks.map(track => track.id !== trackId ? track : {
+      ...track,
+      clips: track.clips.map(clip => {
+        if (clip.id === excludeClipId || clip.start < fromTime - 0.0001) return clip;
+        return { ...clip, start: Math.max(0, clip.start + delta) };
+      }),
+    }),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function moveTimelineClip(
+  timeline: PhoenixVideoTimeline,
+  clipId: string,
+  requestedStart: number,
+  options?: { ripple?: boolean; snap?: boolean; snapThreshold?: number },
+): PhoenixVideoTimeline {
+  const track = timeline.tracks.find(item => item.clips.some(clip => clip.id === clipId));
+  const clip = track?.clips.find(item => item.id === clipId);
+  if (!track || !clip) return timeline;
+  const nextStart = options?.snap
+    ? snapTimelineTime(timeline, requestedStart, options.snapThreshold ?? 0.12, clipId)
+    : Math.max(0, requestedStart);
+  const delta = nextStart - clip.start;
+  let next = timeline;
+  if (options?.ripple && Math.abs(delta) > 0.0001) {
+    const rippleFrom = clip.start + timelineClipDuration(clip);
+    next = shiftTimelineTrackFrom(next, track.id, rippleFrom, delta, clipId);
+  }
+  return {
+    ...next,
+    tracks: next.tracks.map(item => item.id !== track.id ? item : {
+      ...item,
+      clips: item.clips.map(existing => existing.id === clipId ? { ...existing, start: nextStart } : existing),
+    }),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function removeTimelineClip(
+  timeline: PhoenixVideoTimeline,
+  clipId: string,
+  ripple = false,
+): PhoenixVideoTimeline {
+  const track = timeline.tracks.find(item => item.clips.some(clip => clip.id === clipId));
+  const clip = track?.clips.find(item => item.id === clipId);
+  if (!track || !clip) return timeline;
+  const duration = timelineClipDuration(clip);
+  const end = clip.start + duration;
+  let next: PhoenixVideoTimeline = {
+    ...timeline,
+    tracks: timeline.tracks.map(item => item.id !== track.id ? item : {
+      ...item,
+      clips: item.clips.filter(existing => existing.id !== clipId),
+    }),
+    updatedAt: new Date().toISOString(),
+  };
+  if (ripple) next = shiftTimelineTrackFrom(next, track.id, end, -duration);
+  return next;
+}
+
 export function replaceSyncedAudioMixClip(
   timeline: PhoenixVideoTimeline,
   input: {
