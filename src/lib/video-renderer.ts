@@ -1,6 +1,7 @@
 import {
   activeCaptionAt,
   clipSourceAt,
+  isTimelineTrackActive,
   timelineClipAudioGainAt,
   clipTransitionState,
   clipTransformAt,
@@ -154,7 +155,7 @@ function drawCaption(
 
 async function prepareVisuals(timeline: PhoenixVideoTimeline): Promise<PreparedVisual[]> {
   const entries = timeline.tracks
-    .filter(track => track.kind === 'video')
+    .filter(track => track.kind === 'video' && isTimelineTrackActive(timeline, track))
     .sort((a, b) => a.order - b.order)
     .flatMap(track => track.clips.map(clip => ({ clip, trackOrder: track.order })));
   return await Promise.all(entries.map(async ({ clip, trackOrder }) => {
@@ -173,7 +174,9 @@ async function prepareAudio(
   destination: MediaStreamAudioDestinationNode,
   timeline: PhoenixVideoTimeline,
 ): Promise<AudioBufferSourceNode[]> {
-  const clips = timeline.tracks.filter(track => track.kind === 'audio').flatMap(track => track.clips);
+  const clips = timeline.tracks
+    .filter(track => track.kind === 'audio' && isTimelineTrackActive(timeline, track))
+    .flatMap(track => track.clips);
   const sources: AudioBufferSourceNode[] = [];
   for (const clip of clips) {
     if (clip.muted) continue;
@@ -231,7 +234,11 @@ export async function renderPhoenixTimelineWebm(
 
   const audioContext = new AudioContext();
   const audioDestination = audioContext.createMediaStreamDestination();
-  const hasAudio = timeline.tracks.some(track => track.kind === 'audio' && track.clips.some(clip => !clip.muted));
+  const hasAudio = timeline.tracks.some(track =>
+    track.kind === 'audio'
+    && isTimelineTrackActive(timeline, track)
+    && track.clips.some(clip => !clip.muted),
+  );
   if (hasAudio) {
     for (const track of audioDestination.stream.getAudioTracks()) stream.addTrack(track);
   }
