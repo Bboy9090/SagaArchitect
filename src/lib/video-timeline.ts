@@ -16,6 +16,12 @@ export interface PhoenixClipKeyframe {
   easing?: PhoenixKeyframeEasing;
 }
 
+export interface PhoenixAudioGainKeyframe {
+  time: number;
+  gain: number;
+  easing?: PhoenixKeyframeEasing;
+}
+
 export interface PhoenixClipTransitionState {
   opacity: number;
   x: number;
@@ -63,6 +69,7 @@ export interface PhoenixTimelineClip {
   transitionDuration: number;
   transform: PhoenixClipTransform;
   keyframes: PhoenixClipKeyframe[];
+  gainKeyframes?: PhoenixAudioGainKeyframe[];
   parallax?: PhoenixClipParallax;
   createdAt: string;
 }
@@ -375,12 +382,28 @@ export function clipTransitionOpacity(clip: PhoenixTimelineClip, timelineTime: n
   return clipTransitionState(clip, timelineTime).opacity;
 }
 
+export function clipVolumeAutomationAt(clip: PhoenixTimelineClip, timelineTime: number): number {
+  const localTime = Math.max(0, timelineTime - clip.start);
+  const frames = [...(clip.gainKeyframes || [])].sort((a, b) => a.time - b.time);
+  const base = Math.max(0, Math.min(1, clip.volume));
+  if (frames.length === 0) return base;
+  if (localTime <= frames[0].time) return Math.max(0, Math.min(1, frames[0].gain));
+  if (localTime >= frames[frames.length - 1].time) return Math.max(0, Math.min(1, frames[frames.length - 1].gain));
+  const rightIndex = frames.findIndex(frame => frame.time >= localTime);
+  const left = frames[Math.max(0, rightIndex - 1)];
+  const right = frames[rightIndex];
+  const span = Math.max(0.0001, right.time - left.time);
+  const rawT = Math.max(0, Math.min(1, (localTime - left.time) / span));
+  const t = applyKeyframeEasing(left.easing, rawT);
+  return Math.max(0, Math.min(1, left.gain + (right.gain - left.gain) * t));
+}
+
 export function clipAudioGainAt(clip: PhoenixTimelineClip, timelineTime: number): number {
   if (clip.muted) return 0;
   const duration = timelineClipDuration(clip);
   const localTime = Math.max(0, Math.min(duration, timelineTime - clip.start));
   const transitionDuration = Math.max(0.05, Math.min(clip.transitionDuration || 0.5, duration / 2));
-  let gain = Math.max(0, Math.min(1, clip.volume));
+  let gain = clipVolumeAutomationAt(clip, timelineTime);
   if (clip.transitionIn === 'fade' && localTime < transitionDuration) gain *= localTime / transitionDuration;
   if (clip.transitionOut === 'fade' && duration - localTime < transitionDuration) gain *= (duration - localTime) / transitionDuration;
   return Math.max(0, Math.min(1, gain));
