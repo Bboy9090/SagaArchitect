@@ -106,7 +106,6 @@ export default function CanonCorePage({ params }: CanonPageProps) {
     if (!assetLibraryDocument || !isDbMode()) return;
     const handle = window.setTimeout(() => {
       void dbSaveStudioDocument(id, 'asset_library', assetLibraryDocument)
-        .then(saved => setAssetLibraryDocument(current => current && current.id === saved.id ? saved : current))
         .catch(error => console.error('Phoenix Asset Library cloud autosave failed:', error));
     }, 600);
     return () => window.clearTimeout(handle);
