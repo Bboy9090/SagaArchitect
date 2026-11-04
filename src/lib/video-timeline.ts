@@ -582,6 +582,52 @@ export function moveTimelineClip(
   };
 }
 
+
+export function moveTimelineClipToTrack(
+  timeline: PhoenixVideoTimeline,
+  clipId: string,
+  targetTrackId: string,
+  requestedStart: number,
+  options?: { ripple?: boolean; snap?: boolean; snapThreshold?: number },
+): PhoenixVideoTimeline {
+  const sourceTrack = timeline.tracks.find(track => track.clips.some(clip => clip.id === clipId));
+  const clip = sourceTrack?.clips.find(item => item.id === clipId);
+  const targetTrack = timeline.tracks.find(track => track.id === targetTrackId);
+  if (!sourceTrack || !clip || !targetTrack) return timeline;
+  const requiredKind: PhoenixTimelineTrackKind = clip.kind === 'audio' ? 'audio' : 'video';
+  if (targetTrack.kind !== requiredKind) return timeline;
+  if (sourceTrack.id === targetTrack.id) {
+    return moveTimelineClip(timeline, clipId, requestedStart, options);
+  }
+
+  const nextStart = options?.snap
+    ? snapTimelineTime(timeline, requestedStart, options.snapThreshold ?? 0.12, clipId)
+    : Math.max(0, requestedStart);
+  const duration = timelineClipDuration(clip);
+  let next: PhoenixVideoTimeline = {
+    ...timeline,
+    tracks: timeline.tracks.map(track => track.id !== sourceTrack.id ? track : {
+      ...track,
+      clips: track.clips.filter(existing => existing.id !== clipId),
+    }),
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (options?.ripple) {
+    next = shiftTimelineTrackFrom(next, sourceTrack.id, clip.start + duration, -duration);
+    next = shiftTimelineTrackFrom(next, targetTrack.id, nextStart, duration);
+  }
+
+  return {
+    ...next,
+    tracks: next.tracks.map(track => track.id !== targetTrack.id ? track : {
+      ...track,
+      clips: [...track.clips, { ...clip, trackId: targetTrack.id, start: nextStart }],
+    }),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 export function removeTimelineClip(
   timeline: PhoenixVideoTimeline,
   clipId: string,
