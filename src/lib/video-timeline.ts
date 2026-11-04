@@ -1,6 +1,7 @@
 export type PhoenixTimelineTrackKind = 'video' | 'audio';
 export type PhoenixTimelineClipKind = 'image' | 'video' | 'audio';
-export type PhoenixClipTransition = 'none' | 'fade';
+export type PhoenixClipTransition = 'none' | 'fade' | 'slide-left' | 'slide-right' | 'zoom';
+export type PhoenixKeyframeEasing = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'hold';
 
 export interface PhoenixClipTransform {
   scale: number;
@@ -12,6 +13,14 @@ export interface PhoenixClipTransform {
 export interface PhoenixClipKeyframe {
   time: number;
   transform: PhoenixClipTransform;
+  easing?: PhoenixKeyframeEasing;
+}
+
+export interface PhoenixClipTransitionState {
+  opacity: number;
+  x: number;
+  y: number;
+  scale: number;
 }
 
 export interface PhoenixCaptionCue {
@@ -257,6 +266,22 @@ export function splitTimelineClip(
 }
 
 
+function applyKeyframeEasing(easing: PhoenixKeyframeEasing | undefined, value: number): number {
+  const t = Math.max(0, Math.min(1, value));
+  switch (easing || 'linear') {
+    case 'ease-in':
+      return t * t;
+    case 'ease-out':
+      return 1 - (1 - t) * (1 - t);
+    case 'ease-in-out':
+      return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    case 'hold':
+      return t >= 1 ? 1 : 0;
+    default:
+      return t;
+  }
+}
+
 export function clipTransformAt(clip: PhoenixTimelineClip, timelineTime: number): PhoenixClipTransform {
   const base = clip.transform || { scale: 1, x: 0, y: 0, rotation: 0 };
   const localTime = Math.max(0, timelineTime - clip.start);
@@ -269,7 +294,8 @@ export function clipTransformAt(clip: PhoenixTimelineClip, timelineTime: number)
   const left = frames[Math.max(0, rightIndex - 1)];
   const right = frames[rightIndex];
   const span = Math.max(0.0001, right.time - left.time);
-  const t = Math.max(0, Math.min(1, (localTime - left.time) / span));
+  const rawT = Math.max(0, Math.min(1, (localTime - left.time) / span));
+  const t = applyKeyframeEasing(left.easing, rawT);
   const lerp = (a: number, b: number) => a + (b - a) * t;
   return {
     scale: lerp(left.transform.scale, right.transform.scale),
@@ -279,14 +305,51 @@ export function clipTransformAt(clip: PhoenixTimelineClip, timelineTime: number)
   };
 }
 
-export function clipTransitionOpacity(clip: PhoenixTimelineClip, timelineTime: number): number {
+function applyTransition(
+  state: PhoenixClipTransitionState,
+  transition: PhoenixClipTransition,
+  progress: number,
+): PhoenixClipTransitionState {
+  const p = Math.max(0, Math.min(1, progress));
+  if (transition === 'fade') return { ...state, opacity: state.opacity * p };
+  if (transition === 'slide-left') return { ...state, x: state.x - (1 - p) };
+  if (transition === 'slide-right') return { ...state, x: state.x + (1 - p) };
+  if (transition === 'zoom') return { ...state, scale: state.scale * (0.88 + 0.12 * p), opacity: state.opacity * (0.35 + 0.65 * p) };
+  return state;
+}
+
+export function clipTransitionState(clip: PhoenixTimelineClip, timelineTime: number): PhoenixClipTransitionState {
   const duration = timelineClipDuration(clip);
-  const localTime = Math.max(0, timelineTime - clip.start);
-  let opacity = 1;
+  const localTime = Math.max(0, Math.min(duration, timelineTime - clip.start));
   const transitionDuration = Math.max(0.05, Math.min(clip.transitionDuration || 0.5, duration / 2));
-  if (clip.transitionIn === 'fade') opacity = Math.min(opacity, localTime / transitionDuration);
-  if (clip.transitionOut === 'fade') opacity = Math.min(opacity, (duration - localTime) / transitionDuration);
-  return Math.max(0, Math.min(1, opacity));
+  let state: PhoenixClipTransitionState = { opacity: 1, x: 0, y: 0, scale: 1 };
+  if (clip.transitionIn !== 'none' && localTime < transitionDuration) {
+    state = applyTransition(state, clip.transitionIn, localTime / transitionDuration);
+  }
+  if (clip.transitionOut !== 'none' && duration - localTime < transitionDuration) {
+    state = applyTransition(state, clip.transitionOut, (duration - localTime) / transitionDuration);
+  }
+  return {
+    opacity: Math.max(0, Math.min(1, state.opacity)),
+    x: Math.max(-1, Math.min(1, state.x)),
+    y: Math.max(-1, Math.min(1, state.y)),
+    scale: Math.max(0.01, state.scale),
+  };
+}
+
+export function clipTransitionOpacity(clip: PhoenixTimelineClip, timelineTime: number): number {
+  return clipTransitionState(clip, timelineTime).opacity;
+}
+
+export function clipAudioGainAt(clip: PhoenixTimelineClip, timelineTime: number): number {
+  if (clip.muted) return 0;
+  const duration = timelineClipDuration(clip);
+  const localTime = Math.max(0, Math.min(duration, timelineTime - clip.start));
+  const transitionDuration = Math.max(0.05, Math.min(clip.transitionDuration || 0.5, duration / 2));
+  let gain = Math.max(0, Math.min(1, clip.volume));
+  if (clip.transitionIn === 'fade' && localTime < transitionDuration) gain *= localTime / transitionDuration;
+  if (clip.transitionOut === 'fade' && duration - localTime < transitionDuration) gain *= (duration - localTime) / transitionDuration;
+  return Math.max(0, Math.min(1, gain));
 }
 
 export function activeCaptionAt(timeline: PhoenixVideoTimeline, time: number): PhoenixCaptionCue | null {
