@@ -109,7 +109,7 @@ export default function UniverseNewPage() {
           <div>
             <div className="mb-6 p-4 bg-[#0f0f1a] border border-[#c9a84c]/20 rounded-lg">
               <p className="text-gray-400 text-sm">
-                Choose the kind of work you are building. Phoenix Creator Bench will prepare the right foundation, starter sections, and target deliverables for that production.
+                Choose the kind of work you are building. Phoenix Creator Studio will prepare the right foundation, starter sections, and target deliverables for that production.
               </p>
             </div>
             <UniverseForm onSubmit={handleFormSubmit} />
