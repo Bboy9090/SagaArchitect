@@ -4,8 +4,8 @@ import { NextAuthProvider } from "@/components/providers/NextAuthProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Phoenix Creator Studio — Stories Built to Become Worlds",
-  description: "A unified creative production studio for stories, comics, screen projects, characters, worlds, and production assets.",
+  title: "Phoenix Creator Bench — Stories Built to Become Worlds",
+  description: "A unified creative production workbench for stories, comics, screen projects, images, characters, worlds, and production assets.",
   icons: { icon: "/sagaarchitect-logo.png" },
 };
 
