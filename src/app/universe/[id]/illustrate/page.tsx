@@ -6,7 +6,7 @@ import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
 import { MediaRevisionPanel } from '@/components/media/MediaRevisionPanel';
 import { Spinner } from '@/components/ui/Spinner';
-import { RasterPaintCanvas } from '@/components/media/RasterPaintCanvas';
+import { RasterPaintCanvas, type RasterBrushTexture } from '@/components/media/RasterPaintCanvas';
 import { VectorInkCanvas } from '@/components/media/VectorInkCanvas';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
@@ -56,6 +56,8 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
   const [brushColor, setBrushColor] = useState('#f8fafc');
   const [brushSize, setBrushSize] = useState(BRUSH_PRESETS.ink.size);
   const [brushOpacity, setBrushOpacity] = useState(BRUSH_PRESETS.ink.opacity);
+  const [brushTexture, setBrushTexture] = useState<RasterBrushTexture>('smooth');
+  const [textureStrength, setTextureStrength] = useState(0.5);
   const [eraseMode, setEraseMode] = useState(false);
   const [vectorInkMode, setVectorInkMode] = useState(false);
   const [vectorInkColor, setVectorInkColor] = useState('#f8fafc');
@@ -255,6 +257,7 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
     setBrushPreset(preset);
     setBrushSize(next.size);
     setBrushOpacity(next.opacity);
+    setBrushTexture(preset === 'pencil' ? 'chalk' : preset === 'paint' ? 'marker' : 'smooth');
     setEraseMode(false);
   };
 
@@ -333,6 +336,19 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
             <label className="block text-[10px] uppercase text-slate-500">Opacity {Math.round(brushOpacity * 100)}%
               <input type="range" min={0.05} max={1} step={0.05} value={brushOpacity} onChange={event => setBrushOpacity(Number(event.target.value))} className="mt-1 w-full" />
             </label>
+            <label className="block text-[10px] uppercase text-slate-500">Brush texture
+              <select value={brushTexture} onChange={event => setBrushTexture(event.target.value as RasterBrushTexture)} className="mt-1 min-h-11 w-full rounded border border-white/10 bg-[#0a0d14] px-3 text-white">
+                <option value="smooth">Smooth</option>
+                <option value="marker">Marker</option>
+                <option value="chalk">Chalk</option>
+                <option value="spray">Spray</option>
+              </select>
+            </label>
+            {brushTexture !== 'smooth' && (
+              <label className="block text-[10px] uppercase text-slate-500">Texture strength {Math.round(textureStrength * 100)}%
+                <input type="range" min={0} max={1} step={0.05} value={textureStrength} onChange={event => setTextureStrength(Number(event.target.value))} className="mt-1 w-full" />
+              </label>
+            )}
             <label className="block text-[10px] uppercase text-slate-500">Stabilization {Math.round(stabilization * 100)}%
               <input type="range" min={0} max={0.9} step={0.05} value={stabilization} onChange={event => setStabilization(Number(event.target.value))} className="mt-1 w-full" />
             </label>
@@ -483,6 +499,8 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
                         erase={eraseMode}
                         stabilization={stabilization}
                         symmetry={symmetry}
+                        brushTexture={brushTexture}
+                        textureStrength={textureStrength}
                         onSelect={() => setSelectedLayerId(layer.id)}
                         onCommit={src => {
                           updateDocument(current => ({
@@ -629,9 +647,9 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
           <div className="mt-6 rounded-xl border border-violet-400/15 bg-violet-400/[0.04] p-3">
             <div className="text-xs font-bold text-violet-200">Illustration foundation</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              Pressure-aware raster painting, brush presets, smoothing, symmetry, adjustable one-point/two-point perspective guides,
-              persistent independently styled and editable vector ink strokes with smoothing, reference layers, undo/redo, autosave,
-              and PNG export are active. Brush texture engines, pose tools, and advanced color assistance are next.
+              Pressure-aware raster painting, smooth/marker/chalk/spray textures, smoothing, symmetry, adjustable one-point/two-point
+              perspective guides, independently styled editable vector ink, reference layers, undo/redo, autosave, and PNG export are active.
+              Pose tools and advanced color assistance are next.
             </p>
           </div>
         </aside>
