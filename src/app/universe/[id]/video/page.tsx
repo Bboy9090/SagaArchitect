@@ -15,6 +15,7 @@ import {
   addClipToTimelineTrack,
   addTimelineTrack,
   clipAudioGainAt,
+  clipSourceAt,
   clipTransitionState,
   clipVolumeAutomationAt,
   clipTransformAt,
@@ -501,7 +502,7 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
                   if (clip.kind === 'image') {
                     return (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img key={clip.id} src={clip.src} alt="" style={layerStyle} />
+                      <img key={clip.id} src={clipSourceAt(clip, playhead).src} alt="" style={layerStyle} />
                     );
                   }
                   if (clip.kind === 'video') {

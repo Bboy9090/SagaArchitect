@@ -1,6 +1,7 @@
 import {
   activeCaptionAt,
   clipAudioGainAt,
+  clipSourceAt,
   clipTransitionState,
   clipTransformAt,
   timelineClipDuration,
@@ -12,7 +13,7 @@ import {
 interface PreparedVisual {
   clip: PhoenixTimelineClip;
   trackOrder: number;
-  image?: HTMLImageElement;
+  images?: Map<string, HTMLImageElement>;
   video?: HTMLVideoElement;
 }
 
@@ -91,8 +92,10 @@ function drawVisual(
   ctx.scale(transform.scale * transition.scale, transform.scale * transition.scale);
   ctx.translate(-width / 2, -height / 2);
 
-  if (clip.kind === 'image' && visual.image) {
-    drawCover(ctx, visual.image, visual.image.naturalWidth, visual.image.naturalHeight, width, height);
+  if (clip.kind === 'image' && visual.images) {
+    const source = clipSourceAt(clip, timelineTime).src;
+    const image = visual.images.get(source);
+    if (image) drawCover(ctx, image, image.naturalWidth, image.naturalHeight, width, height);
   } else if (clip.kind === 'video' && visual.video && visual.video.readyState >= 2) {
     drawCover(ctx, visual.video, visual.video.videoWidth, visual.video.videoHeight, width, height);
   }
@@ -155,7 +158,11 @@ async function prepareVisuals(timeline: PhoenixVideoTimeline): Promise<PreparedV
     .sort((a, b) => a.order - b.order)
     .flatMap(track => track.clips.map(clip => ({ clip, trackOrder: track.order })));
   return await Promise.all(entries.map(async ({ clip, trackOrder }) => {
-    if (clip.kind === 'image') return { clip, trackOrder, image: await loadImage(clip.src) };
+    if (clip.kind === 'image') {
+      const sources = [...new Set([clip.src, ...(clip.sourceKeyframes || []).map(frame => frame.src)])];
+      const loaded = await Promise.all(sources.map(async src => [src, await loadImage(src)] as const));
+      return { clip, trackOrder, images: new Map<string, HTMLImageElement>(loaded) };
+    }
     if (clip.kind === 'video') return { clip, trackOrder, video: await loadVideo(clip.src) };
     return { clip, trackOrder };
   }));
