@@ -13,6 +13,7 @@ import { dbGetAssets, dbGetProject, dbGetStudioDocument, dbSaveStudioDocument, d
 import {
   activeCaptionAt,
   addClipToTimelineTrack,
+  addTitleClipToTimelineTrack,
   clipCropCss,
   clipFilterCss,
   DEFAULT_CLIP_ADJUSTMENTS,
@@ -31,6 +32,7 @@ import {
   moveTimelineClip,
   moveTimelineClipToTrack,
   moveTimelineTrack,
+  normalizeTitleGraphic,
   removeEmptyTimelineTrack,
   removeTimelineClip,
   savePhoenixVideoTimeline,
@@ -145,6 +147,10 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
     [timeline, selectedClipId],
   );
   const selectedClipLocked = Boolean(timeline && selectedClip && isTimelineClipLocked(timeline, selectedClip.id));
+  const selectedTitle = useMemo(
+    () => selectedClip?.kind === 'title' ? normalizeTitleGraphic(selectedClip.title) : null,
+    [selectedClip],
+  );
 
   const activeVisualLayers = useMemo(() => {
     if (!timeline) return [];
@@ -262,6 +268,27 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
       tracks: current.tracks.map(track => track.id === trackId ? { ...track, ...patch } : track),
       updatedAt: new Date().toISOString(),
     }) : current);
+  };
+
+  const addTitleAtPlayhead = () => {
+    setTimeline(current => {
+      if (!current) return current;
+      const selected = current.tracks.find(track => track.id === selectedTrackId && track.kind === 'video' && !track.locked);
+      const target = selected || current.tracks
+        .filter(track => track.kind === 'video' && !track.locked)
+        .sort((a, b) => b.order - a.order)[0];
+      if (!target) {
+        setStatus('Create or unlock a video track before adding a title.');
+        return current;
+      }
+      const start = snapEditing ? snapTimelineTime(current, playhead, 0.12) : Math.max(0, playhead);
+      const next = addTitleClipToTimelineTrack(current, target.id, start, 4, 'Title');
+      const created = next.tracks.find(track => track.id === target.id)?.clips.at(-1);
+      setSelectedTrackId(target.id);
+      if (created) setSelectedClipId(created.id);
+      setStatus(`Added title at ${start.toFixed(2)}s.`);
+      return next;
+    });
   };
 
   const addAsset = async (asset: ProjectAsset) => {
@@ -796,6 +823,9 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
 
           <div className="mb-5">
             <p className="mb-3 text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Media</p>
+            <Button size="sm" variant="secondary" className="mb-3 w-full" onClick={addTitleAtPlayhead}>
+              + Title / Graphic at Playhead
+            </Button>
             {isDbMode() && (
               <>
                 <input
@@ -883,6 +913,38 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
                         preload="metadata"
                         style={layerStyle}
                       />
+                    );
+                  }
+                  if (clip.kind === 'title') {
+                    const title = normalizeTitleGraphic(clip.title);
+                    const previewScale = Math.min(1, 720 / Math.max(1, timeline.width));
+                    return (
+                      <div key={clip.id} style={{ ...layerStyle, pointerEvents: 'none' }}>
+                        <div
+                          style={{
+                            position: 'absolute',
+                            left: '6%',
+                            top: title.position === 'top' ? '18%' : title.position === 'bottom' ? '82%' : '50%',
+                            width: '88%',
+                            boxSizing: 'border-box',
+                            transform: 'translateY(-50%)',
+                            padding: title.padding * previewScale,
+                            color: title.color,
+                            background: title.background,
+                            fontFamily: `"${title.fontFamily}", sans-serif`,
+                            fontSize: Math.max(8, title.fontSize * previewScale),
+                            fontWeight: title.fontWeight,
+                            lineHeight: title.lineHeight,
+                            textAlign: title.align,
+                            whiteSpace: 'pre-wrap',
+                            overflowWrap: 'anywhere',
+                            WebkitTextStroke: title.strokeWidth > 0 ? `${title.strokeWidth * previewScale}px ${title.strokeColor}` : undefined,
+                            textShadow: title.shadowBlur > 0 ? `0 0 ${title.shadowBlur * previewScale}px ${title.shadowColor}` : undefined,
+                          }}
+                        >
+                          {title.text}
+                        </div>
+                      </div>
                     );
                   }
                   return null;
@@ -1090,23 +1152,97 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
           ) : (
             <div className="space-y-3">
               <div className="truncate text-sm font-bold text-white">{selectedClip.name}</div>
-              <div className="grid grid-cols-2 gap-2">
+              {selectedTitle && (
+                <div className="rounded-lg border border-violet-400/20 bg-violet-400/[0.04] p-3">
+                  <div className="mb-3 text-[10px] font-black uppercase tracking-wider text-violet-300">Title / Graphic</div>
+                  <label className="block text-[10px] uppercase text-slate-500">Text
+                    <textarea
+                      value={selectedTitle.text}
+                      disabled={selectedClipLocked}
+                      onChange={event => patchClip(selectedClip.id, { title: { ...selectedTitle, text: event.target.value } })}
+                      className="mt-1 min-h-24 w-full rounded border border-white/10 bg-black/20 p-2 text-sm text-white"
+                    />
+                  </label>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <label className="text-[10px] uppercase text-slate-500">Font
+                      <select value={selectedTitle.fontFamily} disabled={selectedClipLocked} onChange={event => patchClip(selectedClip.id, { title: normalizeTitleGraphic({ ...selectedTitle, fontFamily: event.target.value as typeof selectedTitle.fontFamily }) })} className="mt-1 min-h-10 w-full rounded border border-white/10 bg-[#0a0d14] p-2 text-white">
+                        {['Arial','Georgia','Times New Roman','Courier New','Verdana','Impact'].map(font => <option key={font} value={font}>{font}</option>)}
+                      </select>
+                    </label>
+                    <label className="text-[10px] uppercase text-slate-500">Size
+                      <input type="number" min={12} max={360} value={selectedTitle.fontSize} disabled={selectedClipLocked} onChange={event => patchClip(selectedClip.id, { title: normalizeTitleGraphic({ ...selectedTitle, fontSize: Number(event.target.value) }) })} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                    </label>
+                    <label className="text-[10px] uppercase text-slate-500">Weight
+                      <select value={selectedTitle.fontWeight} disabled={selectedClipLocked} onChange={event => patchClip(selectedClip.id, { title: normalizeTitleGraphic({ ...selectedTitle, fontWeight: Number(event.target.value) }) })} className="mt-1 min-h-10 w-full rounded border border-white/10 bg-[#0a0d14] p-2 text-white">
+                        {[400,500,600,700,800,900].map(weight => <option key={weight} value={weight}>{weight}</option>)}
+                      </select>
+                    </label>
+                    <label className="text-[10px] uppercase text-slate-500">Duration
+                      <input type="number" min={0.5} max={60} step={0.25} value={timelineClipDuration(selectedClip)} disabled={selectedClipLocked} onChange={event => {
+                        const duration = Math.max(0.5, Math.min(60, Number(event.target.value)));
+                        patchClip(selectedClip.id, { sourceDuration: duration, inPoint: 0, outPoint: duration, playbackRate: 1 });
+                      }} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                    </label>
+                    <label className="text-[10px] uppercase text-slate-500">Align
+                      <select value={selectedTitle.align} disabled={selectedClipLocked} onChange={event => patchClip(selectedClip.id, { title: normalizeTitleGraphic({ ...selectedTitle, align: event.target.value as typeof selectedTitle.align }) })} className="mt-1 min-h-10 w-full rounded border border-white/10 bg-[#0a0d14] p-2 text-white">
+                        <option value="left">Left</option><option value="center">Center</option><option value="right">Right</option>
+                      </select>
+                    </label>
+                    <label className="text-[10px] uppercase text-slate-500">Position
+                      <select value={selectedTitle.position} disabled={selectedClipLocked} onChange={event => patchClip(selectedClip.id, { title: normalizeTitleGraphic({ ...selectedTitle, position: event.target.value as typeof selectedTitle.position }) })} className="mt-1 min-h-10 w-full rounded border border-white/10 bg-[#0a0d14] p-2 text-white">
+                        <option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option>
+                      </select>
+                    </label>
+                    <label className="text-[10px] uppercase text-slate-500">Color
+                      <input type="color" value={selectedTitle.color} disabled={selectedClipLocked} onChange={event => patchClip(selectedClip.id, { title: { ...selectedTitle, color: event.target.value } })} className="mt-1 h-10 w-full" />
+                    </label>
+                    <label className="text-[10px] uppercase text-slate-500">Background CSS
+                      <input value={selectedTitle.background} disabled={selectedClipLocked} onChange={event => patchClip(selectedClip.id, { title: { ...selectedTitle, background: event.target.value } })} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                    </label>
+                    <label className="text-[10px] uppercase text-slate-500">Stroke
+                      <input type="color" value={selectedTitle.strokeColor} disabled={selectedClipLocked} onChange={event => patchClip(selectedClip.id, { title: { ...selectedTitle, strokeColor: event.target.value } })} className="mt-1 h-10 w-full" />
+                    </label>
+                    <label className="text-[10px] uppercase text-slate-500">Stroke px
+                      <input type="number" min={0} max={24} step={0.5} value={selectedTitle.strokeWidth} disabled={selectedClipLocked} onChange={event => patchClip(selectedClip.id, { title: normalizeTitleGraphic({ ...selectedTitle, strokeWidth: Number(event.target.value) }) })} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                    </label>
+                    <label className="text-[10px] uppercase text-slate-500">Padding
+                      <input type="number" min={0} max={240} value={selectedTitle.padding} disabled={selectedClipLocked} onChange={event => patchClip(selectedClip.id, { title: normalizeTitleGraphic({ ...selectedTitle, padding: Number(event.target.value) }) })} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                    </label>
+                    <label className="text-[10px] uppercase text-slate-500">Line height
+                      <input type="number" min={0.8} max={3} step={0.05} value={selectedTitle.lineHeight} disabled={selectedClipLocked} onChange={event => patchClip(selectedClip.id, { title: normalizeTitleGraphic({ ...selectedTitle, lineHeight: Number(event.target.value) }) })} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                    </label>
+                    <label className="text-[10px] uppercase text-slate-500">Shadow CSS
+                      <input value={selectedTitle.shadowColor} disabled={selectedClipLocked} onChange={event => patchClip(selectedClip.id, { title: { ...selectedTitle, shadowColor: event.target.value } })} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                    </label>
+                    <label className="text-[10px] uppercase text-slate-500">Shadow blur
+                      <input type="number" min={0} max={120} value={selectedTitle.shadowBlur} disabled={selectedClipLocked} onChange={event => patchClip(selectedClip.id, { title: normalizeTitleGraphic({ ...selectedTitle, shadowBlur: Number(event.target.value) }) })} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                    </label>
+                  </div>
+                </div>
+              )}
+              <div className={`grid gap-2 ${selectedClip.kind === 'title' ? 'grid-cols-1' : 'grid-cols-2'}`}>
                 <label className="text-[10px] uppercase text-slate-500">Start
                   <input type="number" min={0} step={0.05} value={selectedClip.start} disabled={selectedClipLocked} onChange={event => setTimeline(current => current ? moveTimelineClip(current, selectedClip.id, Number(event.target.value), { snap: snapEditing, snapThreshold: 0.12 }) : current)} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
                 </label>
-                <label className="text-[10px] uppercase text-slate-500">Rate
-                  <input type="number" min={0.25} max={4} step={0.05} value={selectedClip.playbackRate} onChange={event => patchClip(selectedClip.id,{playbackRate:Math.max(0.25,Math.min(4,Number(event.target.value)))})} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
-                </label>
-                <label className="text-[10px] uppercase text-slate-500">In
-                  <input type="number" min={0} max={selectedClip.outPoint} step={0.05} value={selectedClip.inPoint} onChange={event => patchClip(selectedClip.id,{inPoint:Math.max(0,Math.min(selectedClip.outPoint-0.05,Number(event.target.value)))})} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
-                </label>
-                <label className="text-[10px] uppercase text-slate-500">Out
-                  <input type="number" min={selectedClip.inPoint+0.05} max={selectedClip.sourceDuration} step={0.05} value={selectedClip.outPoint} onChange={event => patchClip(selectedClip.id,{outPoint:Math.min(selectedClip.sourceDuration,Math.max(selectedClip.inPoint+0.05,Number(event.target.value)))})} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
-                </label>
+                {selectedClip.kind !== 'title' && (
+                  <>
+                    <label className="text-[10px] uppercase text-slate-500">Rate
+                      <input type="number" min={0.25} max={4} step={0.05} value={selectedClip.playbackRate} onChange={event => patchClip(selectedClip.id,{playbackRate:Math.max(0.25,Math.min(4,Number(event.target.value)))})} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                    </label>
+                    <label className="text-[10px] uppercase text-slate-500">In
+                      <input type="number" min={0} max={selectedClip.outPoint} step={0.05} value={selectedClip.inPoint} onChange={event => patchClip(selectedClip.id,{inPoint:Math.max(0,Math.min(selectedClip.outPoint-0.05,Number(event.target.value)))})} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                    </label>
+                    <label className="text-[10px] uppercase text-slate-500">Out
+                      <input type="number" min={selectedClip.inPoint+0.05} max={selectedClip.sourceDuration} step={0.05} value={selectedClip.outPoint} onChange={event => patchClip(selectedClip.id,{outPoint:Math.min(selectedClip.sourceDuration,Math.max(selectedClip.inPoint+0.05,Number(event.target.value)))})} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                    </label>
+                  </>
+                )}
               </div>
-              <label className="block text-[10px] uppercase text-slate-500">Volume {Math.round(selectedClip.volume*100)}%
-                <input type="range" min={0} max={1} step={0.01} value={selectedClip.volume} onChange={event => patchClip(selectedClip.id,{volume:Number(event.target.value)})} className="mt-1 w-full" />
-              </label>
+              {selectedClip.kind !== 'title' && (
+                <label className="block text-[10px] uppercase text-slate-500">Volume {Math.round(selectedClip.volume*100)}%
+                  <input type="range" min={0} max={1} step={0.01} value={selectedClip.volume} onChange={event => patchClip(selectedClip.id,{volume:Number(event.target.value)})} className="mt-1 w-full" />
+                </label>
+              )}
 
               {selectedClip.kind === 'audio' && (
                 <>

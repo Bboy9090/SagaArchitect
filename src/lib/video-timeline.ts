@@ -1,6 +1,6 @@
 export type PhoenixTimelineTrackKind = 'video' | 'audio';
 export type PhoenixTimelineTrackRole = 'dialogue' | 'music' | 'sfx' | 'other';
-export type PhoenixTimelineClipKind = 'image' | 'video' | 'audio';
+export type PhoenixTimelineClipKind = 'image' | 'video' | 'audio' | 'title';
 export type PhoenixClipBlendMode = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten';
 export type PhoenixClipTransition = 'none' | 'fade' | 'slide-left' | 'slide-right' | 'zoom';
 export type PhoenixKeyframeEasing = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'hold';
@@ -68,6 +68,44 @@ export interface PhoenixClipCrop {
   left: number;
 }
 
+export type PhoenixTitleFontFamily = 'Arial' | 'Georgia' | 'Times New Roman' | 'Courier New' | 'Verdana' | 'Impact';
+export type PhoenixTitleAlign = 'left' | 'center' | 'right';
+export type PhoenixTitlePosition = 'top' | 'center' | 'bottom';
+
+export interface PhoenixTitleGraphic {
+  text: string;
+  fontFamily: PhoenixTitleFontFamily;
+  fontSize: number;
+  fontWeight: number;
+  color: string;
+  background: string;
+  align: PhoenixTitleAlign;
+  position: PhoenixTitlePosition;
+  lineHeight: number;
+  padding: number;
+  strokeColor: string;
+  strokeWidth: number;
+  shadowColor: string;
+  shadowBlur: number;
+}
+
+export const DEFAULT_TITLE_GRAPHIC: PhoenixTitleGraphic = {
+  text: 'Title',
+  fontFamily: 'Arial',
+  fontSize: 96,
+  fontWeight: 800,
+  color: '#ffffff',
+  background: 'rgba(0,0,0,0)',
+  align: 'center',
+  position: 'center',
+  lineHeight: 1.08,
+  padding: 28,
+  strokeColor: '#000000',
+  strokeWidth: 0,
+  shadowColor: 'rgba(0,0,0,0.65)',
+  shadowBlur: 16,
+};
+
 export const DEFAULT_CLIP_ADJUSTMENTS: PhoenixClipAdjustments = {
   brightness: 1,
   contrast: 1,
@@ -128,6 +166,7 @@ export interface PhoenixTimelineClip {
   parallax?: PhoenixClipParallax;
   adjustments?: PhoenixClipAdjustments;
   crop?: PhoenixClipCrop;
+  title?: PhoenixTitleGraphic;
   createdAt: string;
 }
 
@@ -190,6 +229,28 @@ export function createPhoenixVideoTimeline(projectId: string): PhoenixVideoTimel
 
 
 
+
+
+export function normalizeTitleGraphic(value: Partial<PhoenixTitleGraphic> | undefined): PhoenixTitleGraphic {
+  const input = value || {};
+  const fonts: PhoenixTitleFontFamily[] = ['Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Impact'];
+  const aligns: PhoenixTitleAlign[] = ['left', 'center', 'right'];
+  const positions: PhoenixTitlePosition[] = ['top', 'center', 'bottom'];
+  return {
+    ...DEFAULT_TITLE_GRAPHIC,
+    ...input,
+    text: typeof input.text === 'string' ? input.text.slice(0, 4000) : DEFAULT_TITLE_GRAPHIC.text,
+    fontFamily: fonts.includes(input.fontFamily as PhoenixTitleFontFamily) ? input.fontFamily as PhoenixTitleFontFamily : DEFAULT_TITLE_GRAPHIC.fontFamily,
+    fontSize: Math.max(12, Math.min(360, Number(input.fontSize ?? DEFAULT_TITLE_GRAPHIC.fontSize))),
+    fontWeight: Math.max(100, Math.min(900, Math.round(Number(input.fontWeight ?? DEFAULT_TITLE_GRAPHIC.fontWeight) / 100) * 100)),
+    align: aligns.includes(input.align as PhoenixTitleAlign) ? input.align as PhoenixTitleAlign : DEFAULT_TITLE_GRAPHIC.align,
+    position: positions.includes(input.position as PhoenixTitlePosition) ? input.position as PhoenixTitlePosition : DEFAULT_TITLE_GRAPHIC.position,
+    lineHeight: Math.max(0.8, Math.min(3, Number(input.lineHeight ?? DEFAULT_TITLE_GRAPHIC.lineHeight))),
+    padding: Math.max(0, Math.min(240, Number(input.padding ?? DEFAULT_TITLE_GRAPHIC.padding))),
+    strokeWidth: Math.max(0, Math.min(24, Number(input.strokeWidth ?? DEFAULT_TITLE_GRAPHIC.strokeWidth))),
+    shadowBlur: Math.max(0, Math.min(120, Number(input.shadowBlur ?? DEFAULT_TITLE_GRAPHIC.shadowBlur))),
+  };
+}
 
 export function normalizedClipCrop(clip: Pick<PhoenixTimelineClip, 'crop'>): PhoenixClipCrop {
   const raw = clip.crop || { top: 0, right: 0, bottom: 0, left: 0 };
@@ -291,6 +352,7 @@ export function loadPhoenixVideoTimeline(projectId: string): PhoenixVideoTimelin
           transform: clip.transform || { scale: 1, x: 0, y: 0, rotation: 0 },
           keyframes: Array.isArray(clip.keyframes) ? clip.keyframes : [],
           speedKeyframes: Array.isArray(clip.speedKeyframes) ? clip.speedKeyframes : [],
+          title: clip.kind === 'title' ? normalizeTitleGraphic(clip.title) : clip.title,
         })),
       })),
     };
@@ -336,6 +398,31 @@ export function addTimelineTrack(
     clips: [],
   };
   return { ...timeline, tracks: [...timeline.tracks, track], updatedAt: new Date().toISOString() };
+}
+
+
+export function addTitleClipToTimelineTrack(
+  timeline: PhoenixVideoTimeline,
+  trackId: string,
+  start: number,
+  duration = 4,
+  text = 'Title',
+): PhoenixVideoTimeline {
+  const span = Math.max(0.5, Math.min(60, duration));
+  return addClipToTimelineTrack(timeline, trackId, {
+    name: text.trim().slice(0, 80) || 'Title',
+    src: '',
+    mimeType: 'application/x-phoenix-title',
+    kind: 'title',
+    start: Math.max(0, start),
+    sourceDuration: span,
+    inPoint: 0,
+    outPoint: span,
+    playbackRate: 1,
+    volume: 1,
+    muted: true,
+    title: normalizeTitleGraphic({ text }),
+  });
 }
 
 export function removeEmptyTimelineTrack(
