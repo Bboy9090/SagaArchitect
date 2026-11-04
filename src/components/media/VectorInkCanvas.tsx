@@ -13,6 +13,7 @@ interface VectorInkCanvasProps {
   selected: boolean;
   stroke: string;
   strokeWidth: number;
+  stabilization?: number;
   onSelect: () => void;
   onCommitStroke: (points: PhoenixVectorPoint[]) => void;
 }
@@ -23,6 +24,7 @@ export function VectorInkCanvas({
   selected,
   stroke,
   strokeWidth,
+  stabilization = 0,
   onSelect,
   onCommitStroke,
 }: VectorInkCanvasProps) {
@@ -61,13 +63,33 @@ export function VectorInkCanvas({
     }
   };
 
+  const smoothPoints = (input: PhoenixVectorPoint[]) => {
+    const amount = Math.max(0, Math.min(0.95, stabilization));
+    if (amount <= 0 || input.length < 3) return input;
+    const passes = Math.max(1, Math.round(amount * 4));
+    let current = input;
+    for (let pass = 0; pass < passes; pass += 1) {
+      current = current.map((point, index) => {
+        if (index === 0 || index === current.length - 1) return point;
+        const previous = current[index - 1];
+        const next = current[index + 1];
+        const weight = 0.22 + amount * 0.18;
+        return {
+          x: point.x * (1 - weight * 2) + (previous.x + next.x) * weight,
+          y: point.y * (1 - weight * 2) + (previous.y + next.y) * weight,
+        };
+      });
+    }
+    return current;
+  };
+
   const end = (event: React.PointerEvent<SVGSVGElement>) => {
     if (!drawing.current) return;
     drawing.current = false;
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
     } catch {}
-    const committed = points.current;
+    const committed = smoothPoints(points.current);
     points.current = [];
     if (committed.length >= 2) onCommitStroke(committed);
   };
