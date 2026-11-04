@@ -184,7 +184,12 @@ export default function CanonCorePage({ params }: CanonPageProps) {
         const dbAssets = await dbGetAssets(id);
         setAssetsList(dbAssets);
         const cloudAssetLibrary = await dbGetStudioDocument<PhoenixAssetLibraryDocument>(id, 'asset_library');
-        setAssetLibraryDocument(cloudAssetLibrary || createAssetLibraryDocument(id));
+        const existingAssetIds = new Set(dbAssets.map(asset => asset.id));
+        const loadedAssetLibrary = cloudAssetLibrary || createAssetLibraryDocument(id);
+        setAssetLibraryDocument({
+          ...loadedAssetLibrary,
+          entries: loadedAssetLibrary.entries.filter(entry => existingAssetIds.has(entry.assetId)),
+        });
       } else {
         u = getUniverseById(id) || null;
         chars = getCharacters(id);
@@ -834,6 +839,10 @@ export default function CanonCorePage({ params }: CanonPageProps) {
                           if (!confirm(`Delete asset "${asset.name}"?`)) return;
                           try {
                             await dbDeleteAsset(asset.id);
+                            updateAssetLibraryDocument(current => ({
+                              ...current,
+                              entries: current.entries.filter(entry => entry.assetId !== asset.id),
+                            }));
                             const dbAssets = await dbGetAssets(id);
                             setAssetsList(dbAssets);
                           } catch (err) {
