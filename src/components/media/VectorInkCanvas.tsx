@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import {
-  vectorPathSvgD,
+  vectorContourSvgD,
   type PhoenixPathLayer,
   type PhoenixVectorPoint,
 } from '@/lib/media-composition';
@@ -90,14 +90,28 @@ export function VectorInkCanvas({
         cursor: layer.locked ? 'not-allowed' : 'crosshair',
       }}
     >
-      <path
-        d={vectorPathSvgD(layer)}
-        fill="none"
-        stroke={layer.stroke || stroke}
-        strokeWidth={layer.strokeWidth || strokeWidth}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      {layer.points.length > 0 && (
+        <path
+          d={vectorContourSvgD(layer.points, layer.closed)}
+          fill="none"
+          stroke={layer.stroke || stroke}
+          strokeWidth={layer.strokeWidth || strokeWidth}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      )}
+      {(layer.contours || []).map(contour => (
+        <path
+          key={contour.id}
+          d={vectorContourSvgD(contour.points, contour.closed)}
+          fill="none"
+          stroke={contour.stroke || layer.stroke || stroke}
+          strokeWidth={contour.strokeWidth || layer.strokeWidth || strokeWidth}
+          opacity={Number.isFinite(contour.opacity) ? contour.opacity : 1}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ))}
     </svg>
   );
 }
