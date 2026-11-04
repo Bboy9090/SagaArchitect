@@ -3,12 +3,17 @@ import test from 'node:test';
 import {
   activeCaptionAt,
   addClipToTimeline,
+  clipPlaybackRateAt,
+  clipSourceTimeAt,
   clipTransitionOpacity,
   clipTransformAt,
   createPhoenixVideoTimeline,
+  isTimelineTrackActive,
+  moveTimelineClip,
   splitTimelineClip,
   timelineClipDuration,
   timelineDuration,
+  trimTimelineClipAt,
 } from '../src/lib/video-timeline.ts';
 
 test('video timeline starts with video and audio tracks', () => {
@@ -169,4 +174,123 @@ test('transform keyframes interpolate linearly at the playhead', () => {
   assert.equal(transform.x, 50);
   assert.equal(transform.y, 20);
   assert.equal(transform.rotation, 10);
+});
+
+
+test('track mute and solo resolve active lanes by media kind', () => {
+  let timeline = createPhoenixVideoTimeline('project-track-controls');
+  const firstVideo = timeline.tracks.find(track => track.kind === 'video');
+  timeline.tracks.push({
+    id: 'video-2',
+    name: 'Video 2',
+    kind: 'video',
+    muted: false,
+    solo: true,
+    locked: false,
+    order: 2,
+    clips: [],
+  });
+  assert.equal(isTimelineTrackActive(timeline, firstVideo), false);
+  assert.equal(isTimelineTrackActive(timeline, timeline.tracks.find(track => track.id === 'video-2')), true);
+  timeline.tracks.find(track => track.id === 'video-2').muted = true;
+  assert.equal(isTimelineTrackActive(timeline, firstVideo), true);
+});
+
+test('locked tracks reject shared clip move operations', () => {
+  let timeline = createPhoenixVideoTimeline('project-track-lock');
+  timeline = addClipToTimeline(timeline, {
+    name: 'Locked Shot',
+    src: '/locked.mp4',
+    mimeType: 'video/mp4',
+    kind: 'video',
+    start: 1,
+    sourceDuration: 5,
+    inPoint: 0,
+    outPoint: 5,
+    playbackRate: 1,
+    volume: 1,
+    muted: false,
+  });
+  const track = timeline.tracks.find(item => item.kind === 'video');
+  const clip = track.clips[0];
+  track.locked = true;
+  const moved = moveTimelineClip(timeline, clip.id, 4);
+  assert.equal(moved.tracks.find(item => item.id === track.id).clips[0].start, 1);
+});
+
+test('speed ramps preserve trim endpoints while changing source velocity', () => {
+  let timeline = createPhoenixVideoTimeline('project-speed-ramp');
+  timeline = addClipToTimeline(timeline, {
+    name: 'Ramp',
+    src: '/ramp.mp4',
+    mimeType: 'video/mp4',
+    kind: 'video',
+    start: 0,
+    sourceDuration: 10,
+    inPoint: 0,
+    outPoint: 10,
+    playbackRate: 1,
+    volume: 1,
+    muted: false,
+  });
+  const clip = timeline.tracks.find(track => track.kind === 'video').clips[0];
+  clip.speedKeyframes = [
+    { progress: 0.5, rate: 2, easing: 'linear' },
+  ];
+  assert.equal(clipSourceTimeAt(clip, 0), 0);
+  assert.ok(Math.abs(clipSourceTimeAt(clip, 10) - 10) < 0.001);
+  assert.ok(clipSourceTimeAt(clip, 2.5) < 2.5);
+  assert.ok(clipSourceTimeAt(clip, 7.5) > 7.5);
+  assert.ok(clipPlaybackRateAt(clip, 5) > 1);
+});
+
+
+test('speed-ramped split preserves the exact timeline edit point', () => {
+  let timeline = createPhoenixVideoTimeline('project-speed-split');
+  timeline = addClipToTimeline(timeline, {
+    name: 'Ramp Split',
+    src: '/ramp-split.mp4',
+    mimeType: 'video/mp4',
+    kind: 'video',
+    start: 0,
+    sourceDuration: 10,
+    inPoint: 0,
+    outPoint: 10,
+    playbackRate: 1,
+    volume: 1,
+    muted: false,
+  });
+  const clip = timeline.tracks.find(track => track.kind === 'video').clips[0];
+  clip.speedKeyframes = [{ progress: 0.5, rate: 2, easing: 'linear' }];
+  timeline = splitTimelineClip(timeline, clip.id, 4);
+  const clips = timeline.tracks.find(track => track.kind === 'video').clips;
+  assert.equal(clips.length, 2);
+  assert.ok(Math.abs(timelineClipDuration(clips[0]) - 4) < 0.001);
+  assert.ok(Math.abs(timelineClipDuration(clips[1]) - 6) < 0.001);
+  assert.equal(clips[1].start, 4);
+});
+
+test('speed-ramped trim preserves the requested timeline edge', () => {
+  let timeline = createPhoenixVideoTimeline('project-speed-trim');
+  timeline = addClipToTimeline(timeline, {
+    name: 'Ramp Trim',
+    src: '/ramp-trim.mp4',
+    mimeType: 'video/mp4',
+    kind: 'video',
+    start: 0,
+    sourceDuration: 10,
+    inPoint: 0,
+    outPoint: 10,
+    playbackRate: 1,
+    volume: 1,
+    muted: false,
+  });
+  const clip = timeline.tracks.find(track => track.kind === 'video').clips[0];
+  clip.speedKeyframes = [{ progress: 0.5, rate: 2, easing: 'linear' }];
+  const trimmedOut = trimTimelineClipAt(timeline, clip.id, 4, 'out', false);
+  assert.ok(Math.abs(timelineClipDuration(trimmedOut.tracks[0].clips[0]) - 4) < 0.001);
+
+  const trimmedIn = trimTimelineClipAt(timeline, clip.id, 4, 'in', false);
+  assert.ok(Math.abs(trimmedIn.tracks[0].clips[0].start - 4) < 0.001);
+  assert.ok(Math.abs(timelineClipDuration(trimmedIn.tracks[0].clips[0]) - 6) < 0.001);
 });
