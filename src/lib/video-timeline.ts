@@ -126,6 +126,27 @@ export interface PhoenixCaptionCue {
   background: string;
 }
 
+export type PhoenixMissingMediaReferenceKind = 'clip' | 'source-keyframe';
+
+export interface PhoenixMissingMediaReference {
+  id: string;
+  clipId: string;
+  trackId: string;
+  assetId: string;
+  kind: PhoenixMissingMediaReferenceKind;
+  sourceKeyframeIndex?: number;
+  clipKind: PhoenixTimelineClipKind;
+  label: string;
+  locked: boolean;
+}
+
+export interface PhoenixRelinkAsset {
+  id: string;
+  name: string;
+  mimeType: string;
+  src: string;
+}
+
 export interface PhoenixTimelineMarker {
   id: string;
   time: number;
@@ -249,6 +270,94 @@ export function normalizeTitleGraphic(value: Partial<PhoenixTitleGraphic> | unde
     padding: Math.max(0, Math.min(240, Number(input.padding ?? DEFAULT_TITLE_GRAPHIC.padding))),
     strokeWidth: Math.max(0, Math.min(24, Number(input.strokeWidth ?? DEFAULT_TITLE_GRAPHIC.strokeWidth))),
     shadowBlur: Math.max(0, Math.min(120, Number(input.shadowBlur ?? DEFAULT_TITLE_GRAPHIC.shadowBlur))),
+  };
+}
+
+
+export function isRelinkAssetCompatible(
+  clipKind: PhoenixTimelineClipKind,
+  mimeType: string,
+): boolean {
+  if (clipKind === 'title') return false;
+  if (clipKind === 'image') return mimeType.startsWith('image/');
+  if (clipKind === 'video') return mimeType.startsWith('video/');
+  return mimeType.startsWith('audio/');
+}
+
+export function findMissingMediaReferences(
+  timeline: PhoenixVideoTimeline,
+  availableAssetIds: ReadonlySet<string>,
+): PhoenixMissingMediaReference[] {
+  const missing: PhoenixMissingMediaReference[] = [];
+  for (const track of timeline.tracks) {
+    for (const clip of track.clips) {
+      if (clip.kind !== 'title' && clip.assetId && !availableAssetIds.has(clip.assetId)) {
+        missing.push({
+          id: `clip:${clip.id}:${clip.assetId}`,
+          clipId: clip.id,
+          trackId: track.id,
+          assetId: clip.assetId,
+          kind: 'clip',
+          clipKind: clip.kind,
+          label: clip.name,
+          locked: Boolean(track.locked),
+        });
+      }
+      (clip.sourceKeyframes || []).forEach((frame, index) => {
+        if (!frame.assetId || availableAssetIds.has(frame.assetId)) return;
+        missing.push({
+          id: `source-keyframe:${clip.id}:${index}:${frame.assetId}`,
+          clipId: clip.id,
+          trackId: track.id,
+          assetId: frame.assetId,
+          kind: 'source-keyframe',
+          sourceKeyframeIndex: index,
+          clipKind: 'image',
+          label: frame.name || `${clip.name} source swap`,
+          locked: Boolean(track.locked),
+        });
+      });
+    }
+  }
+  return missing;
+}
+
+export function relinkTimelineMediaReference(
+  timeline: PhoenixVideoTimeline,
+  reference: PhoenixMissingMediaReference,
+  asset: PhoenixRelinkAsset,
+): PhoenixVideoTimeline {
+  if (!isRelinkAssetCompatible(reference.clipKind, asset.mimeType)) return timeline;
+  const track = timeline.tracks.find(item => item.id === reference.trackId);
+  if (!track || track.locked) return timeline;
+  const clip = track.clips.find(item => item.id === reference.clipId);
+  if (!clip) return timeline;
+
+  return {
+    ...timeline,
+    tracks: timeline.tracks.map(item => item.id !== track.id ? item : {
+      ...item,
+      clips: item.clips.map(existing => {
+        if (existing.id !== clip.id) return existing;
+        if (reference.kind === 'source-keyframe') {
+          const index = reference.sourceKeyframeIndex;
+          if (typeof index !== 'number' || !existing.sourceKeyframes?.[index]) return existing;
+          return {
+            ...existing,
+            sourceKeyframes: existing.sourceKeyframes.map((frame, frameIndex) => frameIndex === index
+              ? { ...frame, assetId: asset.id, src: asset.src, name: asset.name }
+              : frame),
+          };
+        }
+        return {
+          ...existing,
+          assetId: asset.id,
+          src: asset.src,
+          mimeType: asset.mimeType,
+        };
+      }),
+    }),
+    updatedAt: new Date().toISOString(),
   };
 }
 

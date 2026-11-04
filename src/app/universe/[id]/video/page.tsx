@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { AudioWaveform } from '@/components/media/AudioWaveform';
 import { StudioRevisionPanel } from '@/components/media/StudioRevisionPanel';
+import { MissingMediaPanel } from '@/components/media/MissingMediaPanel';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
 import { dbGetAssets, dbGetProject, dbGetStudioDocument, dbSaveStudioDocument, dbUploadAsset, type ProjectAsset } from '@/lib/db-client';
@@ -26,6 +27,7 @@ import {
   clipVolumeAutomationAt,
   clipTransformAt,
   createPhoenixVideoTimeline,
+  findMissingMediaReferences,
   isTimelineClipLocked,
   isTimelineTrackActive,
   loadPhoenixVideoTimeline,
@@ -35,6 +37,7 @@ import {
   normalizeTitleGraphic,
   removeEmptyTimelineTrack,
   removeTimelineClip,
+  relinkTimelineMediaReference,
   savePhoenixVideoTimeline,
   shiftTimelineTrackFrom,
   snapTimelineTime,
@@ -43,6 +46,7 @@ import {
   timelineClipDuration,
   timelineDuration,
   trimTimelineClipAt,
+  type PhoenixMissingMediaReference,
   type PhoenixTimelineClip,
   type PhoenixTimelineClipKind,
   type PhoenixTimelineTrack,
@@ -163,6 +167,12 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
   }, [timeline, playhead]);
 
   const activeCaption = useMemo(() => timeline ? activeCaptionAt(timeline, playhead) : null, [timeline, playhead]);
+  const missingMedia = useMemo(
+    () => isDbMode() && timeline
+      ? findMissingMediaReferences(timeline, new Set(assets.map(asset => asset.id)))
+      : [],
+    [timeline, assets],
+  );
 
   const activeAudioClips = useMemo(() => {
     if (!timeline) return [];
@@ -268,6 +278,24 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
       tracks: current.tracks.map(track => track.id === trackId ? { ...track, ...patch } : track),
       updatedAt: new Date().toISOString(),
     }) : current);
+  };
+
+  const relinkMissingMedia = (reference: PhoenixMissingMediaReference, asset: ProjectAsset) => {
+    setTimeline(current => {
+      if (!current) return current;
+      const next = relinkTimelineMediaReference(current, reference, {
+        id: asset.id,
+        name: asset.name,
+        mimeType: asset.mime_type,
+        src: asset.serve_url || `/api/db/assets/${asset.id}/serve`,
+      });
+      if (next === current) {
+        setStatus('Relink was not applied. Check media type and track lock state.');
+        return current;
+      }
+      setStatus(`Relinked ${reference.label} to ${asset.name}.`);
+      return next;
+    });
   };
 
   const addTitleAtPlayhead = () => {
@@ -820,6 +848,12 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
             </div>
             <p className="mt-2 text-[10px] leading-4 text-slate-600">Select a matching track before placing media. Higher tracks composite above lower tracks during preview and WebM export.</p>
           </div>
+
+          {isDbMode() && missingMedia.length > 0 && (
+            <div className="mb-5">
+              <MissingMediaPanel references={missingMedia} assets={assets} onRelink={relinkMissingMedia} />
+            </div>
+          )}
 
           <div className="mb-5">
             <p className="mb-3 text-[10px] font-black uppercase tracking-[.3em] text-blue-300/60">Media</p>

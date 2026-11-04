@@ -7,6 +7,7 @@ import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { StudioRevisionPanel } from '@/components/media/StudioRevisionPanel';
+import { MissingMediaPanel } from '@/components/media/MissingMediaPanel';
 import { getScenes, getStoryboardPanels, getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
 import { dbGetAssets, dbGetProject, dbGetScenes, dbGetStoryboardPanels, dbGetStudioDocument, dbSaveStudioDocument, type ProjectAsset } from '@/lib/db-client';
@@ -29,14 +30,17 @@ import {
   clipSpeedMultiplierAt,
   clipTransitionState,
   clipTransformAt,
+  findMissingMediaReferences,
   isTimelineClipLocked,
   isTimelineTrackActive,
   normalizeTitleGraphic,
   removeEmptyTimelineTrack,
+  relinkTimelineMediaReference,
   timelineClipAudioGainAt,
   timelineClipDuration,
   timelineDuration,
   savePhoenixVideoTimeline,
+  type PhoenixMissingMediaReference,
   type PhoenixTimelineClip,
   type PhoenixTimelineTrack,
   type PhoenixVideoTimeline,
@@ -138,6 +142,12 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
   const activeCaption = useMemo(
     () => timeline ? activeCaptionAt(timeline, playhead) : null,
     [timeline, playhead],
+  );
+  const missingMedia = useMemo(
+    () => isDbMode() && timeline
+      ? findMissingMediaReferences(timeline, new Set(assets.map(asset => asset.id)))
+      : [],
+    [timeline, assets],
   );
   const activeAudioClips = useMemo(() => {
     if (!timeline) return [];
@@ -296,6 +306,24 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
       const next = addTimelineTrack(current, 'video', `Overlay ${current.tracks.filter(track => track.kind === 'video').length}`);
       const created = [...next.tracks].sort((a, b) => b.order - a.order).find(track => track.kind === 'video');
       if (created) setSelectedTrackId(created.id);
+      return next;
+    });
+  };
+
+  const relinkMissingMedia = (reference: PhoenixMissingMediaReference, asset: ProjectAsset) => {
+    setTimeline(current => {
+      if (!current) return current;
+      const next = relinkTimelineMediaReference(current, reference, {
+        id: asset.id,
+        name: asset.name,
+        mimeType: asset.mime_type,
+        src: asset.serve_url || `/api/db/assets/${asset.id}/serve`,
+      });
+      if (next === current) {
+        setStatus('Relink was not applied. Check media type and track lock state.');
+        return current;
+      }
+      setStatus(`Relinked ${reference.label} to ${asset.name}.`);
       return next;
     });
   };
@@ -686,6 +714,12 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
                 <div className="mt-1 text-[10px] text-slate-500">{timeline.width} × {timeline.height} · {timeline.fps} fps</div>
                 <div className="mt-1 text-[10px] text-slate-500">{timeline.tracks.filter(track => track.kind === 'video').reduce((sum, track) => sum + track.clips.length, 0)} visual clips · {timeline.captions.length} dialogue captions</div>
               </div>
+
+              {isDbMode() && missingMedia.length > 0 && (
+                <div className="mt-5">
+                  <MissingMediaPanel references={missingMedia} assets={assets} onRelink={relinkMissingMedia} />
+                </div>
+              )}
 
               <div className="mt-5">
                 <div className="flex items-center justify-between gap-2">

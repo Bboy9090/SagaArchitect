@@ -9,10 +9,13 @@ import {
   clipTransitionOpacity,
   clipTransformAt,
   createPhoenixVideoTimeline,
+  findMissingMediaReferences,
+  isRelinkAssetCompatible,
   isTimelineTrackActive,
   moveTimelineClip,
   normalizeTitleGraphic,
   normalizedClipCrop,
+  relinkTimelineMediaReference,
   splitTimelineClip,
   timelineClipDuration,
   timelineDuration,
@@ -346,4 +349,103 @@ test('title graphic normalization bounds unsafe style values', () => {
   assert.equal(title.padding, 0);
   assert.equal(title.strokeWidth, 24);
   assert.equal(title.shadowBlur, 120);
+});
+
+
+test('missing media discovery covers base clips and source swaps only when asset ids disappear', () => {
+  let timeline = createPhoenixVideoTimeline('project-missing-media');
+  timeline = addClipToTimeline(timeline, {
+    assetId: 'image-old',
+    name: 'Hero',
+    src: '/api/db/assets/image-old/serve',
+    mimeType: 'image/png',
+    kind: 'image',
+    start: 0,
+    sourceDuration: 5,
+    inPoint: 0,
+    outPoint: 5,
+    playbackRate: 1,
+    volume: 1,
+    muted: false,
+  });
+  const clip = timeline.tracks.find(track => track.kind === 'video').clips[0];
+  clip.sourceKeyframes = [
+    { time: 1, assetId: 'image-present', src: '/present.png', name: 'Present' },
+    { time: 2, assetId: 'image-missing', src: '/missing.png', name: 'Missing swap' },
+  ];
+  const missing = findMissingMediaReferences(timeline, new Set(['image-present']));
+  assert.equal(missing.length, 2);
+  assert.deepEqual(missing.map(item => item.kind).sort(), ['clip', 'source-keyframe']);
+});
+
+test('media relink preserves clip editing state and updates only the broken reference', () => {
+  let timeline = createPhoenixVideoTimeline('project-relink');
+  timeline = addClipToTimeline(timeline, {
+    assetId: 'old-video',
+    name: 'Scene A',
+    src: '/old.mp4',
+    mimeType: 'video/mp4',
+    kind: 'video',
+    start: 3,
+    sourceDuration: 8,
+    inPoint: 1,
+    outPoint: 7,
+    playbackRate: 1,
+    volume: 0.8,
+    muted: false,
+  });
+  const track = timeline.tracks.find(item => item.kind === 'video');
+  const clip = track.clips[0];
+  clip.transform = { scale: 1.2, x: 30, y: -20, rotation: 4 };
+  const [reference] = findMissingMediaReferences(timeline, new Set());
+  const relinked = relinkTimelineMediaReference(timeline, reference, {
+    id: 'replacement-video',
+    name: 'Replacement',
+    mimeType: 'video/webm',
+    src: '/replacement.webm',
+  });
+  const next = relinked.tracks.find(item => item.id === track.id).clips[0];
+  assert.equal(next.assetId, 'replacement-video');
+  assert.equal(next.src, '/replacement.webm');
+  assert.equal(next.mimeType, 'video/webm');
+  assert.deepEqual(next.transform, clip.transform);
+  assert.equal(next.start, 3);
+  assert.equal(next.inPoint, 1);
+  assert.equal(next.outPoint, 7);
+});
+
+test('media relink rejects incompatible asset types and locked tracks', () => {
+  let timeline = createPhoenixVideoTimeline('project-relink-safety');
+  timeline = addClipToTimeline(timeline, {
+    assetId: 'old-image',
+    name: 'Still',
+    src: '/old.png',
+    mimeType: 'image/png',
+    kind: 'image',
+    start: 0,
+    sourceDuration: 4,
+    inPoint: 0,
+    outPoint: 4,
+    playbackRate: 1,
+    volume: 1,
+    muted: false,
+  });
+  const reference = findMissingMediaReferences(timeline, new Set())[0];
+  assert.equal(isRelinkAssetCompatible('image', 'video/mp4'), false);
+  const incompatible = relinkTimelineMediaReference(timeline, reference, {
+    id: 'wrong',
+    name: 'Wrong',
+    mimeType: 'video/mp4',
+    src: '/wrong.mp4',
+  });
+  assert.equal(incompatible.tracks[0].clips[0].assetId, 'old-image');
+
+  timeline.tracks[0].locked = true;
+  const locked = relinkTimelineMediaReference(timeline, reference, {
+    id: 'new-image',
+    name: 'New',
+    mimeType: 'image/webp',
+    src: '/new.webp',
+  });
+  assert.equal(locked.tracks[0].clips[0].assetId, 'old-image');
 });
