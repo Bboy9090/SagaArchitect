@@ -76,6 +76,7 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
   const [rightVanishingPercent, setRightVanishingPercent] = useState(75);
   const [exporting, setExporting] = useState(false);
   const [status, setStatus] = useState('');
+  const [savedBrushName, setSavedBrushName] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -290,6 +291,46 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
     setSelectedLayerId('');
   };
 
+  const saveCurrentBrushPreset = () => {
+    const name = savedBrushName.trim();
+    if (!name) return;
+    updateDocument(current => {
+      const preset = {
+        id: crypto.randomUUID(),
+        name: name.slice(0, 80),
+        color: brushColor,
+        size: brushSize,
+        opacity: brushOpacity,
+        texture: brushTexture,
+        textureStrength,
+        stabilization,
+        symmetry,
+      };
+      const existing = (current.brushPresets || []).filter(item => item.name.toLowerCase() !== preset.name.toLowerCase());
+      return { ...current, brushPresets: [...existing, preset].slice(-24) };
+    });
+    setSavedBrushName('');
+  };
+
+  const applySavedBrushPreset = (preset: NonNullable<PhoenixMediaDocument['brushPresets']>[number]) => {
+    setBrushColor(preset.color);
+    setBrushSize(preset.size);
+    setBrushOpacity(preset.opacity);
+    setBrushTexture(preset.texture);
+    setTextureStrength(preset.textureStrength);
+    setStabilization(preset.stabilization);
+    setSymmetry(preset.symmetry);
+    setEraseMode(false);
+    setVectorInkMode(false);
+  };
+
+  const deleteSavedBrushPreset = (presetId: string) => {
+    updateDocument(current => ({
+      ...current,
+      brushPresets: (current.brushPresets || []).filter(preset => preset.id !== presetId),
+    }));
+  };
+
   const chooseBrush = (preset: BrushPreset) => {
     const next = BRUSH_PRESETS[preset];
     setBrushPreset(preset);
@@ -385,6 +426,50 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
                 {BRUSH_PRESETS[preset].label}
               </Button>
             ))}
+          </div>
+
+          <div className="mt-4 rounded-xl border border-blue-400/15 bg-blue-400/[0.03] p-3">
+            <div className="text-[10px] font-black uppercase tracking-[.22em] text-blue-300/70">Custom Brush Library</div>
+            <div className="mt-3 flex gap-2">
+              <input
+                value={savedBrushName}
+                maxLength={80}
+                onChange={event => setSavedBrushName(event.target.value)}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') saveCurrentBrushPreset();
+                }}
+                placeholder="Preset name"
+                className="min-h-9 min-w-0 flex-1 rounded border border-white/10 bg-black/20 px-2 text-xs text-white placeholder:text-slate-600"
+              />
+              <Button size="sm" variant="ghost" disabled={!savedBrushName.trim()} onClick={saveCurrentBrushPreset}>Save</Button>
+            </div>
+            <p className="mt-2 text-[9px] leading-4 text-slate-500">
+              Saves current color, size, opacity, texture, texture strength, stabilization, and symmetry. Same-name saves replace the older preset.
+            </p>
+            {(document.brushPresets || []).length > 0 && (
+              <div className="mt-3 max-h-48 space-y-1 overflow-auto">
+                {(document.brushPresets || []).map(preset => (
+                  <div key={preset.id} className="flex items-center gap-2 rounded border border-white/5 bg-black/10 p-2">
+                    <button
+                      type="button"
+                      onClick={() => applySavedBrushPreset(preset)}
+                      className="h-5 w-5 shrink-0 rounded-full border border-white/20"
+                      style={{ background: preset.color }}
+                      aria-label={`Apply brush preset ${preset.name}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => applySavedBrushPreset(preset)}
+                      className="min-w-0 flex-1 truncate text-left text-[10px] text-slate-300 hover:text-white"
+                      title={preset.name}
+                    >
+                      {preset.name} · {Math.round(preset.size)}px · {preset.texture}
+                    </button>
+                    <Button size="sm" variant="ghost" onClick={() => deleteSavedBrushPreset(preset.id)}>×</Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="mt-4 space-y-3">

@@ -183,6 +183,18 @@ export interface PhoenixSymbolDefinition {
   masterLayerId: string;
 }
 
+export interface PhoenixIllustrationBrushPreset {
+  id: string;
+  name: string;
+  color: string;
+  size: number;
+  opacity: number;
+  texture: 'smooth' | 'marker' | 'chalk' | 'spray';
+  textureStrength: number;
+  stabilization: number;
+  symmetry: 'none' | 'vertical' | 'horizontal' | 'both';
+}
+
 export interface PhoenixMediaDocument {
   id: string;
   projectId: string;
@@ -195,6 +207,7 @@ export interface PhoenixMediaDocument {
   groups?: PhoenixLayerGroup[];
   symbols?: PhoenixSymbolDefinition[];
   palette?: string[];
+  brushPresets?: PhoenixIllustrationBrushPreset[];
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -220,6 +233,7 @@ export function createPhoenixMediaDocument(
     groups: [],
     symbols: [],
     palette: [],
+    brushPresets: [],
     version: 1,
     createdAt: now,
     updatedAt: now,
