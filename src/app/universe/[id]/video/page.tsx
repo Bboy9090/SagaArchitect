@@ -32,6 +32,7 @@ import {
   timelineClipAudioGainAt,
   timelineClipDuration,
   timelineDuration,
+  trimTimelineClipAt,
   type PhoenixTimelineClip,
   type PhoenixTimelineClipKind,
   type PhoenixTimelineTrack,
@@ -396,6 +397,13 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
     if (!selectedClip) return;
     setTimeline(current => current ? removeTimelineClip(current, selectedClip.id, rippleEditing) : current);
     setSelectedClipId('');
+  };
+
+  const trimSelected = (edge: 'in' | 'out') => {
+    if (!selectedClip) return;
+    setTimeline(current => current
+      ? trimTimelineClipAt(current, selectedClip.id, playhead, edge, rippleEditing)
+      : current);
   };
 
   const splitSelected = () => {
@@ -995,6 +1003,14 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
 
               <Button size="sm" variant="ghost" className="w-full" onClick={() => patchClip(selectedClip.id,{muted:!selectedClip.muted})}>{selectedClip.muted ? 'Unmute' : 'Mute'}</Button>
               <Button size="sm" variant="secondary" className="w-full" onClick={moveSelectedToPlayhead}>{rippleEditing ? 'Ripple Move to Playhead' : 'Move to Playhead'}</Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button size="sm" variant="ghost" onClick={() => trimSelected('in')}>
+                  {rippleEditing ? 'Ripple Trim In' : 'Trim In Here'}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => trimSelected('out')}>
+                  {rippleEditing ? 'Ripple Trim Out' : 'Trim Out Here'}
+                </Button>
+              </div>
               <Button size="sm" variant="secondary" className="w-full" onClick={splitSelected}>Split at Playhead</Button>
               <Button size="sm" variant="danger" className="w-full" onClick={deleteClip}>{rippleEditing ? 'Ripple Delete Clip' : 'Delete Clip'}</Button>
             </div>
