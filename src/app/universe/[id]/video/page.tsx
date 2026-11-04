@@ -21,6 +21,7 @@ import {
   createPhoenixVideoTimeline,
   loadPhoenixVideoTimeline,
   moveTimelineClip,
+  moveTimelineClipToTrack,
   moveTimelineTrack,
   removeEmptyTimelineTrack,
   removeTimelineClip,
@@ -273,12 +274,17 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
     const requestedStart = Math.max(0, (event.clientX - bounds.left) / PIXELS_PER_SECOND);
     setTimeline(current => {
       if (!current) return current;
+      const sourceTrack = current.tracks.find(track => track.clips.some(clip => clip.id === clipId));
+      const clip = sourceTrack?.clips.find(item => item.id === clipId);
       const targetTrack = current.tracks.find(track => track.id === trackId);
-      if (!targetTrack?.clips.some(clip => clip.id === clipId)) {
-        setStatus("Cross-track drag is not enabled yet. Drag within the clip's current lane.");
+      if (!sourceTrack || !clip || !targetTrack) return current;
+      const requiredKind = clip.kind === 'audio' ? 'audio' : 'video';
+      if (targetTrack.kind !== requiredKind) {
+        setStatus(`Cannot move ${clip.kind} clips onto a ${targetTrack.kind} track.`);
         return current;
       }
-      return moveTimelineClip(current, clipId, requestedStart, {
+      setSelectedTrackId(targetTrack.id);
+      return moveTimelineClipToTrack(current, clipId, targetTrack.id, requestedStart, {
         ripple: rippleEditing,
         snap: snapEditing,
         snapThreshold: 0.12,
