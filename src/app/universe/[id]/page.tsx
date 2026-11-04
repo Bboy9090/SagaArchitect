@@ -47,6 +47,7 @@ export default function CanonCorePage({ params }: CanonPageProps) {
   const [assetQuery, setAssetQuery] = useState('');
   const [assetType, setAssetType] = useState<'all' | 'image' | 'video' | 'audio'>('all');
   const [assetSort, setAssetSort] = useState<'newest' | 'oldest' | 'name' | 'size'>('newest');
+  const [assetUploadStatus, setAssetUploadStatus] = useState('');
 
   const filteredAssets = useMemo(() => {
     const query = assetQuery.trim().toLowerCase();
@@ -454,18 +455,33 @@ export default function CanonCorePage({ params }: CanonPageProps) {
                   type="file"
                   id="asset-upload-input"
                   accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,audio/wav,audio/mpeg"
+                  multiple
                   className="hidden"
                   onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
+                    const files = Array.from(e.target.files || []).slice(0, 20);
+                    e.currentTarget.value = '';
+                    if (files.length === 0) return;
+                    const failures: string[] = [];
                     try {
                       setGenLoading('asset-upload');
-                      await dbUploadAsset(id, file);
+                      setAssetUploadStatus(`Uploading 0/${files.length}…`);
+                      for (let index = 0; index < files.length; index += 1) {
+                        const file = files[index];
+                        try {
+                          await dbUploadAsset(id, file);
+                        } catch (err) {
+                          failures.push(`${file.name}: ${err instanceof Error ? err.message : 'upload failed'}`);
+                        }
+                        setAssetUploadStatus(`Uploading ${index + 1}/${files.length}…`);
+                      }
                       const dbAssets = await dbGetAssets(id);
                       setAssetsList(dbAssets);
-                    } catch (err) {
-                      const msg = err instanceof Error ? err.message : 'Failed to upload asset';
-                      alert(msg);
+                      setAssetUploadStatus(
+                        failures.length === 0
+                          ? `Uploaded ${files.length} asset${files.length === 1 ? '' : 's'}.`
+                          : `Uploaded ${files.length - failures.length}/${files.length}; ${failures.length} failed.`,
+                      );
+                      if (failures.length > 0) alert(failures.join('\n'));
                     } finally {
                       setGenLoading(null);
                     }
@@ -479,7 +495,8 @@ export default function CanonCorePage({ params }: CanonPageProps) {
                 >
                   📤 Upload Media
                 </Button>
-                <span className="text-xs text-gray-500">Images: 5MB max. MP4/WebM/WAV/MP3: 64MB max.</span>
+                <span className="text-xs text-gray-500">Up to 20 files per batch. Images: 5MB max. MP4/WebM/WAV/MP3: 64MB max.</span>
+                {assetUploadStatus && <span className="text-xs text-emerald-300/80">{assetUploadStatus}</span>}
               </div>
 
               {assetsList.length > 0 && (
