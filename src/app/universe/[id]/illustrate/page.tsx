@@ -28,7 +28,7 @@ import {
   undoDocumentHistory,
   type PhoenixDocumentHistory,
 } from '@/lib/media-history';
-import { downloadMediaBlob, exportPhoenixMediaDocument } from '@/lib/media-renderer';
+import { downloadMediaBlob, downloadPhoenixSvgBlob, exportPhoenixMediaDocument, exportPhoenixMediaDocumentSvg } from '@/lib/media-renderer';
 import { generateColorHarmony, normalizeHexColor, type PhoenixColorHarmony } from '@/lib/color-harmony';
 import { createPoseGuide, type PhoenixPoseGuidePreset } from '@/lib/pose-guides';
 import type { Universe } from '@/lib/types';
@@ -355,6 +355,18 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
     }
   };
 
+  const exportSvg = () => {
+    if (!document || exporting) return;
+    setStatus('');
+    try {
+      const blob = exportPhoenixMediaDocumentSvg(document);
+      downloadPhoenixSvgBlob(blob, document.title || 'phoenix-illustration');
+      setStatus('SVG exported with vector ink preserved as editable paths.');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'SVG export failed.');
+    }
+  };
+
   if (loading || !document || !history) {
     return (
       <Navigation>
@@ -412,6 +424,7 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
               }}
               onError={setStatus}
             />
+            <Button size="sm" variant="ghost" disabled={exporting} onClick={exportSvg}>Export SVG</Button>
             <Button size="sm" variant="gold" loading={exporting} onClick={() => void exportPng()}>Export PNG</Button>
           </div>
         }
@@ -872,7 +885,7 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
             <div className="text-xs font-bold text-violet-200">Illustration foundation</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
               Pressure-aware raster painting, smooth/marker/chalk/spray textures, smoothing, symmetry, adjustable one-point/two-point
-              perspective guides, independently styled editable vector ink, reference layers, undo/redo, autosave, and PNG export are active.
+              perspective guides, independently styled editable vector ink, reference layers, undo/redo, autosave, SVG vector export, and PNG export are active.
               Project color harmonies, saved palettes, vector pose construction guides, and pressure-aware tapered vector ink are active.
               Advanced pose editing and custom brush libraries are next.
             </p>
