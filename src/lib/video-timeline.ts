@@ -640,6 +640,68 @@ export function moveTimelineClipToTrack(
   };
 }
 
+
+export function trimTimelineClipAt(
+  timeline: PhoenixVideoTimeline,
+  clipId: string,
+  playhead: number,
+  edge: 'in' | 'out',
+  ripple = false,
+): PhoenixVideoTimeline {
+  const track = timeline.tracks.find(item => item.clips.some(clip => clip.id === clipId));
+  const clip = track?.clips.find(item => item.id === clipId);
+  if (!track || !clip) return timeline;
+
+  const duration = timelineClipDuration(clip);
+  const clipEnd = clip.start + duration;
+  const cutTime = Math.max(clip.start + 0.05, Math.min(clipEnd - 0.05, playhead));
+  if (cutTime <= clip.start || cutTime >= clipEnd) return timeline;
+
+  const elapsed = cutTime - clip.start;
+  const sourceAtCut = Math.max(
+    clip.inPoint + 0.05,
+    Math.min(clip.outPoint - 0.05, clip.inPoint + elapsed * Math.max(0.05, clip.playbackRate)),
+  );
+
+  if (edge === 'in') {
+    const removedDuration = elapsed;
+    let next: PhoenixVideoTimeline = {
+      ...timeline,
+      tracks: timeline.tracks.map(item => item.id !== track.id ? item : {
+        ...item,
+        clips: item.clips.map(existing => existing.id !== clipId ? existing : {
+          ...existing,
+          start: ripple ? clip.start : cutTime,
+          inPoint: sourceAtCut,
+        }),
+      }),
+      updatedAt: new Date().toISOString(),
+    };
+    if (ripple && removedDuration > 0.0001) {
+      next = shiftTimelineTrackFrom(next, track.id, clipEnd, -removedDuration, clipId);
+    }
+    return next;
+  }
+
+  const oldEnd = clipEnd;
+  const removedDuration = oldEnd - cutTime;
+  let next: PhoenixVideoTimeline = {
+    ...timeline,
+    tracks: timeline.tracks.map(item => item.id !== track.id ? item : {
+      ...item,
+      clips: item.clips.map(existing => existing.id !== clipId ? existing : {
+        ...existing,
+        outPoint: sourceAtCut,
+      }),
+    }),
+    updatedAt: new Date().toISOString(),
+  };
+  if (ripple && removedDuration > 0.0001) {
+    next = shiftTimelineTrackFrom(next, track.id, oldEnd, -removedDuration, clipId);
+  }
+  return next;
+}
+
 export function removeTimelineClip(
   timeline: PhoenixVideoTimeline,
   clipId: string,
