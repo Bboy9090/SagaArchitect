@@ -327,7 +327,7 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
   const imageAssets = assets.filter(asset => asset.mime_type.startsWith('image/'));
   const harmonyColors = generateColorHarmony(colorHarmonyBase, colorHarmony);
 
-  const useColor = (color: string) => {
+  const applyPaletteColor = (color: string) => {
     const normalized = normalizeHexColor(color);
     setBrushColor(normalized);
     setVectorInkColor(normalized);
@@ -491,7 +491,7 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
                 <button
                   key={color}
                   type="button"
-                  onClick={() => useColor(color)}
+                  onClick={() => applyPaletteColor(color)}
                   onDoubleClick={() => addPaletteColor(color)}
                   className="aspect-square rounded border border-white/10"
                   style={{ background: color }}
@@ -509,7 +509,7 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
                     <div key={color} className="rounded border border-white/10 bg-black/10 p-1">
                       <button
                         type="button"
-                        onClick={() => useColor(color)}
+                        onClick={() => applyPaletteColor(color)}
                         className="aspect-square w-full rounded"
                         style={{ background: color }}
                         aria-label={`Use saved color ${color}`}
