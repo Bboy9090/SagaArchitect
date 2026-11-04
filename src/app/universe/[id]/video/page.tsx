@@ -686,6 +686,38 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
                     </label>
                   ))}
                 </div>
+                <div className="mt-3 rounded border border-cyan-400/15 bg-cyan-400/[0.04] p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-300">Depth Parallax</span>
+                    <Button
+                      size="sm"
+                      variant={selectedClip.parallax?.enabled ? 'gold' : 'ghost'}
+                      onClick={() => patchClip(selectedClip.id, {
+                        parallax: selectedClip.parallax?.enabled
+                          ? { ...selectedClip.parallax, enabled: false }
+                          : (selectedClip.parallax || { enabled: true, depth: 0.65, driftX: 80, driftY: 0, zoom: 0.12 }),
+                      })}
+                    >
+                      {selectedClip.parallax?.enabled ? 'On' : 'Enable'}
+                    </Button>
+                  </div>
+                  {selectedClip.parallax?.enabled && (
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <label className="text-[9px] uppercase text-slate-500">Depth
+                        <input type="number" min={0} max={1} step={0.05} value={selectedClip.parallax.depth} onChange={event => patchClip(selectedClip.id, { parallax: { ...selectedClip.parallax!, depth: Math.max(0, Math.min(1, Number(event.target.value))) } })} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-xs text-white" />
+                      </label>
+                      <label className="text-[9px] uppercase text-slate-500">Zoom
+                        <input type="number" min={-0.5} max={0.5} step={0.01} value={selectedClip.parallax.zoom} onChange={event => patchClip(selectedClip.id, { parallax: { ...selectedClip.parallax!, zoom: Math.max(-0.5, Math.min(0.5, Number(event.target.value))) } })} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-xs text-white" />
+                      </label>
+                      <label className="text-[9px] uppercase text-slate-500">Drift X
+                        <input type="number" min={-2000} max={2000} step={5} value={selectedClip.parallax.driftX} onChange={event => patchClip(selectedClip.id, { parallax: { ...selectedClip.parallax!, driftX: Math.max(-2000, Math.min(2000, Number(event.target.value))) } })} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-xs text-white" />
+                      </label>
+                      <label className="text-[9px] uppercase text-slate-500">Drift Y
+                        <input type="number" min={-2000} max={2000} step={5} value={selectedClip.parallax.driftY} onChange={event => patchClip(selectedClip.id, { parallax: { ...selectedClip.parallax!, driftY: Math.max(-2000, Math.min(2000, Number(event.target.value))) } })} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-xs text-white" />
+                      </label>
+                    </div>
+                  )}
+                </div>
                 <Button size="sm" variant="ghost" className="mt-2 w-full" onClick={addTransformKeyframe}>Add Keyframe at Playhead</Button>
                 {selectedClip.keyframes.length > 0 && (
                   <div className="mt-3 space-y-2">

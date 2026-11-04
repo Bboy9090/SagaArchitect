@@ -23,6 +23,14 @@ export interface PhoenixClipTransitionState {
   scale: number;
 }
 
+export interface PhoenixClipParallax {
+  enabled: boolean;
+  depth: number;
+  driftX: number;
+  driftY: number;
+  zoom: number;
+}
+
 export interface PhoenixCaptionCue {
   id: string;
   text: string;
@@ -55,6 +63,7 @@ export interface PhoenixTimelineClip {
   transitionDuration: number;
   transform: PhoenixClipTransform;
   keyframes: PhoenixClipKeyframe[];
+  parallax?: PhoenixClipParallax;
   createdAt: string;
 }
 
@@ -282,27 +291,52 @@ function applyKeyframeEasing(easing: PhoenixKeyframeEasing | undefined, value: n
   }
 }
 
+function applyClipParallax(
+  clip: PhoenixTimelineClip,
+  transform: PhoenixClipTransform,
+  localTime: number,
+): PhoenixClipTransform {
+  const effect = clip.parallax;
+  if (!effect?.enabled) return transform;
+  const duration = timelineClipDuration(clip);
+  const progress = duration > 0 ? Math.max(0, Math.min(1, localTime / duration)) : 0;
+  const centered = progress - 0.5;
+  const depth = Math.max(0, Math.min(1, effect.depth));
+  return {
+    scale: Math.max(0.01, transform.scale * (1 + effect.zoom * depth * centered)),
+    x: transform.x + effect.driftX * depth * centered,
+    y: transform.y + effect.driftY * depth * centered,
+    rotation: transform.rotation,
+  };
+}
+
 export function clipTransformAt(clip: PhoenixTimelineClip, timelineTime: number): PhoenixClipTransform {
   const base = clip.transform || { scale: 1, x: 0, y: 0, rotation: 0 };
   const localTime = Math.max(0, timelineTime - clip.start);
   const frames = [...(clip.keyframes || [])].sort((a, b) => a.time - b.time);
-  if (frames.length === 0) return base;
-  if (localTime <= frames[0].time) return frames[0].transform;
-  if (localTime >= frames[frames.length - 1].time) return frames[frames.length - 1].transform;
-
-  const rightIndex = frames.findIndex(frame => frame.time >= localTime);
-  const left = frames[Math.max(0, rightIndex - 1)];
-  const right = frames[rightIndex];
-  const span = Math.max(0.0001, right.time - left.time);
-  const rawT = Math.max(0, Math.min(1, (localTime - left.time) / span));
-  const t = applyKeyframeEasing(left.easing, rawT);
-  const lerp = (a: number, b: number) => a + (b - a) * t;
-  return {
-    scale: lerp(left.transform.scale, right.transform.scale),
-    x: lerp(left.transform.x, right.transform.x),
-    y: lerp(left.transform.y, right.transform.y),
-    rotation: lerp(left.transform.rotation, right.transform.rotation),
-  };
+  let resolved = base;
+  if (frames.length > 0) {
+    if (localTime <= frames[0].time) {
+      resolved = frames[0].transform;
+    } else if (localTime >= frames[frames.length - 1].time) {
+      resolved = frames[frames.length - 1].transform;
+    } else {
+      const rightIndex = frames.findIndex(frame => frame.time >= localTime);
+      const left = frames[Math.max(0, rightIndex - 1)];
+      const right = frames[rightIndex];
+      const span = Math.max(0.0001, right.time - left.time);
+      const rawT = Math.max(0, Math.min(1, (localTime - left.time) / span));
+      const t = applyKeyframeEasing(left.easing, rawT);
+      const lerp = (a: number, b: number) => a + (b - a) * t;
+      resolved = {
+        scale: lerp(left.transform.scale, right.transform.scale),
+        x: lerp(left.transform.x, right.transform.x),
+        y: lerp(left.transform.y, right.transform.y),
+        rotation: lerp(left.transform.rotation, right.transform.rotation),
+      };
+    }
+  }
+  return applyClipParallax(clip, resolved, localTime);
 }
 
 function applyTransition(
