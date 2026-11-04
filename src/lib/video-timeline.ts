@@ -23,6 +23,12 @@ export interface PhoenixAudioGainKeyframe {
   easing?: PhoenixKeyframeEasing;
 }
 
+export interface PhoenixSpeedKeyframe {
+  progress: number;
+  rate: number;
+  easing?: PhoenixKeyframeEasing;
+}
+
 export interface PhoenixSourceKeyframe {
   time: number;
   src: string;
@@ -89,6 +95,7 @@ export interface PhoenixTimelineClip {
   transform: PhoenixClipTransform;
   keyframes: PhoenixClipKeyframe[];
   gainKeyframes?: PhoenixAudioGainKeyframe[];
+  speedKeyframes?: PhoenixSpeedKeyframe[];
   sourceKeyframes?: PhoenixSourceKeyframe[];
   parallax?: PhoenixClipParallax;
   createdAt: string;
@@ -203,6 +210,7 @@ export function loadPhoenixVideoTimeline(projectId: string): PhoenixVideoTimelin
           transitionDuration: Number.isFinite(clip.transitionDuration) ? clip.transitionDuration : 0.5,
           transform: clip.transform || { scale: 1, x: 0, y: 0, rotation: 0 },
           keyframes: Array.isArray(clip.keyframes) ? clip.keyframes : [],
+          speedKeyframes: Array.isArray(clip.speedKeyframes) ? clip.speedKeyframes : [],
         })),
       })),
     };
@@ -331,13 +339,25 @@ export function splitTimelineClip(
       const duration = timelineClipDuration(clip);
       const localTimelineTime = playhead - clip.start;
       if (localTimelineTime <= 0.05 || localTimelineTime >= duration - 0.05) return track;
-      const sourceSplit = clip.inPoint + localTimelineTime * clip.playbackRate;
-      const first = { ...clip, outPoint: sourceSplit };
+      const sourceSplit = clipSourceTimeAt(clip, playhead);
+      const splitProgress = duration > 0 ? localTimelineTime / duration : 0;
+      const first: PhoenixTimelineClip = {
+        ...clip,
+        outPoint: sourceSplit,
+        playbackRate: clip.speedKeyframes?.length
+          ? playbackRateForTimelineSpan(clip.inPoint, sourceSplit, localTimelineTime, clip.playbackRate)
+          : clip.playbackRate,
+        speedKeyframes: sliceSpeedKeyframes(clip, 0, splitProgress),
+      };
       const second: PhoenixTimelineClip = {
         ...clip,
         id: crypto.randomUUID(),
         start: playhead,
         inPoint: sourceSplit,
+        playbackRate: clip.speedKeyframes?.length
+          ? playbackRateForTimelineSpan(sourceSplit, clip.outPoint, duration - localTimelineTime, clip.playbackRate)
+          : clip.playbackRate,
+        speedKeyframes: sliceSpeedKeyframes(clip, splitProgress, 1),
         createdAt: new Date().toISOString(),
       };
       return {
@@ -382,6 +402,115 @@ function applyClipParallax(
     y: transform.y + effect.driftY * depth * centered,
     rotation: transform.rotation,
   };
+}
+
+
+function normalizedSpeedFrames(clip: PhoenixTimelineClip): PhoenixSpeedKeyframe[] {
+  const explicit = (clip.speedKeyframes || [])
+    .filter(frame => Number.isFinite(frame.progress) && Number.isFinite(frame.rate))
+    .map(frame => ({
+      ...frame,
+      progress: Math.max(0, Math.min(1, frame.progress)),
+      rate: Math.max(0.1, Math.min(4, frame.rate)),
+    }))
+    .sort((a, b) => a.progress - b.progress);
+  const hasStart = explicit.some(frame => frame.progress <= 0.0001);
+  const hasEnd = explicit.some(frame => frame.progress >= 0.9999);
+  const frames = [
+    ...(hasStart ? [] : [{ progress: 0, rate: 1, easing: 'linear' as PhoenixKeyframeEasing }]),
+    ...explicit,
+    ...(hasEnd ? [] : [{ progress: 1, rate: 1, easing: 'linear' as PhoenixKeyframeEasing }]),
+  ].sort((a, b) => a.progress - b.progress);
+  const deduped: PhoenixSpeedKeyframe[] = [];
+  for (const frame of frames) {
+    const last = deduped[deduped.length - 1];
+    if (last && Math.abs(last.progress - frame.progress) < 0.0001) {
+      deduped[deduped.length - 1] = frame;
+    } else {
+      deduped.push(frame);
+    }
+  }
+  return deduped;
+}
+
+function speedMultiplierAtProgress(clip: PhoenixTimelineClip, progress: number): number {
+  const frames = normalizedSpeedFrames(clip);
+  const p = Math.max(0, Math.min(1, progress));
+  if (p <= frames[0].progress) return frames[0].rate;
+  if (p >= frames[frames.length - 1].progress) return frames[frames.length - 1].rate;
+  const rightIndex = frames.findIndex(frame => frame.progress >= p);
+  const left = frames[Math.max(0, rightIndex - 1)];
+  const right = frames[rightIndex];
+  const span = Math.max(0.0001, right.progress - left.progress);
+  const t = applyKeyframeEasing(left.easing, (p - left.progress) / span);
+  return Math.max(0.1, Math.min(4, left.rate + (right.rate - left.rate) * t));
+}
+
+function speedIntegral(clip: PhoenixTimelineClip, endProgress: number, samples = 48): number {
+  const end = Math.max(0, Math.min(1, endProgress));
+  if (end <= 0) return 0;
+  const steps = Math.max(8, Math.ceil(samples * end));
+  const step = end / steps;
+  let area = 0;
+  let previous = speedMultiplierAtProgress(clip, 0);
+  for (let index = 1; index <= steps; index += 1) {
+    const current = speedMultiplierAtProgress(clip, index * step);
+    area += (previous + current) * 0.5 * step;
+    previous = current;
+  }
+  return area;
+}
+
+export function clipSpeedMultiplierAt(clip: PhoenixTimelineClip, timelineTime: number): number {
+  const duration = timelineClipDuration(clip);
+  const localTime = Math.max(0, Math.min(duration, timelineTime - clip.start));
+  const progress = duration > 0 ? localTime / duration : 0;
+  return speedMultiplierAtProgress(clip, progress);
+}
+
+function sliceSpeedKeyframes(
+  clip: PhoenixTimelineClip,
+  startProgress: number,
+  endProgress: number,
+): PhoenixSpeedKeyframe[] | undefined {
+  if (!(clip.speedKeyframes?.length)) return undefined;
+  const start = Math.max(0, Math.min(1, startProgress));
+  const end = Math.max(start + 0.0001, Math.min(1, endProgress));
+  const span = end - start;
+  const interior = (clip.speedKeyframes || [])
+    .filter(frame => frame.progress > start + 0.0001 && frame.progress < end - 0.0001)
+    .map(frame => ({ ...frame, progress: (frame.progress - start) / span }));
+  return [
+    { progress: 0, rate: speedMultiplierAtProgress(clip, start), easing: 'linear' },
+    ...interior,
+    { progress: 1, rate: speedMultiplierAtProgress(clip, end), easing: 'linear' },
+  ];
+}
+
+function playbackRateForTimelineSpan(sourceStart: number, sourceEnd: number, timelineSpan: number, fallback: number): number {
+  if (!Number.isFinite(timelineSpan) || timelineSpan <= 0.0001) return Math.max(0.05, fallback);
+  return Math.max(0.05, Math.abs(sourceEnd - sourceStart) / timelineSpan);
+}
+
+export function clipSourceTimeAt(clip: PhoenixTimelineClip, timelineTime: number): number {
+  const duration = timelineClipDuration(clip);
+  const localTime = Math.max(0, Math.min(duration, timelineTime - clip.start));
+  if (!(clip.speedKeyframes?.length)) {
+    return Math.max(clip.inPoint, Math.min(clip.outPoint, clip.inPoint + localTime * Math.max(0.05, clip.playbackRate)));
+  }
+  const progress = duration > 0 ? localTime / duration : 0;
+  const total = Math.max(0.0001, speedIntegral(clip, 1));
+  const sourceProgress = Math.max(0, Math.min(1, speedIntegral(clip, progress) / total));
+  return clip.inPoint + (clip.outPoint - clip.inPoint) * sourceProgress;
+}
+
+export function clipPlaybackRateAt(clip: PhoenixTimelineClip, timelineTime: number): number {
+  if (!(clip.speedKeyframes?.length)) return Math.max(0.05, clip.playbackRate);
+  const duration = timelineClipDuration(clip);
+  const localTime = Math.max(0, Math.min(duration, timelineTime - clip.start));
+  const progress = duration > 0 ? localTime / duration : 0;
+  const total = Math.max(0.0001, speedIntegral(clip, 1));
+  return Math.max(0.05, Math.min(8, Math.max(0.05, clip.playbackRate) * speedMultiplierAtProgress(clip, progress) / total));
 }
 
 export function clipTransformAt(clip: PhoenixTimelineClip, timelineTime: number): PhoenixClipTransform {
@@ -702,7 +831,7 @@ export function trimTimelineClipAt(
   const elapsed = cutTime - clip.start;
   const sourceAtCut = Math.max(
     clip.inPoint + 0.05,
-    Math.min(clip.outPoint - 0.05, clip.inPoint + elapsed * Math.max(0.05, clip.playbackRate)),
+    Math.min(clip.outPoint - 0.05, clipSourceTimeAt(clip, cutTime)),
   );
 
   if (edge === 'in') {
@@ -715,6 +844,10 @@ export function trimTimelineClipAt(
           ...existing,
           start: ripple ? clip.start : cutTime,
           inPoint: sourceAtCut,
+          playbackRate: clip.speedKeyframes?.length
+            ? playbackRateForTimelineSpan(sourceAtCut, clip.outPoint, duration - elapsed, clip.playbackRate)
+            : clip.playbackRate,
+          speedKeyframes: sliceSpeedKeyframes(clip, duration > 0 ? elapsed / duration : 0, 1),
         }),
       }),
       updatedAt: new Date().toISOString(),
@@ -734,6 +867,10 @@ export function trimTimelineClipAt(
       clips: item.clips.map(existing => existing.id !== clipId ? existing : {
         ...existing,
         outPoint: sourceAtCut,
+        playbackRate: clip.speedKeyframes?.length
+          ? playbackRateForTimelineSpan(clip.inPoint, sourceAtCut, elapsed, clip.playbackRate)
+          : clip.playbackRate,
+        speedKeyframes: sliceSpeedKeyframes(clip, 0, duration > 0 ? elapsed / duration : 1),
       }),
     }),
     updatedAt: new Date().toISOString(),

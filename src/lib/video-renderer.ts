@@ -1,6 +1,8 @@
 import {
   activeCaptionAt,
+  clipPlaybackRateAt,
   clipSourceAt,
+  clipSourceTimeAt,
   isTimelineTrackActive,
   timelineClipAudioGainAt,
   clipTransitionState,
@@ -295,11 +297,13 @@ export async function renderPhoenixTimelineWebm(
           if (!video) continue;
           const isActive = active.includes(visual);
           if (isActive) {
-            const sourceTime = visual.clip.inPoint + Math.max(0, time - visual.clip.start) * visual.clip.playbackRate;
-            if (Math.abs(video.currentTime - sourceTime) > 0.35) {
+            const sourceTime = clipSourceTimeAt(visual.clip, time);
+            const playbackRate = clipPlaybackRateAt(visual.clip, time);
+            const driftThreshold = visual.clip.speedKeyframes?.length ? 0.08 : 0.35;
+            if (Math.abs(video.currentTime - sourceTime) > driftThreshold) {
               try { video.currentTime = sourceTime; } catch {}
             }
-            video.playbackRate = visual.clip.playbackRate;
+            video.playbackRate = playbackRate;
             if (!activeVideos.has(video)) {
               activeVideos.add(video);
               void video.play().catch(() => undefined);

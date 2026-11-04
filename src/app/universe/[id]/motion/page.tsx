@@ -19,7 +19,10 @@ import {
   activeCaptionAt,
   addClipToTimelineTrack,
   addTimelineTrack,
+  clipPlaybackRateAt,
   clipSourceAt,
+  clipSourceTimeAt,
+  clipSpeedMultiplierAt,
   clipTransitionState,
   clipTransformAt,
   isTimelineClipLocked,
@@ -166,11 +169,13 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
       if (clip.kind !== 'video') continue;
       const video = visualVideoRefs.current.get(clip.id);
       if (!video) continue;
-      const sourceTime = clip.inPoint + Math.max(0, playhead - clip.start) * clip.playbackRate;
-      if (Number.isFinite(video.duration) && Math.abs(video.currentTime - sourceTime) > 0.3) {
+      const sourceTime = clipSourceTimeAt(clip, playhead);
+      const playbackRate = clipPlaybackRateAt(clip, playhead);
+      const driftThreshold = clip.speedKeyframes?.length ? 0.08 : 0.3;
+      if (Number.isFinite(video.duration) && Math.abs(video.currentTime - sourceTime) > driftThreshold) {
         video.currentTime = Math.min(sourceTime, Math.max(0, video.duration - 0.05));
       }
-      video.playbackRate = clip.playbackRate;
+      video.playbackRate = playbackRate;
       video.muted = true;
       if (playing) void video.play().catch(() => undefined);
       else video.pause();
@@ -355,6 +360,21 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
   const deleteEmptyTrack = (trackId: string) => {
     setTimeline(current => current ? removeEmptyTimelineTrack(current, trackId) : current);
     if (selectedTrackId === trackId) setSelectedTrackId('');
+  };
+
+  const addSpeedKeyframe = () => {
+    if (!selectedClip || selectedClip.kind !== 'video') return;
+    const clipDuration = timelineClipDuration(selectedClip);
+    const localTime = Math.max(0, Math.min(clipDuration, playhead - selectedClip.start));
+    const progress = clipDuration > 0 ? localTime / clipDuration : 0;
+    const rate = clipSpeedMultiplierAt(selectedClip, playhead);
+    const speedKeyframes = [...(selectedClip.speedKeyframes || []).filter(frame => Math.abs(frame.progress - progress) > 0.002), {
+      progress,
+      rate,
+      easing: 'ease-in-out' as const,
+    }].sort((a, b) => a.progress - b.progress);
+    patchClip(selectedClip.id, { speedKeyframes });
+    setStatus(`Added speed point at ${Math.round(progress * 100)}% of the clip.`);
   };
 
   const addTransformKeyframe = () => {
@@ -790,6 +810,59 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
                       </div>
                     )}
                   </div>
+                  {selectedClip.kind === 'video' && (
+                    <div className="mt-3 rounded border border-amber-400/15 bg-amber-400/[0.04] p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-amber-300">Speed Ramp</span>
+                        <Button size="sm" variant="ghost" disabled={selectedClipLocked} onClick={addSpeedKeyframe}>Add Point</Button>
+                      </div>
+                      {(selectedClip.speedKeyframes || []).length > 0 && (
+                        <div className="mt-2 space-y-2">
+                          {[...(selectedClip.speedKeyframes || [])].sort((a, b) => a.progress - b.progress).map((frame, index) => (
+                            <div key={frame.progress + '-' + index} className="grid grid-cols-[52px_56px_1fr_26px] items-center gap-1 rounded border border-white/5 bg-black/10 p-1.5">
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                value={Math.round(frame.progress * 100)}
+                                disabled={selectedClipLocked}
+                                aria-label="Motion speed point percent"
+                                onChange={event => {
+                                  const progress = Math.max(0, Math.min(1, Number(event.target.value) / 100));
+                                  patchClip(selectedClip.id, { speedKeyframes: (selectedClip.speedKeyframes || []).map(item => item === frame ? { ...item, progress } : item).sort((a, b) => a.progress - b.progress) });
+                                }}
+                                className="min-w-0 rounded border border-white/10 bg-black/20 p-1 text-[9px] text-white"
+                              />
+                              <input
+                                type="number"
+                                min={0.1}
+                                max={4}
+                                step={0.05}
+                                value={frame.rate}
+                                disabled={selectedClipLocked}
+                                aria-label="Motion relative speed"
+                                onChange={event => patchClip(selectedClip.id, { speedKeyframes: (selectedClip.speedKeyframes || []).map(item => item === frame ? { ...item, rate: Math.max(0.1, Math.min(4, Number(event.target.value))) } : item) })}
+                                className="min-w-0 rounded border border-white/10 bg-black/20 p-1 text-[9px] text-white"
+                              />
+                              <select
+                                value={frame.easing || 'linear'}
+                                disabled={selectedClipLocked}
+                                onChange={event => patchClip(selectedClip.id, { speedKeyframes: (selectedClip.speedKeyframes || []).map(item => item === frame ? { ...item, easing: event.target.value as typeof frame.easing } : item) })}
+                                className="min-h-7 rounded border border-white/10 bg-[#0a0d14] px-1 text-[9px] text-white"
+                              >
+                                <option value="linear">Linear</option>
+                                <option value="ease-in">Ease In</option>
+                                <option value="ease-out">Ease Out</option>
+                                <option value="ease-in-out">Ease In/Out</option>
+                                <option value="hold">Hold</option>
+                              </select>
+                              <Button size="sm" variant="ghost" disabled={selectedClipLocked} onClick={() => patchClip(selectedClip.id, { speedKeyframes: (selectedClip.speedKeyframes || []).filter(item => item !== frame) })}>×</Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {selectedClipLocked && <div className="mt-3 rounded border border-amber-400/20 bg-amber-400/5 p-2 text-[9px] text-amber-200">Track locked — motion edits are disabled.</div>}
                   <Button size="sm" variant="secondary" className="mt-3 w-full" disabled={selectedClipLocked} onClick={addTransformKeyframe}>
                     Keyframe Transform Here
