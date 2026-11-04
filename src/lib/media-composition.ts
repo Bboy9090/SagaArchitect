@@ -193,6 +193,7 @@ export interface PhoenixMediaDocument {
   layers: PhoenixMediaLayer[];
   groups?: PhoenixLayerGroup[];
   symbols?: PhoenixSymbolDefinition[];
+  palette?: string[];
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -217,6 +218,7 @@ export function createPhoenixMediaDocument(
     layers: [],
     groups: [],
     symbols: [],
+    palette: [],
     version: 1,
     createdAt: now,
     updatedAt: now,
