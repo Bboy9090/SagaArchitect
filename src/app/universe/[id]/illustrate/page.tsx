@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { MediaRevisionPanel } from '@/components/media/MediaRevisionPanel';
 import { Spinner } from '@/components/ui/Spinner';
 import { RasterPaintCanvas } from '@/components/media/RasterPaintCanvas';
+import { VectorInkCanvas } from '@/components/media/VectorInkCanvas';
 import { getUniverseById } from '@/lib/storage';
 import { isDbMode } from '@/lib/storage-mode';
 import { dbGetAssets, dbGetMediaDocument, dbGetProject, dbSaveMediaDocument, type ProjectAsset } from '@/lib/db-client';
@@ -17,6 +18,8 @@ import {
   savePhoenixMediaDocument,
   type PhoenixMediaDocument,
   type PhoenixMediaLayer,
+  type PhoenixPathLayer,
+  type PhoenixVectorPoint,
 } from '@/lib/media-composition';
 import {
   commitDocumentHistory,
@@ -54,6 +57,9 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
   const [brushSize, setBrushSize] = useState(BRUSH_PRESETS.ink.size);
   const [brushOpacity, setBrushOpacity] = useState(BRUSH_PRESETS.ink.opacity);
   const [eraseMode, setEraseMode] = useState(false);
+  const [vectorInkMode, setVectorInkMode] = useState(false);
+  const [vectorInkColor, setVectorInkColor] = useState('#f8fafc');
+  const [vectorInkWidth, setVectorInkWidth] = useState(8);
   const [stabilization, setStabilization] = useState(0.35);
   const [symmetry, setSymmetry] = useState<SymmetryMode>('none');
   const [perspectiveMode, setPerspectiveMode] = useState<PerspectiveGuideMode>('off');
@@ -126,6 +132,55 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
     };
     updateDocument(current => ({ ...current, layers: [...current.layers, layer] }));
     setSelectedLayerId(layerId);
+  };
+
+  const addVectorInkLayer = () => {
+    if (!document) return;
+    const layerId = crypto.randomUUID();
+    const layer: PhoenixPathLayer = {
+      id: layerId,
+      type: 'path',
+      name: `Vector Ink ${document.layers.filter(item => item.type === 'path').length + 1}`,
+      visible: true,
+      locked: false,
+      opacity: 1,
+      blendMode: 'normal',
+      zIndex: nextLayerZIndex(document.layers),
+      transform: { x: 0, y: 0, width: document.width, height: document.height, rotation: 0 },
+      points: [],
+      contours: [],
+      closed: false,
+      fill: 'transparent',
+      stroke: vectorInkColor,
+      strokeWidth: vectorInkWidth,
+    };
+    updateDocument(current => ({ ...current, layers: [...current.layers, layer] }));
+    setSelectedLayerId(layerId);
+    setVectorInkMode(true);
+    setEraseMode(false);
+  };
+
+  const commitVectorStroke = (layerId: string, points: PhoenixVectorPoint[]) => {
+    updateDocument(current => ({
+      ...current,
+      layers: current.layers.map(layer => {
+        if (layer.id !== layerId || layer.type !== 'path') return layer;
+        if (layer.points.length === 0) {
+          return {
+            ...layer,
+            points,
+            stroke: vectorInkColor,
+            strokeWidth: vectorInkWidth,
+          };
+        }
+        return {
+          ...layer,
+          contours: [...(layer.contours || []), { id: crypto.randomUUID(), points, closed: false }],
+          stroke: vectorInkColor,
+          strokeWidth: vectorInkWidth,
+        };
+      }),
+    }));
   };
 
   const addReferenceLayer = (asset: ProjectAsset) => {
@@ -279,13 +334,28 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
                 )}
               </div>
             )}
-            <Button className="w-full" size="sm" variant={eraseMode ? 'gold' : 'ghost'} onClick={() => setEraseMode(value => !value)}>
+            <Button className="w-full" size="sm" variant={eraseMode ? 'gold' : 'ghost'} onClick={() => { setEraseMode(value => !value); setVectorInkMode(false); }}>
               {eraseMode ? 'Eraser On' : 'Eraser'}
             </Button>
+            <div className="rounded-lg border border-violet-400/10 bg-violet-400/[0.03] p-3">
+              <div className="mb-2 text-[10px] font-black uppercase tracking-[.22em] text-violet-300/70">Vector ink</div>
+              <div className="space-y-2">
+                <label className="block text-[10px] uppercase text-slate-500">Ink color
+                  <input type="color" value={vectorInkColor} onChange={event => setVectorInkColor(event.target.value)} className="mt-1 h-9 w-full rounded border border-white/10 bg-black/20 p-1" />
+                </label>
+                <label className="block text-[10px] uppercase text-slate-500">Ink width {Math.round(vectorInkWidth)} px
+                  <input type="range" min={1} max={48} value={vectorInkWidth} onChange={event => setVectorInkWidth(Number(event.target.value))} className="mt-1 w-full" />
+                </label>
+                <Button className="w-full" size="sm" variant={vectorInkMode ? 'gold' : 'ghost'} onClick={() => setVectorInkMode(value => !value)}>
+                  {vectorInkMode ? 'Vector Ink On' : 'Vector Ink Mode'}
+                </Button>
+              </div>
+            </div>
           </div>
 
-          <div className="mt-6">
+          <div className="mt-6 grid grid-cols-1 gap-2">
             <Button className="w-full" size="sm" variant="secondary" onClick={addPaintLayer}>+ Paint Layer</Button>
+            <Button className="w-full" size="sm" variant="secondary" onClick={addVectorInkLayer}>+ Vector Ink Layer</Button>
           </div>
 
           {isDbMode() && (
@@ -390,6 +460,25 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
                   );
                 }
 
+                if (layer.type === 'path') {
+                  return (
+                    <div key={layer.id} style={wrapperStyle}>
+                      <VectorInkCanvas
+                        layer={layer}
+                        scale={scale}
+                        selected={selectedLayerId === layer.id}
+                        stroke={vectorInkColor}
+                        strokeWidth={vectorInkWidth}
+                        onSelect={() => setSelectedLayerId(layer.id)}
+                        onCommitStroke={points => {
+                          if (!vectorInkMode) return;
+                          commitVectorStroke(layer.id, points);
+                        }}
+                      />
+                    </div>
+                  );
+                }
+
                 if (layer.type === 'image') {
                   return (
                     <button key={layer.id} type="button" onClick={() => setSelectedLayerId(layer.id)} style={wrapperStyle} className="border-0 bg-transparent p-0">
@@ -448,7 +537,7 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
             <div className="text-xs font-bold text-violet-200">Illustration foundation</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
               Pressure-aware raster painting, brush presets, smoothing, symmetry, adjustable one-point/two-point perspective guides,
-              reference layers, undo/redo, autosave, and PNG export are active. Vector ink, brush texture engines, pose tools, and advanced color assistance are next.
+              persistent vector ink layers, reference layers, undo/redo, autosave, and PNG export are active. Brush texture engines, pose tools, and advanced color assistance are next.
             </p>
           </div>
         </aside>
