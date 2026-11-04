@@ -61,6 +61,13 @@ export interface PhoenixClipAdjustments {
   blur: number;
 }
 
+export interface PhoenixClipCrop {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
 export const DEFAULT_CLIP_ADJUSTMENTS: PhoenixClipAdjustments = {
   brightness: 1,
   contrast: 1,
@@ -120,6 +127,7 @@ export interface PhoenixTimelineClip {
   sourceKeyframes?: PhoenixSourceKeyframe[];
   parallax?: PhoenixClipParallax;
   adjustments?: PhoenixClipAdjustments;
+  crop?: PhoenixClipCrop;
   createdAt: string;
 }
 
@@ -181,6 +189,34 @@ export function createPhoenixVideoTimeline(projectId: string): PhoenixVideoTimel
 }
 
 
+
+
+export function normalizedClipCrop(clip: Pick<PhoenixTimelineClip, 'crop'>): PhoenixClipCrop {
+  const raw = clip.crop || { top: 0, right: 0, bottom: 0, left: 0 };
+  let top = Math.max(0, Math.min(0.95, raw.top));
+  let right = Math.max(0, Math.min(0.95, raw.right));
+  let bottom = Math.max(0, Math.min(0.95, raw.bottom));
+  let left = Math.max(0, Math.min(0.95, raw.left));
+  const horizontal = left + right;
+  if (horizontal > 0.95) {
+    const scale = 0.95 / horizontal;
+    left *= scale;
+    right *= scale;
+  }
+  const vertical = top + bottom;
+  if (vertical > 0.95) {
+    const scale = 0.95 / vertical;
+    top *= scale;
+    bottom *= scale;
+  }
+  return { top, right, bottom, left };
+}
+
+export function clipCropCss(clip: Pick<PhoenixTimelineClip, 'crop'>): string | undefined {
+  if (!clip.crop) return undefined;
+  const crop = normalizedClipCrop(clip);
+  return `inset(${crop.top * 100}% ${crop.right * 100}% ${crop.bottom * 100}% ${crop.left * 100}%)`;
+}
 
 export function clipFilterCss(clip: Pick<PhoenixTimelineClip, 'adjustments'>): string {
   const adjustments = clip.adjustments;

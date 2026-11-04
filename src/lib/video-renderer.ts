@@ -2,6 +2,7 @@ import {
   activeCaptionAt,
   clipFilterCss,
   clipPlaybackRateAt,
+  normalizedClipCrop,
   clipSourceAt,
   clipSourceTimeAt,
   isTimelineTrackActive,
@@ -97,6 +98,17 @@ function drawVisual(
   ctx.rotate((transform.rotation * Math.PI) / 180);
   ctx.scale(transform.scale * transition.scale, transform.scale * transition.scale);
   ctx.translate(-width / 2, -height / 2);
+  if (clip.crop) {
+    const crop = normalizedClipCrop(clip);
+    ctx.beginPath();
+    ctx.rect(
+      crop.left * width,
+      crop.top * height,
+      Math.max(1, width * (1 - crop.left - crop.right)),
+      Math.max(1, height * (1 - crop.top - crop.bottom)),
+    );
+    ctx.clip();
+  }
 
   if (clip.kind === 'image' && visual.images) {
     const source = clipSourceAt(clip, timelineTime).src;

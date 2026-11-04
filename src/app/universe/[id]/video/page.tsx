@@ -13,6 +13,7 @@ import { dbGetAssets, dbGetProject, dbGetStudioDocument, dbSaveStudioDocument, d
 import {
   activeCaptionAt,
   addClipToTimelineTrack,
+  clipCropCss,
   clipFilterCss,
   DEFAULT_CLIP_ADJUSTMENTS,
   addTimelineTrack,
@@ -857,6 +858,7 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
                     opacity: transition.opacity * Math.max(0, Math.min(1, clip.opacity ?? 1)),
                     mixBlendMode: clip.blendMode || 'normal',
                     filter: clipFilterCss(clip),
+                    clipPath: clipCropCss(clip),
                     zIndex: trackOrder + 1,
                     transform: `translate(${((transform.x / Math.max(1, timeline.width)) + transition.x) * 100}%, ${((transform.y / Math.max(1, timeline.height)) + transition.y) * 100}%) scale(${transform.scale * transition.scale}) rotate(${transform.rotation}deg)`,
                     transformOrigin: 'center',
@@ -1238,6 +1240,33 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
                         />
                       </label>
                     ))}
+                  </div>
+                  <div className="mt-3 border-t border-white/5 pt-3">
+                    <div className="text-[9px] font-bold uppercase tracking-wider text-cyan-300">Crop Inset %</div>
+                    <div className="mt-2 grid grid-cols-4 gap-1">
+                      {(['top', 'right', 'bottom', 'left'] as const).map(key => (
+                        <label key={key} className="text-[8px] uppercase text-slate-500">{key}
+                          <input
+                            type="number"
+                            min={0}
+                            max={95}
+                            step={1}
+                            disabled={selectedClipLocked}
+                            value={Math.round((selectedClip.crop?.[key] || 0) * 100)}
+                            onChange={event => patchClip(selectedClip.id, {
+                              crop: {
+                                ...(selectedClip.crop || { top: 0, right: 0, bottom: 0, left: 0 }),
+                                [key]: Math.max(0, Math.min(0.95, Number(event.target.value) / 100)),
+                              },
+                            })}
+                            className="mt-1 w-full rounded border border-white/10 bg-black/20 p-1 text-[9px] text-white"
+                          />
+                        </label>
+                      ))}
+                    </div>
+                    {selectedClip.crop && (
+                      <Button size="sm" variant="ghost" className="mt-2 w-full" disabled={selectedClipLocked} onClick={() => patchClip(selectedClip.id, { crop: undefined })}>Reset Crop</Button>
+                    )}
                   </div>
                   {selectedClip.adjustments && (
                     <Button size="sm" variant="ghost" className="mt-2 w-full" disabled={selectedClipLocked} onClick={() => patchClip(selectedClip.id, { adjustments: undefined })}>

@@ -10,6 +10,7 @@ import {
   createPhoenixVideoTimeline,
   isTimelineTrackActive,
   moveTimelineClip,
+  normalizedClipCrop,
   splitTimelineClip,
   timelineClipDuration,
   timelineDuration,
@@ -293,4 +294,15 @@ test('speed-ramped trim preserves the requested timeline edge', () => {
   const trimmedIn = trimTimelineClipAt(timeline, clip.id, 4, 'in', false);
   assert.ok(Math.abs(trimmedIn.tracks[0].clips[0].start - 4) < 0.001);
   assert.ok(Math.abs(timelineClipDuration(trimmedIn.tracks[0].clips[0]) - 6) < 0.001);
+});
+
+
+test('crop normalization preserves a positive visible frame', () => {
+  const crop = normalizedClipCrop({
+    crop: { top: 0.8, right: 0.8, bottom: 0.8, left: 0.8 },
+  });
+  assert.ok(crop.left + crop.right <= 0.950001);
+  assert.ok(crop.top + crop.bottom <= 0.950001);
+  assert.ok(1 - crop.left - crop.right > 0);
+  assert.ok(1 - crop.top - crop.bottom > 0);
 });
