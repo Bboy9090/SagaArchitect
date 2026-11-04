@@ -63,7 +63,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const [studio] = await db.select().from(studioDocuments)
       .where(and(eq(studioDocuments.projectId, projectId), eq(studioDocuments.kind, payload.kind))).limit(1);
-    if (!studio) return NextResponse.json({ ok: false, error: 'Studio timeline not found.' }, { status: 404 });
+    if (!studio) return NextResponse.json({ ok: false, error: 'Studio document not found.' }, { status: 404 });
 
     const [created] = await db.insert(versionHistory).values({
       projectId,
