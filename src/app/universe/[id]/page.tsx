@@ -17,7 +17,7 @@ import {
 import { buildRainstormsSyncPayload, syncToRainstorms, pingRainstorms } from '@/lib/rainstorms';
 import type { Universe, Faction, Character, Location } from '@/lib/types';
 import { isDbMode } from '@/lib/storage-mode';
-import { dbGetProject, dbGetCharacters, dbSaveCharacter, dbGetAssets, dbUploadAsset, dbDeleteAsset, type ProjectAsset } from '@/lib/db-client';
+import { dbGetProject, dbGetCharacters, dbSaveCharacter, dbGetAssets, dbUploadAsset, dbDeleteAsset, dbRenameAsset, type ProjectAsset } from '@/lib/db-client';
 
 interface Section {
   id: string;
@@ -48,6 +48,8 @@ export default function CanonCorePage({ params }: CanonPageProps) {
   const [assetType, setAssetType] = useState<'all' | 'image' | 'video' | 'audio'>('all');
   const [assetSort, setAssetSort] = useState<'newest' | 'oldest' | 'name' | 'size'>('newest');
   const [assetUploadStatus, setAssetUploadStatus] = useState('');
+  const [renamingAssetId, setRenamingAssetId] = useState<string | null>(null);
+  const [renameAssetValue, setRenameAssetValue] = useState('');
 
   const filteredAssets = useMemo(() => {
     const query = assetQuery.trim().toLowerCase();
@@ -579,9 +581,76 @@ export default function CanonCorePage({ params }: CanonPageProps) {
                           </div>
                         )}
                       </div>
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-xs font-bold text-white truncate" title={asset.name}>{asset.name}</span>
-                        <span className="text-[10px] text-gray-500">{(asset.file_size / 1024).toFixed(0)} KB</span>
+                      <div className="flex min-w-0 flex-col">
+                        {renamingAssetId === asset.id ? (
+                          <div className="space-y-1">
+                            <input
+                              value={renameAssetValue}
+                              maxLength={255}
+                              autoFocus
+                              onChange={event => setRenameAssetValue(event.target.value)}
+                              onKeyDown={async event => {
+                                if (event.key === 'Escape') {
+                                  setRenamingAssetId(null);
+                                  setRenameAssetValue('');
+                                  return;
+                                }
+                                if (event.key !== 'Enter') return;
+                                const name = renameAssetValue.trim();
+                                if (!name) return;
+                                try {
+                                  const updated = await dbRenameAsset(asset.id, name);
+                                  setAssetsList(current => current.map(item => item.id === asset.id ? updated : item));
+                                  setRenamingAssetId(null);
+                                  setRenameAssetValue('');
+                                } catch (err) {
+                                  alert(err instanceof Error ? err.message : 'Failed to rename asset');
+                                }
+                              }}
+                              className="min-h-8 w-full rounded border border-[#c9a84c]/30 bg-black/30 px-2 text-xs text-white"
+                              aria-label={`Rename ${asset.name}`}
+                            />
+                            <div className="flex gap-1">
+                              <button
+                                type="button"
+                                className="text-[9px] text-emerald-300 hover:text-emerald-200"
+                                onClick={async () => {
+                                  const name = renameAssetValue.trim();
+                                  if (!name) return;
+                                  try {
+                                    const updated = await dbRenameAsset(asset.id, name);
+                                    setAssetsList(current => current.map(item => item.id === asset.id ? updated : item));
+                                    setRenamingAssetId(null);
+                                    setRenameAssetValue('');
+                                  } catch (err) {
+                                    alert(err instanceof Error ? err.message : 'Failed to rename asset');
+                                  }
+                                }}
+                              >
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                className="text-[9px] text-gray-500 hover:text-gray-300"
+                                onClick={() => { setRenamingAssetId(null); setRenameAssetValue(''); }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => { setRenamingAssetId(asset.id); setRenameAssetValue(asset.name); }}
+                              className="truncate text-left text-xs font-bold text-white hover:text-[#e1c76f]"
+                              title={`Rename ${asset.name}`}
+                            >
+                              {asset.name}
+                            </button>
+                            <span className="text-[10px] text-gray-500">{(asset.file_size / 1024).toFixed(0)} KB</span>
+                          </>
+                        )}
                       </div>
                       <button
                         onClick={async () => {
