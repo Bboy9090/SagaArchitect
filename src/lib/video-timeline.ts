@@ -1,4 +1,5 @@
 export type PhoenixTimelineTrackKind = 'video' | 'audio';
+export type PhoenixTimelineTrackRole = 'dialogue' | 'music' | 'sfx' | 'other';
 export type PhoenixTimelineClipKind = 'image' | 'video' | 'audio';
 export type PhoenixClipTransition = 'none' | 'fade' | 'slide-left' | 'slide-right' | 'zoom';
 export type PhoenixKeyframeEasing = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'hold';
@@ -82,10 +83,19 @@ export interface PhoenixTimelineClip {
   createdAt: string;
 }
 
+export interface PhoenixTrackDucking {
+  enabled: boolean;
+  level: number;
+  attack: number;
+  release: number;
+}
+
 export interface PhoenixTimelineTrack {
   id: string;
   name: string;
   kind: PhoenixTimelineTrackKind;
+  role?: PhoenixTimelineTrackRole;
+  ducking?: PhoenixTrackDucking;
   order: number;
   clips: PhoenixTimelineClip[];
 }
@@ -417,6 +427,53 @@ export function clipAudioGainAt(clip: PhoenixTimelineClip, timelineTime: number)
   return Math.max(0, Math.min(1, gain));
 }
 
+
+
+function duckingMultiplierAt(
+  timeline: PhoenixVideoTimeline,
+  targetTrack: PhoenixTimelineTrack,
+  timelineTime: number,
+): number {
+  const config = targetTrack.ducking;
+  if (targetTrack.role !== 'music' || !config?.enabled) return 1;
+  const level = Math.max(0, Math.min(1, config.level));
+  const attack = Math.max(0, config.attack);
+  const release = Math.max(0, config.release);
+  let multiplier = 1;
+  const dialogueClips = timeline.tracks
+    .filter(track => track.kind === 'audio' && track.role === 'dialogue')
+    .flatMap(track => track.clips)
+    .filter(clip => !clip.muted);
+
+  for (const dialogue of dialogueClips) {
+    const start = dialogue.start;
+    const end = dialogue.start + timelineClipDuration(dialogue);
+    if (timelineTime >= start && timelineTime <= end) {
+      multiplier = Math.min(multiplier, level);
+      continue;
+    }
+    if (attack > 0 && timelineTime < start && timelineTime >= start - attack) {
+      const progress = (timelineTime - (start - attack)) / attack;
+      multiplier = Math.min(multiplier, 1 - (1 - level) * Math.max(0, Math.min(1, progress)));
+    }
+    if (release > 0 && timelineTime > end && timelineTime <= end + release) {
+      const progress = (timelineTime - end) / release;
+      multiplier = Math.min(multiplier, level + (1 - level) * Math.max(0, Math.min(1, progress)));
+    }
+  }
+  return Math.max(0, Math.min(1, multiplier));
+}
+
+export function timelineClipAudioGainAt(
+  timeline: PhoenixVideoTimeline,
+  clip: PhoenixTimelineClip,
+  timelineTime: number,
+): number {
+  const base = clipAudioGainAt(clip, timelineTime);
+  const track = timeline.tracks.find(item => item.id === clip.trackId);
+  if (!track) return base;
+  return Math.max(0, Math.min(1, base * duckingMultiplierAt(timeline, track, timelineTime)));
+}
 
 export function clipSourceAt(
   clip: PhoenixTimelineClip,

@@ -14,7 +14,6 @@ import {
   activeCaptionAt,
   addClipToTimelineTrack,
   addTimelineTrack,
-  clipAudioGainAt,
   clipSourceAt,
   clipTransitionState,
   clipVolumeAutomationAt,
@@ -25,10 +24,13 @@ import {
   removeEmptyTimelineTrack,
   savePhoenixVideoTimeline,
   splitTimelineClip,
+  timelineClipAudioGainAt,
   timelineClipDuration,
   timelineDuration,
   type PhoenixTimelineClip,
   type PhoenixTimelineClipKind,
+  type PhoenixTimelineTrack,
+  type PhoenixTimelineTrackRole,
   type PhoenixVideoTimeline,
 } from '@/lib/video-timeline';
 import { downloadVideoBlob, renderPhoenixTimelineWebm } from '@/lib/video-renderer';
@@ -193,11 +195,11 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
         audio.currentTime = Math.min(sourceTime, Math.max(0, audio.duration - 0.05));
       }
       audio.playbackRate = clip.playbackRate;
-      audio.volume = clipAudioGainAt(clip, playhead);
+      audio.volume = timeline ? timelineClipAudioGainAt(timeline, clip, playhead) : Math.max(0, Math.min(1, clip.volume));
       if (playing) void audio.play().catch(() => undefined);
       else audio.pause();
     }
-  }, [activeAudioClips, playhead, playing]);
+  }, [activeAudioClips, playhead, playing, timeline]);
 
   const patchClip = (clipId: string, patch: Partial<PhoenixTimelineClip>) => {
     setTimeline(current => current ? ({
@@ -206,6 +208,14 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
         ...track,
         clips: track.clips.map(clip => clip.id === clipId ? { ...clip, ...patch } : clip),
       })),
+    }) : current);
+  };
+
+  const patchTrack = (trackId: string, patch: Partial<PhoenixTimelineTrack>) => {
+    setTimeline(current => current ? ({
+      ...current,
+      tracks: current.tracks.map(track => track.id === trackId ? { ...track, ...patch } : track),
+      updatedAt: new Date().toISOString(),
     }) : current);
   };
 
@@ -426,6 +436,51 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
                       <Button size="sm" variant="ghost" disabled={index === ordered.length - 1} onClick={() => shiftTrack(track.id, 1)}>↓</Button>
                       <Button size="sm" variant="ghost" disabled={!canRemove} onClick={() => deleteEmptyTrack(track.id)}>×</Button>
                     </div>
+                    {track.kind === 'audio' && (
+                      <div className="mt-2 space-y-2 border-t border-white/5 pt-2">
+                        <label className="block text-[9px] uppercase text-slate-500">Role
+                          <select
+                            value={track.role || 'other'}
+                            onChange={event => patchTrack(track.id, { role: event.target.value as PhoenixTimelineTrackRole })}
+                            className="mt-1 min-h-8 w-full rounded border border-white/10 bg-[#0a0d14] px-2 text-[10px] text-white"
+                          >
+                            <option value="other">Other</option>
+                            <option value="dialogue">Dialogue</option>
+                            <option value="music">Music</option>
+                            <option value="sfx">SFX</option>
+                          </select>
+                        </label>
+                        {track.role === 'music' && (
+                          <div className="rounded border border-emerald-400/10 bg-emerald-400/[0.03] p-2">
+                            <Button
+                              size="sm"
+                              variant={track.ducking?.enabled ? 'gold' : 'ghost'}
+                              className="w-full"
+                              onClick={() => patchTrack(track.id, {
+                                ducking: track.ducking?.enabled
+                                  ? { ...track.ducking, enabled: false }
+                                  : (track.ducking || { enabled: true, level: 0.3, attack: 0.2, release: 0.45 }),
+                              })}
+                            >
+                              {track.ducking?.enabled ? 'Auto Duck On' : 'Enable Auto Duck'}
+                            </Button>
+                            {track.ducking?.enabled && (
+                              <div className="mt-2 grid grid-cols-3 gap-1">
+                                <label className="text-[8px] uppercase text-slate-500">Level
+                                  <input type="number" min={0} max={1} step={0.05} value={track.ducking.level} onChange={event => patchTrack(track.id, { ducking: { ...track.ducking!, level: Math.max(0, Math.min(1, Number(event.target.value))) } })} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-1 text-[9px] text-white" />
+                                </label>
+                                <label className="text-[8px] uppercase text-slate-500">Attack
+                                  <input type="number" min={0} max={5} step={0.05} value={track.ducking.attack} onChange={event => patchTrack(track.id, { ducking: { ...track.ducking!, attack: Math.max(0, Math.min(5, Number(event.target.value))) } })} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-1 text-[9px] text-white" />
+                                </label>
+                                <label className="text-[8px] uppercase text-slate-500">Release
+                                  <input type="number" min={0} max={5} step={0.05} value={track.ducking.release} onChange={event => patchTrack(track.id, { ducking: { ...track.ducking!, release: Math.max(0, Math.min(5, Number(event.target.value))) } })} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-1 text-[9px] text-white" />
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
