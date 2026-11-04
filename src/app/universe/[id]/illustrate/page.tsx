@@ -181,6 +181,22 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
     }));
   };
 
+  const patchVectorContour = (
+    layerId: string,
+    contourId: string,
+    patch: { stroke?: string; strokeWidth?: number; opacity?: number },
+  ) => {
+    updateDocument(current => ({
+      ...current,
+      layers: current.layers.map(layer => layer.id !== layerId || layer.type !== 'path'
+        ? layer
+        : {
+            ...layer,
+            contours: (layer.contours || []).map(contour => contour.id === contourId ? { ...contour, ...patch } : contour),
+          }),
+    }));
+  };
+
   const deleteVectorContour = (layerId: string, contourId: string) => {
     updateDocument(current => ({
       ...current,
@@ -488,6 +504,7 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
                         selected={selectedLayerId === layer.id}
                         stroke={vectorInkColor}
                         strokeWidth={vectorInkWidth}
+                        stabilization={stabilization}
                         onSelect={() => setSelectedLayerId(layer.id)}
                         onCommitStroke={points => {
                           if (!vectorInkMode) return;
@@ -562,12 +579,41 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
                   )}
                   <div className="mt-2 max-h-52 space-y-1 overflow-auto">
                     {(selectedLayer.contours || []).map((contour, index) => (
-                      <div key={contour.id} className="flex items-center gap-2 rounded border border-white/5 bg-black/10 p-2">
-                        <span className="h-4 w-4 shrink-0 rounded-full border border-white/20" style={{ background: contour.stroke || selectedLayer.stroke }} />
-                        <span className="min-w-0 flex-1 truncate text-[10px] text-slate-400">
-                          Stroke {index + 1} · {Math.round(contour.strokeWidth || selectedLayer.strokeWidth)}px · {Math.round((contour.opacity ?? 1) * 100)}%
-                        </span>
-                        <Button size="sm" variant="ghost" onClick={() => deleteVectorContour(selectedLayer.id, contour.id)}>×</Button>
+                      <div key={contour.id} className="rounded border border-white/5 bg-black/10 p-2">
+                        <div className="flex items-center gap-2">
+                          <span className="min-w-0 flex-1 truncate text-[10px] font-bold text-slate-300">Stroke {index + 1}</span>
+                          <Button size="sm" variant="ghost" onClick={() => deleteVectorContour(selectedLayer.id, contour.id)}>×</Button>
+                        </div>
+                        <div className="mt-2 grid grid-cols-[44px_1fr] gap-2">
+                          <input
+                            type="color"
+                            value={contour.stroke || selectedLayer.stroke}
+                            aria-label={`Stroke ${index + 1} color`}
+                            onChange={event => patchVectorContour(selectedLayer.id, contour.id, { stroke: event.target.value })}
+                            className="h-9 w-11 rounded border border-white/10 bg-black/20 p-1"
+                          />
+                          <label className="text-[9px] uppercase text-slate-500">Width {Math.round(contour.strokeWidth || selectedLayer.strokeWidth)}px
+                            <input
+                              type="range"
+                              min={1}
+                              max={64}
+                              value={contour.strokeWidth || selectedLayer.strokeWidth}
+                              onChange={event => patchVectorContour(selectedLayer.id, contour.id, { strokeWidth: Number(event.target.value) })}
+                              className="mt-1 w-full"
+                            />
+                          </label>
+                        </div>
+                        <label className="mt-2 block text-[9px] uppercase text-slate-500">Opacity {Math.round((contour.opacity ?? 1) * 100)}%
+                          <input
+                            type="range"
+                            min={0.05}
+                            max={1}
+                            step={0.05}
+                            value={contour.opacity ?? 1}
+                            onChange={event => patchVectorContour(selectedLayer.id, contour.id, { opacity: Number(event.target.value) })}
+                            className="mt-1 w-full"
+                          />
+                        </label>
                       </div>
                     ))}
                     {(selectedLayer.contours || []).length === 0 && selectedLayer.points.length === 0 && (
@@ -584,8 +630,8 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
             <div className="text-xs font-bold text-violet-200">Illustration foundation</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
               Pressure-aware raster painting, brush presets, smoothing, symmetry, adjustable one-point/two-point perspective guides,
-              persistent independently styled vector ink strokes, reference layers, undo/redo, autosave, and PNG export are active.
-              Brush texture engines, pose tools, and advanced color assistance are next.
+              persistent independently styled and editable vector ink strokes with smoothing, reference layers, undo/redo, autosave,
+              and PNG export are active. Brush texture engines, pose tools, and advanced color assistance are next.
             </p>
           </div>
         </aside>
