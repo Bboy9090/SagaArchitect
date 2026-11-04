@@ -13,13 +13,14 @@ const stagingReceipt = readJson(process.env.STAGING_RECEIPT || 'staging-evidence
 const hardwareAssessment = readJson(process.env.HARDWARE_ASSESSMENT || 'hardware-matrix-assessment.json');
 const securityEvidence = readJson(process.env.SECURITY_EVIDENCE || 'security-release-evidence.json') ?? {};
 
-const assessment = assessReleaseCandidate({ stagingReceipt, hardwareAssessment, securityEvidence });
+const expectedCommit = process.env.DEPLOYMENT_COMMIT_SHA?.toLowerCase() || null;
+const assessment = assessReleaseCandidate({ stagingReceipt, hardwareAssessment, securityEvidence, expectedCommit });
 const receipt = {
   format: 'phoenix-creator-studio.rc1-assessment',
   version: 1,
   generatedAt: new Date().toISOString(),
   repository: 'Bboy9090/SagaArchitect',
-  commitSha: stagingReceipt?.commitSha ?? process.env.DEPLOYMENT_COMMIT_SHA ?? null,
+  commitSha: expectedCommit,
   stagingDecision: stagingReceipt?.decision ?? null,
   hardwarePassed: hardwareAssessment?.allRequiredPassed === true,
   securityEvidence: {

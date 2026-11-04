@@ -9,6 +9,11 @@ export const HARDWARE_CLASSES = [
 ];
 
 const SHA40 = /^[0-9a-f]{40}$/i;
+const SHA256 = /^[0-9a-f]{64}$/i;
+
+function normalizeCommit(value) {
+  return typeof value === 'string' && SHA40.test(value) ? value.toLowerCase() : null;
+}
 const SENSITIVE_KEY = /(authorization|cookie|password|passwd|secret|token|api.?key|service.?role|database.?url|connection.?string|private.?key)/i;
 const SENSITIVE_VALUE_PATTERNS = [
   /(?:postgres|postgresql):\/\/[^\s]+/i,
@@ -51,6 +56,8 @@ export function sha256Json(value) {
 
 export function validateHardwareReceipt(receipt, expectedCommit) {
   const errors = [];
+  const expected = normalizeCommit(expectedCommit);
+  if (!expected) errors.push('A full 40-character expected staging commit is required.');
   if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt)) {
     return { valid: false, errors: ['Receipt must be an object.'] };
   }
@@ -61,8 +68,9 @@ export function validateHardwareReceipt(receipt, expectedCommit) {
   if (!receipt.device?.manufacturer || !receipt.device?.model) errors.push('Device manufacturer and model are required.');
   if (!receipt.os?.name || !receipt.os?.version) errors.push('OS name and version are required.');
   if (!receipt.browser?.name || !receipt.browser?.version) errors.push('Browser name and version are required.');
-  if (!SHA40.test(receipt.commitSha || '')) errors.push('A full 40-character commit SHA is required.');
-  if (expectedCommit && receipt.commitSha?.toLowerCase() !== expectedCommit.toLowerCase()) errors.push('Receipt commit does not match the staging commit.');
+  const commit = normalizeCommit(receipt.commitSha);
+  if (!commit) errors.push('A full 40-character commit SHA is required.');
+  if (expected && commit !== expected) errors.push('Receipt commit does not match the staging commit.');
   try {
     const url = new URL(receipt.stagingUrl);
     if (url.protocol !== 'https:') errors.push('Staging URL must use HTTPS.');
@@ -81,6 +89,7 @@ export function validateHardwareReceipt(receipt, expectedCommit) {
 }
 
 export function assessHardwareMatrix(receipts, expectedCommit) {
+  const expected = normalizeCommit(expectedCommit);
   const byClass = {};
   for (const hardwareClass of HARDWARE_CLASSES) {
     const candidates = receipts.filter((receipt) => receipt?.hardwareClass === hardwareClass);
@@ -88,6 +97,7 @@ export function assessHardwareMatrix(receipts, expectedCommit) {
     const passing = evaluated.find((entry) => entry.validation.valid);
     byClass[hardwareClass] = {
       hardwareValidated: Boolean(passing),
+      commitSha: passing ? normalizeCommit(passing.receipt.commitSha) : null,
       device: passing ? `${passing.receipt.device.manufacturer} ${passing.receipt.device.model}` : null,
       os: passing ? `${passing.receipt.os.name} ${passing.receipt.os.version}` : null,
       browser: passing ? `${passing.receipt.browser.name} ${passing.receipt.browser.version}` : null,
@@ -96,12 +106,16 @@ export function assessHardwareMatrix(receipts, expectedCommit) {
       errors: passing ? [] : evaluated.flatMap((entry) => entry.validation.errors),
     };
   }
-  const allRequiredPassed = HARDWARE_CLASSES.every((hardwareClass) => byClass[hardwareClass].hardwareValidated);
-  return { allRequiredPassed, classes: byClass };
+  const allRequiredPassed = Boolean(expected) && HARDWARE_CLASSES.every((hardwareClass) => byClass[hardwareClass].hardwareValidated);
+  return { expectedCommit: expected, allRequiredPassed, classes: byClass };
 }
 
-export function assessReleaseCandidate({ stagingReceipt, hardwareAssessment, securityEvidence }) {
+export function assessReleaseCandidate({ stagingReceipt, hardwareAssessment, securityEvidence, expectedCommit }) {
   const blockers = [];
+  const expected = normalizeCommit(expectedCommit);
+  if (!expected) blockers.push('A full 40-character expected release commit is required.');
+  if (!expected || normalizeCommit(stagingReceipt?.commitSha) !== expected) blockers.push('Staging evidence does not match the expected release commit.');
+  if (!expected || normalizeCommit(hardwareAssessment?.expectedCommit) !== expected) blockers.push('Hardware matrix does not match the expected release commit.');
   if (stagingReceipt?.decision !== 'STAGING_PASS') blockers.push('Live staging acceptance has not passed.');
   if (stagingReceipt?.classifications?.liveSupabaseValidated !== true) blockers.push('Live Supabase validation is missing.');
   if (stagingReceipt?.classifications?.liveUpstashValidated !== true) blockers.push('Live Upstash validation is missing.');
@@ -110,6 +124,12 @@ export function assessReleaseCandidate({ stagingReceipt, hardwareAssessment, sec
     if (browsers?.[engine]?.emulatorValidated !== true) blockers.push(`${engine} browser validation is missing.`);
   }
   if (hardwareAssessment?.allRequiredPassed !== true) blockers.push('Required physical hardware matrix has not passed.');
+  for (const hardwareClass of HARDWARE_CLASSES) {
+    const evidence = hardwareAssessment?.classes?.[hardwareClass];
+    if (evidence?.hardwareValidated !== true || !expected || normalizeCommit(evidence?.commitSha) !== expected || !SHA256.test(evidence?.evidenceDigest || '')) {
+      blockers.push(`${hardwareClass} hardware evidence is missing or belongs to another commit.`);
+    }
+  }
   if (securityEvidence?.credentialRotationConfirmed !== true) blockers.push('Credential rotation/revocation is not confirmed.');
   if (securityEvidence?.historyReviewConfirmed !== true) blockers.push('Git-history and retained-artifact review is not confirmed.');
   if (securityEvidence?.rollbackRehearsalConfirmed !== true) blockers.push('Rollback rehearsal is not confirmed.');
