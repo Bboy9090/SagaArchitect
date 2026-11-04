@@ -18,6 +18,7 @@ import {
 import {
   activeCaptionAt,
   addClipToTimelineTrack,
+  clipCropCss,
   clipFilterCss,
   DEFAULT_CLIP_ADJUSTMENTS,
   addTimelineTrack,
@@ -523,6 +524,7 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
                     opacity: transition.opacity * Math.max(0, Math.min(1, clip.opacity ?? 1)),
                     mixBlendMode: clip.blendMode || 'normal',
                     filter: clipFilterCss(clip),
+                    clipPath: clipCropCss(clip),
                     zIndex: trackOrder + 1,
                     transform: `translate(${((transform.x / Math.max(1, timeline?.width || 1920)) + transition.x) * 100}%, ${((transform.y / Math.max(1, timeline?.height || 1080)) + transition.y) * 100}%) scale(${transform.scale * transition.scale}) rotate(${transform.rotation}deg)`,
                     transformOrigin: 'center',
@@ -771,6 +773,30 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
                           />
                         </label>
                       ))}
+                    </div>
+                    <div className="mt-2 border-t border-white/5 pt-2">
+                      <div className="text-[8px] font-bold uppercase tracking-wider text-cyan-300">Crop %</div>
+                      <div className="mt-1 grid grid-cols-4 gap-1">
+                        {(['top', 'right', 'bottom', 'left'] as const).map(key => (
+                          <input
+                            key={key}
+                            type="number"
+                            min={0}
+                            max={95}
+                            disabled={selectedClipLocked}
+                            value={Math.round((selectedClip.crop?.[key] || 0) * 100)}
+                            aria-label={`Crop ${key} percent`}
+                            onChange={event => patchClip(selectedClip.id, {
+                              crop: {
+                                ...(selectedClip.crop || { top: 0, right: 0, bottom: 0, left: 0 }),
+                                [key]: Math.max(0, Math.min(0.95, Number(event.target.value) / 100)),
+                              },
+                            })}
+                            className="min-w-0 rounded border border-white/10 bg-black/20 p-1 text-[9px] text-white"
+                          />
+                        ))}
+                      </div>
+                      {selectedClip.crop && <Button size="sm" variant="ghost" className="mt-2 w-full" disabled={selectedClipLocked} onClick={() => patchClip(selectedClip.id, { crop: undefined })}>Reset Crop</Button>}
                     </div>
                     {selectedClip.adjustments && (
                       <Button size="sm" variant="ghost" className="mt-2 w-full" disabled={selectedClipLocked} onClick={() => patchClip(selectedClip.id, { adjustments: undefined })}>Reset FX</Button>
