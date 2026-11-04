@@ -227,14 +227,38 @@ async function renderLayerBitmap(layer: PhoenixMediaLayer): Promise<HTMLCanvasEl
         const strokeWidth = Number.isFinite(contour.strokeWidth) ? Math.max(0, contour.strokeWidth as number) : layer.strokeWidth;
         if (strokeWidth <= 0 || contour.points.length === 0) continue;
         ctx.save();
-        ctx.beginPath();
-        traceContour(contour.points, contour.closed);
         ctx.globalAlpha *= Number.isFinite(contour.opacity) ? Math.max(0, Math.min(1, contour.opacity as number)) : 1;
         ctx.strokeStyle = contour.stroke || layer.stroke;
-        ctx.lineWidth = strokeWidth;
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
-        ctx.stroke();
+        const hasPressure = contour.points.some(point => Number.isFinite(point.pressure));
+        if (!hasPressure) {
+          ctx.beginPath();
+          traceContour(contour.points, contour.closed);
+          ctx.lineWidth = strokeWidth;
+          ctx.stroke();
+        } else {
+          for (let index = 1; index < contour.points.length; index += 1) {
+            const previous = contour.points[index - 1];
+            const point = contour.points[index];
+            const pressure = ((previous.pressure ?? 0.5) + (point.pressure ?? 0.5)) / 2;
+            ctx.beginPath();
+            ctx.moveTo(previous.x, previous.y);
+            ctx.lineTo(point.x, point.y);
+            ctx.lineWidth = Math.max(0.5, strokeWidth * (0.35 + pressure));
+            ctx.stroke();
+          }
+          if (contour.closed && contour.points.length > 2) {
+            const first = contour.points[0];
+            const last = contour.points[contour.points.length - 1];
+            const pressure = ((first.pressure ?? 0.5) + (last.pressure ?? 0.5)) / 2;
+            ctx.beginPath();
+            ctx.moveTo(last.x, last.y);
+            ctx.lineTo(first.x, first.y);
+            ctx.lineWidth = Math.max(0.5, strokeWidth * (0.35 + pressure));
+            ctx.stroke();
+          }
+        }
         ctx.restore();
       }
     }
