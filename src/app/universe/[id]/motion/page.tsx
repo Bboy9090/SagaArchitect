@@ -22,12 +22,15 @@ import {
   clipSourceAt,
   clipTransitionState,
   clipTransformAt,
+  isTimelineClipLocked,
+  isTimelineTrackActive,
   removeEmptyTimelineTrack,
   timelineClipAudioGainAt,
   timelineClipDuration,
   timelineDuration,
   savePhoenixVideoTimeline,
   type PhoenixTimelineClip,
+  type PhoenixTimelineTrack,
   type PhoenixVideoTimeline,
 } from '@/lib/video-timeline';
 import type { Scene, StoryboardPanel, Universe } from '@/lib/types';
@@ -109,10 +112,11 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
     () => timeline?.tracks.flatMap(track => track.clips).find(clip => clip.id === selectedClipId) || null,
     [timeline, selectedClipId],
   );
+  const selectedClipLocked = Boolean(timeline && selectedClip && isTimelineClipLocked(timeline, selectedClip.id));
   const activeVisualLayers = useMemo(() => {
     if (!timeline) return [];
     return timeline.tracks
-      .filter(track => track.kind === 'video')
+      .filter(track => track.kind === 'video' && isTimelineTrackActive(timeline, track))
       .sort((a, b) => a.order - b.order)
       .flatMap(track => track.clips.map(clip => ({ clip, trackOrder: track.order })))
       .filter(({ clip }) => playhead >= clip.start && playhead <= clip.start + timelineClipDuration(clip))
@@ -126,7 +130,7 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
   const activeAudioClips = useMemo(() => {
     if (!timeline) return [];
     return timeline.tracks
-      .filter(track => track.kind === 'audio')
+      .filter(track => track.kind === 'audio' && isTimelineTrackActive(timeline, track))
       .sort((a, b) => a.order - b.order)
       .flatMap(track => track.clips)
       .filter(clip => playhead >= clip.start && playhead <= clip.start + timelineClipDuration(clip));
@@ -248,12 +252,27 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
   };
 
   const patchClip = (clipId: string, patch: Partial<PhoenixTimelineClip>) => {
+    setTimeline(current => {
+      if (!current) return current;
+      if (isTimelineClipLocked(current, clipId)) {
+        setStatus('Unlock the track before editing this motion clip.');
+        return current;
+      }
+      return {
+        ...current,
+        tracks: current.tracks.map(track => ({
+          ...track,
+          clips: track.clips.map(clip => clip.id === clipId ? { ...clip, ...patch } : clip),
+        })),
+      };
+    });
+  };
+
+  const patchTrack = (trackId: string, patch: Partial<PhoenixTimelineTrack>) => {
     setTimeline(current => current ? ({
       ...current,
-      tracks: current.tracks.map(track => ({
-        ...track,
-        clips: track.clips.map(clip => clip.id === clipId ? { ...clip, ...patch } : clip),
-      })),
+      tracks: current.tracks.map(track => track.id === trackId ? { ...track, ...patch } : track),
+      updatedAt: new Date().toISOString(),
     }) : current);
   };
 
@@ -271,8 +290,8 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
     if (!timeline || !asset.mime_type.startsWith('image/')) return;
     setTimeline(current => {
       if (!current) return current;
-      const selected = current.tracks.find(track => track.id === selectedTrackId && track.kind === 'video');
-      const target = selected || current.tracks.filter(track => track.kind === 'video').sort((a, b) => b.order - a.order)[0];
+      const selected = current.tracks.find(track => track.id === selectedTrackId && track.kind === 'video' && !track.locked);
+      const target = selected || current.tracks.filter(track => track.kind === 'video' && !track.locked).sort((a, b) => b.order - a.order)[0];
       if (!target) return current;
       const span = Math.max(0.5, Math.min(secondsPerPanel, Math.max(0.5, timelineDuration(current) - playhead)));
       setSelectedTrackId(target.id);
@@ -313,6 +332,11 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
       const visualTracks = current.tracks
         .filter(track => track.kind === 'video')
         .sort((a, b) => a.order - b.order);
+      const movingTrack = visualTracks.find(track => track.id === trackId);
+      if (movingTrack?.locked) {
+        setStatus('Unlock the track before reordering it.');
+        return current;
+      }
       const index = visualTracks.findIndex(track => track.id === trackId);
       const swapIndex = index + direction;
       if (index < 0 || swapIndex < 0 || swapIndex >= visualTracks.length) return current;
@@ -597,6 +621,11 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
                           <Button size="sm" variant="ghost" disabled={index === ordered.length - 1} onClick={() => shiftVisualTrack(track.id, 1)}>↓</Button>
                           <Button size="sm" variant="ghost" disabled={!canRemove} onClick={() => deleteEmptyTrack(track.id)}>×</Button>
                         </div>
+                        <div className="mt-1 grid grid-cols-3 gap-1">
+                          <Button size="sm" variant={track.muted ? 'gold' : 'ghost'} onClick={() => patchTrack(track.id, { muted: !track.muted })}>M</Button>
+                          <Button size="sm" variant={track.solo ? 'gold' : 'ghost'} onClick={() => patchTrack(track.id, { solo: !track.solo })}>S</Button>
+                          <Button size="sm" variant={track.locked ? 'gold' : 'ghost'} onClick={() => patchTrack(track.id, { locked: !track.locked })}>L</Button>
+                        </div>
                         <div className="mt-2 space-y-1">
                           {track.clips.map(clip => (
                             <button
@@ -619,6 +648,27 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
                   })}
                 </div>
               </div>
+
+              {timeline.tracks.some(track => track.kind === 'audio') && (
+                <div className="mt-5">
+                  <p className="mb-2 text-[10px] font-black uppercase tracking-[.25em] text-cyan-300/70">Audio Tracks</p>
+                  <div className="space-y-2">
+                    {[...timeline.tracks].filter(track => track.kind === 'audio').sort((a, b) => a.order - b.order).map(track => (
+                      <div key={track.id} className="rounded-lg border border-white/10 bg-white/[0.02] p-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-xs font-bold text-white">{track.name}</span>
+                          <span className="text-[9px] text-slate-500">{track.clips.length} clips</span>
+                        </div>
+                        <div className="mt-2 grid grid-cols-3 gap-1">
+                          <Button size="sm" variant={track.muted ? 'gold' : 'ghost'} onClick={() => patchTrack(track.id, { muted: !track.muted })}>M</Button>
+                          <Button size="sm" variant={track.solo ? 'gold' : 'ghost'} onClick={() => patchTrack(track.id, { solo: !track.solo })}>S</Button>
+                          <Button size="sm" variant={track.locked ? 'gold' : 'ghost'} onClick={() => patchTrack(track.id, { locked: !track.locked })}>L</Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {isDbMode() && assets.some(asset => asset.mime_type.startsWith('image/')) && (
                 <div className="mt-5">
@@ -740,7 +790,8 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
                       </div>
                     )}
                   </div>
-                  <Button size="sm" variant="secondary" className="mt-3 w-full" onClick={addTransformKeyframe}>
+                  {selectedClipLocked && <div className="mt-3 rounded border border-amber-400/20 bg-amber-400/5 p-2 text-[9px] text-amber-200">Track locked — motion edits are disabled.</div>}
+                  <Button size="sm" variant="secondary" className="mt-3 w-full" disabled={selectedClipLocked} onClick={addTransformKeyframe}>
                     Keyframe Transform Here
                   </Button>
                   <div className="mt-3 space-y-2">

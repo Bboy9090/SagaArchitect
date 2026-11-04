@@ -107,6 +107,9 @@ export interface PhoenixTimelineTrack {
   kind: PhoenixTimelineTrackKind;
   role?: PhoenixTimelineTrackRole;
   ducking?: PhoenixTrackDucking;
+  muted?: boolean;
+  solo?: boolean;
+  locked?: boolean;
   order: number;
   clips: PhoenixTimelineClip[];
 }
@@ -138,14 +141,33 @@ export function createPhoenixVideoTimeline(projectId: string): PhoenixVideoTimel
     height: 1080,
     fps: 30,
     tracks: [
-      { id: crypto.randomUUID(), name: 'Video 1', kind: 'video', order: 0, clips: [] },
-      { id: crypto.randomUUID(), name: 'Audio 1', kind: 'audio', order: 1, clips: [] },
+      { id: crypto.randomUUID(), name: 'Video 1', kind: 'video', muted: false, solo: false, locked: false, order: 0, clips: [] },
+      { id: crypto.randomUUID(), name: 'Audio 1', kind: 'audio', muted: false, solo: false, locked: false, order: 1, clips: [] },
     ],
     captions: [],
     markers: [],
     createdAt: now,
     updatedAt: now,
   };
+}
+
+
+export function isTimelineTrackActive(
+  timeline: PhoenixVideoTimeline,
+  track: PhoenixTimelineTrack,
+): boolean {
+  if (track.muted) return false;
+  const peers = timeline.tracks.filter(item => item.kind === track.kind);
+  const hasSolo = peers.some(item => item.solo && !item.muted);
+  return hasSolo ? Boolean(track.solo) : true;
+}
+
+export function isTimelineClipLocked(
+  timeline: PhoenixVideoTimeline,
+  clipId: string,
+): boolean {
+  const track = timeline.tracks.find(item => item.clips.some(clip => clip.id === clipId));
+  return Boolean(track?.locked);
 }
 
 export function timelineStorageKey(projectId: string): string {
@@ -171,6 +193,9 @@ export function loadPhoenixVideoTimeline(projectId: string): PhoenixVideoTimelin
         : undefined,
       tracks: parsed.tracks.map(track => ({
         ...track,
+        muted: Boolean(track.muted),
+        solo: Boolean(track.solo),
+        locked: Boolean(track.locked),
         clips: track.clips.map(clip => ({
           ...clip,
           transitionIn: clip.transitionIn || 'none',
@@ -216,6 +241,9 @@ export function addTimelineTrack(
     id: crypto.randomUUID(),
     name: name || `${kind === 'video' ? 'Video' : 'Audio'} ${peers.length + 1}`,
     kind,
+    muted: false,
+    solo: false,
+    locked: false,
     order: nextOrder,
     clips: [],
   };
@@ -299,7 +327,7 @@ export function splitTimelineClip(
     ...timeline,
     tracks: timeline.tracks.map(track => {
       const clip = track.clips.find(item => item.id === clipId);
-      if (!clip) return track;
+      if (!clip || track.locked) return track;
       const duration = timelineClipDuration(clip);
       const localTimelineTime = playhead - clip.start;
       if (localTimelineTime <= 0.05 || localTimelineTime >= duration - 0.05) return track;
@@ -462,7 +490,7 @@ function duckingMultiplierAt(
   const release = Math.max(0, config.release);
   let multiplier = 1;
   const dialogueClips = timeline.tracks
-    .filter(track => track.kind === 'audio' && track.role === 'dialogue')
+    .filter(track => track.kind === 'audio' && track.role === 'dialogue' && isTimelineTrackActive(timeline, track))
     .flatMap(track => track.clips)
     .filter(clip => !clip.muted);
 
@@ -492,7 +520,7 @@ export function timelineClipAudioGainAt(
 ): number {
   const base = clipAudioGainAt(clip, timelineTime);
   const track = timeline.tracks.find(item => item.id === clip.trackId);
-  if (!track) return base;
+  if (!track || !isTimelineTrackActive(timeline, track)) return 0;
   return Math.max(0, Math.min(1, base * duckingMultiplierAt(timeline, track, timelineTime)));
 }
 
@@ -564,6 +592,8 @@ export function shiftTimelineTrackFrom(
   delta: number,
   excludeClipId?: string,
 ): PhoenixVideoTimeline {
+  const targetTrack = timeline.tracks.find(track => track.id === trackId);
+  if (targetTrack?.locked) return timeline;
   if (!Number.isFinite(delta) || Math.abs(delta) < 0.0001) return timeline;
   return {
     ...timeline,
@@ -586,7 +616,7 @@ export function moveTimelineClip(
 ): PhoenixVideoTimeline {
   const track = timeline.tracks.find(item => item.clips.some(clip => clip.id === clipId));
   const clip = track?.clips.find(item => item.id === clipId);
-  if (!track || !clip) return timeline;
+  if (!track || !clip || track.locked) return timeline;
   const nextStart = options?.snap
     ? snapTimelineTime(timeline, requestedStart, options.snapThreshold ?? 0.12, clipId)
     : Math.max(0, requestedStart);
@@ -617,7 +647,7 @@ export function moveTimelineClipToTrack(
   const sourceTrack = timeline.tracks.find(track => track.clips.some(clip => clip.id === clipId));
   const clip = sourceTrack?.clips.find(item => item.id === clipId);
   const targetTrack = timeline.tracks.find(track => track.id === targetTrackId);
-  if (!sourceTrack || !clip || !targetTrack) return timeline;
+  if (!sourceTrack || !clip || !targetTrack || sourceTrack.locked || targetTrack.locked) return timeline;
   const requiredKind: PhoenixTimelineTrackKind = clip.kind === 'audio' ? 'audio' : 'video';
   if (targetTrack.kind !== requiredKind) return timeline;
   if (sourceTrack.id === targetTrack.id) {
@@ -662,7 +692,7 @@ export function trimTimelineClipAt(
 ): PhoenixVideoTimeline {
   const track = timeline.tracks.find(item => item.clips.some(clip => clip.id === clipId));
   const clip = track?.clips.find(item => item.id === clipId);
-  if (!track || !clip) return timeline;
+  if (!track || !clip || track.locked) return timeline;
 
   const duration = timelineClipDuration(clip);
   const clipEnd = clip.start + duration;
@@ -721,7 +751,7 @@ export function removeTimelineClip(
 ): PhoenixVideoTimeline {
   const track = timeline.tracks.find(item => item.clips.some(clip => clip.id === clipId));
   const clip = track?.clips.find(item => item.id === clipId);
-  if (!track || !clip) return timeline;
+  if (!track || !clip || track.locked) return timeline;
   const duration = timelineClipDuration(clip);
   const end = clip.start + duration;
   let next: PhoenixVideoTimeline = {

@@ -19,6 +19,8 @@ import {
   clipVolumeAutomationAt,
   clipTransformAt,
   createPhoenixVideoTimeline,
+  isTimelineClipLocked,
+  isTimelineTrackActive,
   loadPhoenixVideoTimeline,
   moveTimelineClip,
   moveTimelineClipToTrack,
@@ -136,11 +138,12 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
     () => timeline?.tracks.flatMap(track => track.clips).find(clip => clip.id === selectedClipId) || null,
     [timeline, selectedClipId],
   );
+  const selectedClipLocked = Boolean(timeline && selectedClip && isTimelineClipLocked(timeline, selectedClip.id));
 
   const activeVisualLayers = useMemo(() => {
     if (!timeline) return [];
     return timeline.tracks
-      .filter(track => track.kind === 'video')
+      .filter(track => track.kind === 'video' && isTimelineTrackActive(timeline, track))
       .sort((a, b) => a.order - b.order)
       .flatMap(track => track.clips.map(clip => ({ clip, trackOrder: track.order })))
       .filter(({ clip }) => playhead >= clip.start && playhead <= clip.start + timelineClipDuration(clip))
@@ -152,7 +155,7 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
   const activeAudioClips = useMemo(() => {
     if (!timeline) return [];
     return timeline.tracks
-      .filter(track => track.kind === 'audio')
+      .filter(track => track.kind === 'audio' && isTimelineTrackActive(timeline, track))
       .sort((a, b) => a.order - b.order)
       .flatMap(track => track.clips)
       .filter(clip => playhead >= clip.start && playhead <= clip.start + timelineClipDuration(clip));
@@ -229,13 +232,20 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
   }, [activeAudioClips, playhead, playing, timeline]);
 
   const patchClip = (clipId: string, patch: Partial<PhoenixTimelineClip>) => {
-    setTimeline(current => current ? ({
-      ...current,
-      tracks: current.tracks.map(track => ({
-        ...track,
-        clips: track.clips.map(clip => clip.id === clipId ? { ...clip, ...patch } : clip),
-      })),
-    }) : current);
+    setTimeline(current => {
+      if (!current) return current;
+      if (isTimelineClipLocked(current, clipId)) {
+        setStatus('Unlock the track before editing this clip.');
+        return current;
+      }
+      return {
+        ...current,
+        tracks: current.tracks.map(track => ({
+          ...track,
+          clips: track.clips.map(clip => clip.id === clipId ? { ...clip, ...patch } : clip),
+        })),
+      };
+    });
   };
 
   const patchTrack = (trackId: string, patch: Partial<PhoenixTimelineTrack>) => {
@@ -255,9 +265,9 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
     setTimeline(current => {
       if (!current) return current;
       const targetKind = kind === 'audio' ? 'audio' : 'video';
-      const selectedTrack = current.tracks.find(track => track.id === selectedTrackId && track.kind === targetKind);
+      const selectedTrack = current.tracks.find(track => track.id === selectedTrackId && track.kind === targetKind && !track.locked);
       const targetTrack = selectedTrack || current.tracks
-        .filter(track => track.kind === targetKind)
+        .filter(track => track.kind === targetKind && !track.locked)
         .sort((a, b) => a.order - b.order)[0];
       if (!targetTrack) return current;
       setSelectedTrackId(targetTrack.id);
@@ -298,6 +308,10 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
       const clip = sourceTrack?.clips.find(item => item.id === clipId);
       const targetTrack = current.tracks.find(track => track.id === trackId);
       if (!sourceTrack || !clip || !targetTrack) return current;
+      if (sourceTrack.locked || targetTrack.locked) {
+        setStatus('Unlock both source and destination tracks before moving clips.');
+        return current;
+      }
       const requiredKind = clip.kind === 'audio' ? 'audio' : 'video';
       if (targetTrack.kind !== requiredKind) {
         setStatus(`Cannot move ${clip.kind} clips onto a ${targetTrack.kind} track.`);
@@ -321,6 +335,10 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
     event.preventDefault();
     event.stopPropagation();
     if (!timeline) return;
+    if (isTimelineClipLocked(timeline, clip.id)) {
+      setStatus('Unlock the track before trimming this clip.');
+      return;
+    }
 
     const initialTimeline = timeline;
     const initialX = event.clientX;
@@ -697,6 +715,11 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
                       <Button size="sm" variant="ghost" disabled={index === ordered.length - 1} onClick={() => shiftTrack(track.id, 1)}>↓</Button>
                       <Button size="sm" variant="ghost" disabled={!canRemove} onClick={() => deleteEmptyTrack(track.id)}>×</Button>
                     </div>
+                    <div className="mt-1 grid grid-cols-3 gap-1">
+                      <Button size="sm" variant={track.muted ? 'gold' : 'ghost'} onClick={() => patchTrack(track.id, { muted: !track.muted })}>M</Button>
+                      <Button size="sm" variant={track.solo ? 'gold' : 'ghost'} onClick={() => patchTrack(track.id, { solo: !track.solo })}>S</Button>
+                      <Button size="sm" variant={track.locked ? 'gold' : 'ghost'} onClick={() => patchTrack(track.id, { locked: !track.locked })}>L</Button>
+                    </div>
                     {track.kind === 'audio' && (
                       <div className="mt-2 space-y-2 border-t border-white/5 pt-2">
                         <label className="block text-[9px] uppercase text-slate-500">Role
@@ -941,7 +964,7 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
                         <button
                           key={clip.id}
                           type="button"
-                          draggable
+                          draggable={!track.locked}
                           onDragStart={event => {
                             event.dataTransfer.effectAllowed = 'move';
                             event.dataTransfer.setData('text/plain', clip.id);
@@ -1044,7 +1067,7 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
               <div className="truncate text-sm font-bold text-white">{selectedClip.name}</div>
               <div className="grid grid-cols-2 gap-2">
                 <label className="text-[10px] uppercase text-slate-500">Start
-                  <input type="number" min={0} step={0.05} value={selectedClip.start} onChange={event => setTimeline(current => current ? moveTimelineClip(current, selectedClip.id, Number(event.target.value), { snap: snapEditing, snapThreshold: 0.12 }) : current)} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                  <input type="number" min={0} step={0.05} value={selectedClip.start} disabled={selectedClipLocked} onChange={event => setTimeline(current => current ? moveTimelineClip(current, selectedClip.id, Number(event.target.value), { snap: snapEditing, snapThreshold: 0.12 }) : current)} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
                 </label>
                 <label className="text-[10px] uppercase text-slate-500">Rate
                   <input type="number" min={0.25} max={4} step={0.05} value={selectedClip.playbackRate} onChange={event => patchClip(selectedClip.id,{playbackRate:Math.max(0.25,Math.min(4,Number(event.target.value)))})} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
@@ -1207,18 +1230,19 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
                 )}
               </div>
 
-              <Button size="sm" variant="ghost" className="w-full" onClick={() => patchClip(selectedClip.id,{muted:!selectedClip.muted})}>{selectedClip.muted ? 'Unmute' : 'Mute'}</Button>
-              <Button size="sm" variant="secondary" className="w-full" onClick={moveSelectedToPlayhead}>{rippleEditing ? 'Ripple Move to Playhead' : 'Move to Playhead'}</Button>
+              {selectedClipLocked && <div className="rounded border border-amber-400/20 bg-amber-400/5 p-2 text-[10px] text-amber-200">Track locked — clip edits are disabled.</div>}
+              <Button size="sm" variant="ghost" className="w-full" disabled={selectedClipLocked} onClick={() => patchClip(selectedClip.id,{muted:!selectedClip.muted})}>{selectedClip.muted ? 'Unmute' : 'Mute'}</Button>
+              <Button size="sm" variant="secondary" className="w-full" disabled={selectedClipLocked} onClick={moveSelectedToPlayhead}>{rippleEditing ? 'Ripple Move to Playhead' : 'Move to Playhead'}</Button>
               <div className="grid grid-cols-2 gap-2">
-                <Button size="sm" variant="ghost" onClick={() => trimSelected('in')}>
+                <Button size="sm" variant="ghost" disabled={selectedClipLocked} onClick={() => trimSelected('in')}>
                   {rippleEditing ? 'Ripple Trim In' : 'Trim In Here'}
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => trimSelected('out')}>
+                <Button size="sm" variant="ghost" disabled={selectedClipLocked} onClick={() => trimSelected('out')}>
                   {rippleEditing ? 'Ripple Trim Out' : 'Trim Out Here'}
                 </Button>
               </div>
-              <Button size="sm" variant="secondary" className="w-full" onClick={splitSelected}>Split at Playhead</Button>
-              <Button size="sm" variant="danger" className="w-full" onClick={deleteClip}>{rippleEditing ? 'Ripple Delete Clip' : 'Delete Clip'}</Button>
+              <Button size="sm" variant="secondary" className="w-full" disabled={selectedClipLocked} onClick={splitSelected}>Split at Playhead</Button>
+              <Button size="sm" variant="danger" className="w-full" disabled={selectedClipLocked} onClick={deleteClip}>{rippleEditing ? 'Ripple Delete Clip' : 'Delete Clip'}</Button>
             </div>
           )}
 
