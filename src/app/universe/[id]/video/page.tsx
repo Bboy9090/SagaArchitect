@@ -20,9 +20,13 @@ import {
   clipTransformAt,
   createPhoenixVideoTimeline,
   loadPhoenixVideoTimeline,
+  moveTimelineClip,
   moveTimelineTrack,
   removeEmptyTimelineTrack,
+  removeTimelineClip,
   savePhoenixVideoTimeline,
+  shiftTimelineTrackFrom,
+  snapTimelineTime,
   splitTimelineClip,
   timelineClipAudioGainAt,
   timelineClipDuration,
@@ -81,6 +85,8 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
   const [captionText, setCaptionText] = useState('');
   const [rendering, setRendering] = useState(false);
   const [renderProgress, setRenderProgress] = useState(0);
+  const [snapEditing, setSnapEditing] = useState(true);
+  const [rippleEditing, setRippleEditing] = useState(false);
   const visualVideoRefs = useRef(new Map<string, HTMLVideoElement>());
   const audioRefs = useRef(new Map<string, HTMLAudioElement>());
 
@@ -234,13 +240,20 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
         .sort((a, b) => a.order - b.order)[0];
       if (!targetTrack) return current;
       setSelectedTrackId(targetTrack.id);
-      return addClipToTimelineTrack(current, targetTrack.id, {
+      const insertStart = snapEditing
+        ? snapTimelineTime(current, playhead, 0.12)
+        : Math.max(0, playhead);
+      const clipDuration = Math.max(0.05, sourceDuration);
+      const working = rippleEditing
+        ? shiftTimelineTrackFrom(current, targetTrack.id, insertStart, clipDuration)
+        : current;
+      return addClipToTimelineTrack(working, targetTrack.id, {
         assetId: asset.id,
         name: asset.name,
         src: asset.serve_url,
         mimeType: asset.mime_type,
         kind,
-        start: kind === 'audio' ? 0 : Math.max(0, timelineDuration(current) - 1),
+        start: insertStart,
         sourceDuration,
         inPoint: 0,
         outPoint: sourceDuration,
@@ -316,15 +329,20 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
     patchClip(selectedClip.id, { gainKeyframes });
   };
 
+  const moveSelectedToPlayhead = () => {
+    if (!selectedClip) return;
+    setTimeline(current => current
+      ? moveTimelineClip(current, selectedClip.id, playhead, {
+          ripple: rippleEditing,
+          snap: snapEditing,
+          snapThreshold: 0.12,
+        })
+      : current);
+  };
+
   const deleteClip = () => {
     if (!selectedClip) return;
-    setTimeline(current => current ? ({
-      ...current,
-      tracks: current.tracks.map(track => ({
-        ...track,
-        clips: track.clips.filter(clip => clip.id !== selectedClip.id),
-      })),
-    }) : current);
+    setTimeline(current => current ? removeTimelineClip(current, selectedClip.id, rippleEditing) : current);
     setSelectedClipId('');
   };
 
@@ -404,6 +422,8 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
             <Button size="sm" variant={timeline.width > timeline.height ? 'gold' : 'ghost'} onClick={() => setCanvasPreset(1920,1080)}>16:9</Button>
             <Button size="sm" variant={timeline.height > timeline.width ? 'gold' : 'ghost'} onClick={() => setCanvasPreset(1080,1920)}>9:16</Button>
             <Button size="sm" variant={timeline.height === timeline.width ? 'gold' : 'ghost'} onClick={() => setCanvasPreset(1080,1080)}>1:1</Button>
+            <Button size="sm" variant={snapEditing ? 'gold' : 'ghost'} onClick={() => setSnapEditing(value => !value)}>Snap</Button>
+            <Button size="sm" variant={rippleEditing ? 'gold' : 'ghost'} onClick={() => setRippleEditing(value => !value)}>Ripple</Button>
             <Button size="sm" variant="gold" loading={rendering} onClick={() => void renderWebm()}>
               {rendering ? `Rendering ${renderProgress}%` : 'Export WebM'}
             </Button>
@@ -698,7 +718,7 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
               <div className="truncate text-sm font-bold text-white">{selectedClip.name}</div>
               <div className="grid grid-cols-2 gap-2">
                 <label className="text-[10px] uppercase text-slate-500">Start
-                  <input type="number" min={0} step={0.05} value={selectedClip.start} onChange={event => patchClip(selectedClip.id,{start:Math.max(0,Number(event.target.value))})} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
+                  <input type="number" min={0} step={0.05} value={selectedClip.start} onChange={event => setTimeline(current => current ? moveTimelineClip(current, selectedClip.id, Number(event.target.value), { snap: snapEditing, snapThreshold: 0.12 }) : current)} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
                 </label>
                 <label className="text-[10px] uppercase text-slate-500">Rate
                   <input type="number" min={0.25} max={4} step={0.05} value={selectedClip.playbackRate} onChange={event => patchClip(selectedClip.id,{playbackRate:Math.max(0.25,Math.min(4,Number(event.target.value)))})} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
@@ -862,8 +882,9 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
               </div>
 
               <Button size="sm" variant="ghost" className="w-full" onClick={() => patchClip(selectedClip.id,{muted:!selectedClip.muted})}>{selectedClip.muted ? 'Unmute' : 'Mute'}</Button>
+              <Button size="sm" variant="secondary" className="w-full" onClick={moveSelectedToPlayhead}>{rippleEditing ? 'Ripple Move to Playhead' : 'Move to Playhead'}</Button>
               <Button size="sm" variant="secondary" className="w-full" onClick={splitSelected}>Split at Playhead</Button>
-              <Button size="sm" variant="danger" className="w-full" onClick={deleteClip}>Delete Clip</Button>
+              <Button size="sm" variant="danger" className="w-full" onClick={deleteClip}>{rippleEditing ? 'Ripple Delete Clip' : 'Delete Clip'}</Button>
             </div>
           )}
 
