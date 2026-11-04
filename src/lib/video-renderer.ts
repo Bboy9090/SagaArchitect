@@ -3,6 +3,7 @@ import {
   clipFilterCss,
   clipPlaybackRateAt,
   normalizedClipCrop,
+  normalizeTitleGraphic,
   clipSourceAt,
   clipSourceTimeAt,
   isTimelineTrackActive,
@@ -80,6 +81,84 @@ function drawCover(
   ctx.drawImage(source, sx, sy, sw, sh, 0, 0, canvasWidth, canvasHeight);
 }
 
+
+function wrapTitleLines(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+): string[] {
+  const lines: string[] = [];
+  for (const paragraph of text.replace(/\r/g, '').split('\n')) {
+    const words = paragraph.trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
+      lines.push('');
+      continue;
+    }
+    let line = '';
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (line && ctx.measureText(candidate).width > maxWidth) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = candidate;
+      }
+    }
+    if (line) lines.push(line);
+  }
+  return lines.length ? lines : [''];
+}
+
+function drawTitleGraphic(
+  ctx: CanvasRenderingContext2D,
+  clip: PhoenixTimelineClip,
+  width: number,
+  height: number,
+): void {
+  const title = normalizeTitleGraphic(clip.title);
+  const fontSize = Math.max(12, title.fontSize);
+  ctx.font = `${title.fontWeight} ${fontSize}px "${title.fontFamily}", sans-serif`;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = title.align;
+  const outerWidth = width * 0.88;
+  const maxTextWidth = Math.max(1, outerWidth - title.padding * 2);
+  const lines = wrapTitleLines(ctx, title.text, maxTextWidth);
+  const lineHeight = fontSize * title.lineHeight;
+  const blockHeight = Math.max(lineHeight, lines.length * lineHeight) + title.padding * 2;
+  const centerY = title.position === 'top'
+    ? height * 0.18
+    : title.position === 'bottom'
+      ? height * 0.82
+      : height * 0.5;
+  const boxX = (width - outerWidth) / 2;
+  const boxY = centerY - blockHeight / 2;
+
+  if (title.background !== 'transparent' && title.background !== 'rgba(0,0,0,0)') {
+    ctx.fillStyle = title.background;
+    ctx.fillRect(boxX, boxY, outerWidth, blockHeight);
+  }
+
+  const textX = title.align === 'left'
+    ? boxX + title.padding
+    : title.align === 'right'
+      ? boxX + outerWidth - title.padding
+      : width / 2;
+
+  ctx.shadowColor = title.shadowColor;
+  ctx.shadowBlur = title.shadowBlur;
+  ctx.fillStyle = title.color;
+  ctx.strokeStyle = title.strokeColor;
+  ctx.lineWidth = title.strokeWidth * 2;
+  ctx.lineJoin = 'round';
+
+  lines.forEach((line, index) => {
+    const y = centerY + (index - (lines.length - 1) / 2) * lineHeight;
+    if (title.strokeWidth > 0) ctx.strokeText(line, textX, y, maxTextWidth);
+    ctx.fillText(line, textX, y, maxTextWidth);
+  });
+  ctx.shadowBlur = 0;
+}
+
 function drawVisual(
   ctx: CanvasRenderingContext2D,
   visual: PreparedVisual,
@@ -116,6 +195,8 @@ function drawVisual(
     if (image) drawCover(ctx, image, image.naturalWidth, image.naturalHeight, width, height);
   } else if (clip.kind === 'video' && visual.video && visual.video.readyState >= 2) {
     drawCover(ctx, visual.video, visual.video.videoWidth, visual.video.videoHeight, width, height);
+  } else if (clip.kind === 'title') {
+    drawTitleGraphic(ctx, clip, width, height);
   }
   ctx.restore();
 }

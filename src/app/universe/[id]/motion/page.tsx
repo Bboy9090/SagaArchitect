@@ -18,6 +18,7 @@ import {
 import {
   activeCaptionAt,
   addClipToTimelineTrack,
+  addTitleClipToTimelineTrack,
   clipCropCss,
   clipFilterCss,
   DEFAULT_CLIP_ADJUSTMENTS,
@@ -30,6 +31,7 @@ import {
   clipTransformAt,
   isTimelineClipLocked,
   isTimelineTrackActive,
+  normalizeTitleGraphic,
   removeEmptyTimelineTrack,
   timelineClipAudioGainAt,
   timelineClipDuration,
@@ -119,6 +121,10 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
     [timeline, selectedClipId],
   );
   const selectedClipLocked = Boolean(timeline && selectedClip && isTimelineClipLocked(timeline, selectedClip.id));
+  const selectedTitle = useMemo(
+    () => selectedClip?.kind === 'title' ? normalizeTitleGraphic(selectedClip.title) : null,
+    [selectedClip],
+  );
   const activeVisualLayers = useMemo(() => {
     if (!timeline) return [];
     return timeline.tracks
@@ -290,6 +296,27 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
       const next = addTimelineTrack(current, 'video', `Overlay ${current.tracks.filter(track => track.kind === 'video').length}`);
       const created = [...next.tracks].sort((a, b) => b.order - a.order).find(track => track.kind === 'video');
       if (created) setSelectedTrackId(created.id);
+      return next;
+    });
+  };
+
+  const addTitleOverlay = () => {
+    setTimeline(current => {
+      if (!current) return current;
+      const selected = current.tracks.find(track => track.id === selectedTrackId && track.kind === 'video' && !track.locked);
+      const target = selected || current.tracks
+        .filter(track => track.kind === 'video' && !track.locked)
+        .sort((a, b) => b.order - a.order)[0];
+      if (!target) {
+        setStatus('Create or unlock a visual track before adding a title.');
+        return current;
+      }
+      const span = Math.max(2, Math.min(8, secondsPerPanel));
+      const next = addTitleClipToTimelineTrack(current, target.id, playhead, span, 'Title');
+      const created = next.tracks.find(track => track.id === target.id)?.clips.at(-1);
+      setSelectedTrackId(target.id);
+      if (created) setSelectedClipId(created.id);
+      setStatus(`Added title overlay at ${playhead.toFixed(2)}s.`);
       return next;
     });
   };
@@ -551,6 +578,38 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
                       />
                     );
                   }
+                  if (clip.kind === 'title') {
+                    const title = normalizeTitleGraphic(clip.title);
+                    const previewScale = Math.min(1, 720 / Math.max(1, timeline?.width || 1920));
+                    return (
+                      <div key={clip.id} style={{ ...layerStyle, pointerEvents: 'none' }}>
+                        <div
+                          style={{
+                            position: 'absolute',
+                            left: '6%',
+                            top: title.position === 'top' ? '18%' : title.position === 'bottom' ? '82%' : '50%',
+                            width: '88%',
+                            boxSizing: 'border-box',
+                            transform: 'translateY(-50%)',
+                            padding: title.padding * previewScale,
+                            color: title.color,
+                            background: title.background,
+                            fontFamily: `"${title.fontFamily}", sans-serif`,
+                            fontSize: Math.max(8, title.fontSize * previewScale),
+                            fontWeight: title.fontWeight,
+                            lineHeight: title.lineHeight,
+                            textAlign: title.align,
+                            whiteSpace: 'pre-wrap',
+                            overflowWrap: 'anywhere',
+                            WebkitTextStroke: title.strokeWidth > 0 ? `${title.strokeWidth * previewScale}px ${title.strokeColor}` : undefined,
+                            textShadow: title.shadowBlur > 0 ? `0 0 ${title.shadowBlur * previewScale}px ${title.shadowColor}` : undefined,
+                          }}
+                        >
+                          {title.text}
+                        </div>
+                      </div>
+                    );
+                  }
                   return null;
                 })}
                 {activeCaption && (
@@ -631,7 +690,10 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
               <div className="mt-5">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[10px] font-black uppercase tracking-[.25em] text-violet-300/70">Visual Tracks</p>
-                  <Button size="sm" variant="ghost" onClick={addOverlayTrack}>+ Overlay</Button>
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="ghost" onClick={addTitleOverlay}>+ Title</Button>
+                    <Button size="sm" variant="ghost" onClick={addOverlayTrack}>+ Overlay</Button>
+                  </div>
                 </div>
                 <div className="mt-2 space-y-2">
                   {[...timeline.tracks].filter(track => track.kind === 'video').sort((a, b) => a.order - b.order).map((track, index, ordered) => {
@@ -719,6 +781,52 @@ export default function MotionComicPage({ params }: MotionComicPageProps) {
               {selectedClip && selectedClip.kind !== 'audio' && (
                 <div className="mt-5 rounded-xl border border-violet-400/15 bg-violet-400/[0.04] p-3">
                   <div className="text-xs font-bold text-violet-100">Motion Layer</div>
+                  {selectedTitle && (
+                    <div className="mt-3 rounded border border-violet-400/20 bg-violet-400/[0.04] p-3">
+                      <div className="text-[9px] font-bold uppercase tracking-wider text-violet-300">Title / Graphic</div>
+                      <textarea
+                        value={selectedTitle.text}
+                        disabled={selectedClipLocked}
+                        onChange={event => patchClip(selectedClip.id, { title: { ...selectedTitle, text: event.target.value } })}
+                        className="mt-2 min-h-20 w-full rounded border border-white/10 bg-black/20 p-2 text-xs text-white"
+                      />
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <label className="text-[8px] uppercase text-slate-500">Font
+                          <select value={selectedTitle.fontFamily} disabled={selectedClipLocked} onChange={event => patchClip(selectedClip.id, { title: normalizeTitleGraphic({ ...selectedTitle, fontFamily: event.target.value as typeof selectedTitle.fontFamily }) })} className="mt-1 min-h-8 w-full rounded border border-white/10 bg-[#0a0d14] px-1 text-[9px] text-white">
+                            {['Arial','Georgia','Times New Roman','Courier New','Verdana','Impact'].map(font => <option key={font} value={font}>{font}</option>)}
+                          </select>
+                        </label>
+                        <label className="text-[8px] uppercase text-slate-500">Size
+                          <input type="number" min={12} max={360} value={selectedTitle.fontSize} disabled={selectedClipLocked} onChange={event => patchClip(selectedClip.id, { title: normalizeTitleGraphic({ ...selectedTitle, fontSize: Number(event.target.value) }) })} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-1 text-[9px] text-white" />
+                        </label>
+                        <label className="text-[8px] uppercase text-slate-500">Align
+                          <select value={selectedTitle.align} disabled={selectedClipLocked} onChange={event => patchClip(selectedClip.id, { title: normalizeTitleGraphic({ ...selectedTitle, align: event.target.value as typeof selectedTitle.align }) })} className="mt-1 min-h-8 w-full rounded border border-white/10 bg-[#0a0d14] px-1 text-[9px] text-white">
+                            <option value="left">Left</option><option value="center">Center</option><option value="right">Right</option>
+                          </select>
+                        </label>
+                        <label className="text-[8px] uppercase text-slate-500">Position
+                          <select value={selectedTitle.position} disabled={selectedClipLocked} onChange={event => patchClip(selectedClip.id, { title: normalizeTitleGraphic({ ...selectedTitle, position: event.target.value as typeof selectedTitle.position }) })} className="mt-1 min-h-8 w-full rounded border border-white/10 bg-[#0a0d14] px-1 text-[9px] text-white">
+                            <option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option>
+                          </select>
+                        </label>
+                        <label className="text-[8px] uppercase text-slate-500">Color
+                          <input type="color" value={selectedTitle.color} disabled={selectedClipLocked} onChange={event => patchClip(selectedClip.id, { title: { ...selectedTitle, color: event.target.value } })} className="mt-1 h-8 w-full" />
+                        </label>
+                        <label className="text-[8px] uppercase text-slate-500">Stroke px
+                          <input type="number" min={0} max={24} step={0.5} value={selectedTitle.strokeWidth} disabled={selectedClipLocked} onChange={event => patchClip(selectedClip.id, { title: normalizeTitleGraphic({ ...selectedTitle, strokeWidth: Number(event.target.value) }) })} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-1 text-[9px] text-white" />
+                        </label>
+                        <label className="text-[8px] uppercase text-slate-500">Duration
+                          <input type="number" min={0.5} max={60} step={0.25} value={timelineClipDuration(selectedClip)} disabled={selectedClipLocked} onChange={event => {
+                            const duration = Math.max(0.5, Math.min(60, Number(event.target.value)));
+                            patchClip(selectedClip.id, { sourceDuration: duration, inPoint: 0, outPoint: duration, playbackRate: 1 });
+                          }} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-1 text-[9px] text-white" />
+                        </label>
+                        <label className="text-[8px] uppercase text-slate-500">Background
+                          <input value={selectedTitle.background} disabled={selectedClipLocked} onChange={event => patchClip(selectedClip.id, { title: { ...selectedTitle, background: event.target.value } })} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-1 text-[9px] text-white" />
+                        </label>
+                      </div>
+                    </div>
+                  )}
                   <div className="mt-3 rounded border border-fuchsia-400/15 bg-fuchsia-400/[0.04] p-2">
                     <div className="text-[9px] font-bold uppercase tracking-wider text-fuchsia-300">Compositing</div>
                     <label className="mt-2 block text-[9px] uppercase text-slate-500">Opacity {Math.round((selectedClip.opacity ?? 1) * 100)}%

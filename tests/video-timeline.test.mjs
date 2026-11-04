@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   activeCaptionAt,
   addClipToTimeline,
+  addTitleClipToTimelineTrack,
   clipPlaybackRateAt,
   clipSourceTimeAt,
   clipTransitionOpacity,
@@ -10,6 +11,7 @@ import {
   createPhoenixVideoTimeline,
   isTimelineTrackActive,
   moveTimelineClip,
+  normalizeTitleGraphic,
   normalizedClipCrop,
   splitTimelineClip,
   timelineClipDuration,
@@ -305,4 +307,43 @@ test('crop normalization preserves a positive visible frame', () => {
   assert.ok(crop.top + crop.bottom <= 0.950001);
   assert.ok(1 - crop.left - crop.right > 0);
   assert.ok(1 - crop.top - crop.bottom > 0);
+});
+
+
+test('native title clips behave as visual timeline clips', () => {
+  const timeline = createPhoenixVideoTimeline('project-title');
+  const videoTrack = timeline.tracks.find(track => track.kind === 'video');
+  const next = addTitleClipToTimelineTrack(timeline, videoTrack.id, 2.5, 5, 'Phoenix Creator Bench');
+  const clip = next.tracks.find(track => track.id === videoTrack.id).clips[0];
+  assert.equal(clip.kind, 'title');
+  assert.equal(clip.start, 2.5);
+  assert.equal(timelineClipDuration(clip), 5);
+  assert.equal(clip.title.text, 'Phoenix Creator Bench');
+  assert.equal(clip.title.fontFamily, 'Arial');
+  assert.equal(clip.title.position, 'center');
+});
+
+test('title graphic normalization bounds unsafe style values', () => {
+  const title = normalizeTitleGraphic({
+    text: 'X'.repeat(5000),
+    fontFamily: 'Not A Font',
+    fontSize: 9999,
+    fontWeight: 775,
+    align: 'sideways',
+    position: 'floating',
+    lineHeight: 9,
+    padding: -5,
+    strokeWidth: 99,
+    shadowBlur: 999,
+  });
+  assert.equal(title.text.length, 4000);
+  assert.equal(title.fontFamily, 'Arial');
+  assert.equal(title.fontSize, 360);
+  assert.equal(title.fontWeight, 800);
+  assert.equal(title.align, 'center');
+  assert.equal(title.position, 'center');
+  assert.equal(title.lineHeight, 3);
+  assert.equal(title.padding, 0);
+  assert.equal(title.strokeWidth, 24);
+  assert.equal(title.shadowBlur, 120);
 });
