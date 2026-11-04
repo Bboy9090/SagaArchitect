@@ -62,6 +62,11 @@ export interface PhoenixTimelineMarker {
   label: string;
 }
 
+export interface PhoenixTimelineWorkArea {
+  start: number;
+  end: number;
+}
+
 export interface PhoenixTimelineClip {
   id: string;
   trackId: string;
@@ -116,6 +121,7 @@ export interface PhoenixVideoTimeline {
   tracks: PhoenixTimelineTrack[];
   captions: PhoenixCaptionCue[];
   markers?: PhoenixTimelineMarker[];
+  workArea?: PhoenixTimelineWorkArea;
   createdAt: string;
   updatedAt: string;
 }
@@ -157,6 +163,12 @@ export function loadPhoenixVideoTimeline(projectId: string): PhoenixVideoTimelin
       ...parsed,
       captions: Array.isArray(parsed.captions) ? parsed.captions : [],
       markers: Array.isArray(parsed.markers) ? parsed.markers : [],
+      workArea: parsed.workArea && Number.isFinite(parsed.workArea.start) && Number.isFinite(parsed.workArea.end)
+        ? {
+            start: Math.max(0, Math.min(parsed.workArea.start, parsed.workArea.end)),
+            end: Math.max(0, Math.max(parsed.workArea.start, parsed.workArea.end)),
+          }
+        : undefined,
       tracks: parsed.tracks.map(track => ({
         ...track,
         clips: track.clips.map(clip => ({

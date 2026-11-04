@@ -97,6 +97,7 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
   const [renderProgress, setRenderProgress] = useState(0);
   const [snapEditing, setSnapEditing] = useState(true);
   const [rippleEditing, setRippleEditing] = useState(false);
+  const [loopWorkArea, setLoopWorkArea] = useState(false);
   const visualVideoRefs = useRef(new Map<string, HTMLVideoElement>());
   const audioRefs = useRef(new Map<string, HTMLAudioElement>());
 
@@ -166,6 +167,16 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
       last = now;
       setPlayhead(current => {
         const next = current + delta;
+        const workArea = timeline.workArea;
+        if (loopWorkArea && workArea && workArea.end > workArea.start + 0.01) {
+          const start = Math.max(0, Math.min(duration, workArea.start));
+          const end = Math.max(start + 0.01, Math.min(duration, workArea.end));
+          if (next >= end) {
+            const span = Math.max(0.01, end - start);
+            return start + ((next - start) % span);
+          }
+          if (current < start || current > end) return start;
+        }
         if (next >= duration) {
           setPlaying(false);
           return duration;
@@ -176,7 +187,7 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [playing, timeline, duration]);
+  }, [playing, timeline, duration, loopWorkArea]);
 
   useEffect(() => {
     const activeIds = new Set(activeVisualLayers.filter(({ clip }) => clip.kind === 'video').map(({ clip }) => clip.id));
@@ -363,6 +374,31 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
     if (selectedTrackId === trackId) setSelectedTrackId('');
   };
 
+  const setWorkAreaIn = () => {
+    setTimeline(current => {
+      if (!current) return current;
+      const start = Math.max(0, Math.min(duration, playhead));
+      const currentEnd = current.workArea?.end ?? duration;
+      const end = Math.max(start + 0.05, Math.min(duration, currentEnd));
+      return { ...current, workArea: { start, end }, updatedAt: new Date().toISOString() };
+    });
+  };
+
+  const setWorkAreaOut = () => {
+    setTimeline(current => {
+      if (!current) return current;
+      const end = Math.max(0.05, Math.min(duration, playhead));
+      const currentStart = current.workArea?.start ?? 0;
+      const start = Math.min(Math.max(0, currentStart), Math.max(0, end - 0.05));
+      return { ...current, workArea: { start, end }, updatedAt: new Date().toISOString() };
+    });
+  };
+
+  const clearWorkArea = () => {
+    setLoopWorkArea(false);
+    setTimeline(current => current ? ({ ...current, workArea: undefined, updatedAt: new Date().toISOString() }) : current);
+  };
+
   const addMarker = () => {
     if (!timeline) return;
     const label = markerLabel.trim() || `Marker ${(timeline.markers || []).length + 1}`;
@@ -533,6 +569,34 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
         return;
       }
 
+      if (event.shiftKey && event.key.toLowerCase() === 'i' && timeline) {
+        event.preventDefault();
+        const start = Math.max(0, Math.min(duration, playhead));
+        setTimeline(current => current ? ({
+          ...current,
+          workArea: {
+            start,
+            end: Math.max(start + 0.05, Math.min(duration, current.workArea?.end ?? duration)),
+          },
+          updatedAt: new Date().toISOString(),
+        }) : current);
+        return;
+      }
+
+      if (event.shiftKey && event.key.toLowerCase() === 'o' && timeline) {
+        event.preventDefault();
+        const end = Math.max(0.05, Math.min(duration, playhead));
+        setTimeline(current => current ? ({
+          ...current,
+          workArea: {
+            start: Math.min(current.workArea?.start ?? 0, Math.max(0, end - 0.05)),
+            end,
+          },
+          updatedAt: new Date().toISOString(),
+        }) : current);
+        return;
+      }
+
       if (!selectedClip) return;
 
       if (event.key.toLowerCase() === 's') {
@@ -597,6 +661,10 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
             <Button size="sm" variant={timeline.height === timeline.width ? 'gold' : 'ghost'} onClick={() => setCanvasPreset(1080,1080)}>1:1</Button>
             <Button size="sm" variant={snapEditing ? 'gold' : 'ghost'} onClick={() => setSnapEditing(value => !value)}>Snap</Button>
             <Button size="sm" variant={rippleEditing ? 'gold' : 'ghost'} onClick={() => setRippleEditing(value => !value)}>Ripple</Button>
+            <Button size="sm" variant="ghost" onClick={setWorkAreaIn}>Set In</Button>
+            <Button size="sm" variant="ghost" onClick={setWorkAreaOut}>Set Out</Button>
+            <Button size="sm" variant={loopWorkArea ? 'gold' : 'ghost'} disabled={!timeline.workArea} onClick={() => setLoopWorkArea(value => !value)}>Loop</Button>
+            {timeline.workArea && <Button size="sm" variant="ghost" onClick={clearWorkArea}>Clear Range</Button>}
             <Button size="sm" variant="gold" loading={rendering} onClick={() => void renderWebm()}>
               {rendering ? `Rendering ${renderProgress}%` : 'Export WebM'}
             </Button>
@@ -798,7 +866,12 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
 
               <div className="mt-4 flex w-full items-center gap-3">
                 <Button size="sm" variant={playing ? 'gold' : 'secondary'} onClick={() => {
-                  if (playhead >= duration) setPlayhead(0);
+                  if (loopWorkArea && timeline.workArea) {
+                    const { start, end } = timeline.workArea;
+                    if (playhead < start || playhead >= end) setPlayhead(start);
+                  } else if (playhead >= duration) {
+                    setPlayhead(0);
+                  }
                   setPlaying(value => !value);
                 }}>
                   {playing ? 'Pause' : 'Play'}
@@ -820,6 +893,16 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
                     {second}s
                   </span>
                 ))}
+                {timeline.workArea && (
+                  <div
+                    className="pointer-events-none absolute top-5 h-1 rounded bg-cyan-400/60"
+                    style={{
+                      left: 112 + timeline.workArea.start * PIXELS_PER_SECOND,
+                      width: Math.max(2, (timeline.workArea.end - timeline.workArea.start) * PIXELS_PER_SECOND),
+                    }}
+                    aria-hidden="true"
+                  />
+                )}
                 {(timeline.markers || []).map(marker => (
                   <button
                     key={marker.id}
@@ -1142,7 +1225,7 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
           <div className="mt-6 rounded-xl border border-cyan-400/15 bg-cyan-400/[0.04] p-3">
             <div className="text-xs font-bold text-cyan-200">Keyboard editing</div>
             <p className="mt-1 text-[10px] leading-5 text-slate-500">
-              Space play/pause · ←/→ one frame · Shift+←/→ one second · S split · I/O trim · M marker · Delete ripple-aware delete.
+              Space play/pause · ←/→ one frame · Shift+←/→ one second · S split · I/O trim · Shift+I/O work range · M marker · Delete ripple-aware delete.
             </p>
           </div>
 
