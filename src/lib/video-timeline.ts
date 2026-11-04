@@ -52,6 +52,24 @@ export interface PhoenixClipParallax {
   zoom: number;
 }
 
+export interface PhoenixClipAdjustments {
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  grayscale: number;
+  sepia: number;
+  blur: number;
+}
+
+export const DEFAULT_CLIP_ADJUSTMENTS: PhoenixClipAdjustments = {
+  brightness: 1,
+  contrast: 1,
+  saturation: 1,
+  grayscale: 0,
+  sepia: 0,
+  blur: 0,
+};
+
 export interface PhoenixCaptionCue {
   id: string;
   text: string;
@@ -101,6 +119,7 @@ export interface PhoenixTimelineClip {
   speedKeyframes?: PhoenixSpeedKeyframe[];
   sourceKeyframes?: PhoenixSourceKeyframe[];
   parallax?: PhoenixClipParallax;
+  adjustments?: PhoenixClipAdjustments;
   createdAt: string;
 }
 
@@ -161,6 +180,26 @@ export function createPhoenixVideoTimeline(projectId: string): PhoenixVideoTimel
   };
 }
 
+
+
+export function clipFilterCss(clip: Pick<PhoenixTimelineClip, 'adjustments'>): string {
+  const adjustments = clip.adjustments;
+  if (!adjustments) return 'none';
+  const brightness = Math.max(0, Math.min(3, adjustments.brightness));
+  const contrast = Math.max(0, Math.min(3, adjustments.contrast));
+  const saturation = Math.max(0, Math.min(3, adjustments.saturation));
+  const grayscale = Math.max(0, Math.min(1, adjustments.grayscale));
+  const sepia = Math.max(0, Math.min(1, adjustments.sepia));
+  const blur = Math.max(0, Math.min(40, adjustments.blur));
+  return [
+    `brightness(${brightness})`,
+    `contrast(${contrast})`,
+    `saturate(${saturation})`,
+    `grayscale(${grayscale})`,
+    `sepia(${sepia})`,
+    `blur(${blur}px)`,
+  ].join(' ');
+}
 
 export function isTimelineTrackActive(
   timeline: PhoenixVideoTimeline,
