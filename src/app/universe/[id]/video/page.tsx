@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useMemo, useRef, useState } from 'react';
+import { use, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
@@ -263,6 +263,28 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
       });
     });
     setStatus(`Added ${asset.name}`);
+  };
+
+  const dropClipOnTrack = (trackId: string, event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const clipId = event.dataTransfer.getData('text/plain');
+    if (!clipId) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const requestedStart = Math.max(0, (event.clientX - bounds.left) / PIXELS_PER_SECOND);
+    setTimeline(current => {
+      if (!current) return current;
+      const targetTrack = current.tracks.find(track => track.id === trackId);
+      if (!targetTrack?.clips.some(clip => clip.id === clipId)) {
+        setStatus("Cross-track drag is not enabled yet. Drag within the clip's current lane.");
+        return current;
+      }
+      return moveTimelineClip(current, clipId, requestedStart, {
+        ripple: rippleEditing,
+        snap: snapEditing,
+        snapThreshold: 0.12,
+      });
+    });
+    setSelectedClipId(clipId);
   };
 
   const createTrack = (kind: 'video' | 'audio') => {
@@ -657,15 +679,28 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
                   >
                     {track.name}
                   </button>
-                  <div className="relative h-full flex-1 bg-[#060911]">
+                  <div
+                    className="relative h-full flex-1 bg-[#060911]"
+                    onDragOver={event => {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = 'move';
+                    }}
+                    onDrop={event => dropClipOnTrack(track.id, event)}
+                  >
                     {track.clips.map(clip => {
                       const clipDuration = timelineClipDuration(clip);
                       return (
                         <button
                           key={clip.id}
                           type="button"
+                          draggable
+                          onDragStart={event => {
+                            event.dataTransfer.effectAllowed = 'move';
+                            event.dataTransfer.setData('text/plain', clip.id);
+                            setSelectedClipId(clip.id);
+                          }}
                           onClick={() => setSelectedClipId(clip.id)}
-                          className={`absolute top-2 h-16 overflow-hidden rounded border px-2 text-left ${selectedClipId === clip.id ? 'border-blue-300 bg-blue-500/25' : track.kind === 'audio' ? 'border-violet-400/30 bg-violet-500/15' : 'border-blue-400/30 bg-blue-500/15'}`}
+                          className={`absolute top-2 h-16 cursor-grab overflow-hidden rounded border px-2 text-left active:cursor-grabbing ${selectedClipId === clip.id ? 'border-blue-300 bg-blue-500/25' : track.kind === 'audio' ? 'border-violet-400/30 bg-violet-500/15' : 'border-blue-400/30 bg-blue-500/15'}`}
                           style={{ left: clip.start * PIXELS_PER_SECOND, width: Math.max(34, clipDuration * PIXELS_PER_SECOND) }}
                         >
                           <span className="block truncate text-[10px] font-bold text-white">{clip.name}</span>
