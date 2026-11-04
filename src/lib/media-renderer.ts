@@ -7,9 +7,9 @@ import {
   shadowCssColor,
   textLetterSpacing,
   textLineHeight,
+  vectorContourSvgD,
   vectorPathFillRule,
   vectorPathFillSvgD,
-  vectorPathSvgD,
   type PhoenixImageLayer,
   type PhoenixMediaDocument,
   type PhoenixMediaLayer,
@@ -445,15 +445,60 @@ function renderSvgLayer(documentModel: PhoenixMediaDocument, rawLayer: PhoenixMe
 
   if (layer.type === 'path') {
     const fillD = escapeSvgXml(vectorPathFillSvgD(layer));
-    const strokeD = escapeSvgXml(vectorPathSvgD(layer));
     const localTransform = `translate(${x} ${y}) rotate(${rotation} ${width / 2} ${height / 2})`;
     const fillElement = fillD && (layer.gradient || layer.fill !== 'transparent')
       ? `<path d="${fillD}" fill="${fill}" fill-rule="${vectorPathFillRule(layer)}" stroke="none" opacity="${opacity}" transform="${localTransform}" />`
       : '';
-    const strokeElement = layer.strokeWidth > 0 && strokeD
-      ? `<path d="${strokeD}" fill="none" stroke="${layer.stroke}" stroke-width="${layer.strokeWidth}" opacity="${opacity}" transform="${localTransform}" stroke-linejoin="round" stroke-linecap="round" />`
-      : '';
-    return wrap(`${fillElement}${strokeElement}`);
+
+    const strokeContour = (
+      points: typeof layer.points,
+      closed: boolean,
+      stroke: string,
+      strokeWidth: number,
+      strokeOpacity: number,
+    ) => {
+      if (strokeWidth <= 0 || points.length === 0) return '';
+      const hasPressure = points.some(point => Number.isFinite(point.pressure));
+      if (!hasPressure) {
+        const d = escapeSvgXml(vectorContourSvgD(points, closed));
+        return d
+          ? `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" opacity="${strokeOpacity}" transform="${localTransform}" stroke-linejoin="round" stroke-linecap="round" />`
+          : '';
+      }
+
+      const segments: string[] = [];
+      const emitSegment = (from: typeof points[number], to: typeof points[number]) => {
+        const pressure = ((from.pressure ?? 0.5) + (to.pressure ?? 0.5)) / 2;
+        const widthAtPressure = Math.max(0.5, strokeWidth * (0.35 + pressure));
+        const d = escapeSvgXml(vectorContourSvgD([from, to], false));
+        segments.push(`<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${widthAtPressure}" opacity="${strokeOpacity}" transform="${localTransform}" stroke-linejoin="round" stroke-linecap="round" />`);
+      };
+
+      for (let index = 1; index < points.length; index += 1) {
+        const previous = points[index - 1];
+        const point = points[index];
+        if (previous && point) emitSegment(previous, point);
+      }
+      if (closed && points.length > 2) {
+        const first = points[0];
+        const last = points[points.length - 1];
+        if (first && last) emitSegment(last, first);
+      }
+      return segments.join('');
+    };
+
+    const mainStroke = strokeContour(layer.points, layer.closed, layer.stroke, layer.strokeWidth, opacity);
+    const contourStrokes = (layer.contours || []).map(contour =>
+      strokeContour(
+        contour.points,
+        contour.closed,
+        contour.stroke || layer.stroke,
+        Number.isFinite(contour.strokeWidth) ? Math.max(0, contour.strokeWidth as number) : layer.strokeWidth,
+        opacity * (Number.isFinite(contour.opacity) ? Math.max(0, Math.min(1, contour.opacity as number)) : 1),
+      )
+    ).join('');
+
+    return wrap(`${fillElement}${mainStroke}${contourStrokes}`);
   }
 
   const src = layer.type === 'raster' ? layer.src : layer.src;
