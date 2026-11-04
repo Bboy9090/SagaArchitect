@@ -60,6 +60,7 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
   const [vectorInkMode, setVectorInkMode] = useState(false);
   const [vectorInkColor, setVectorInkColor] = useState('#f8fafc');
   const [vectorInkWidth, setVectorInkWidth] = useState(8);
+  const [vectorInkOpacity, setVectorInkOpacity] = useState(1);
   const [stabilization, setStabilization] = useState(0.35);
   const [symmetry, setSymmetry] = useState<SymmetryMode>('none');
   const [perspectiveMode, setPerspectiveMode] = useState<PerspectiveGuideMode>('off');
@@ -165,21 +166,36 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
       ...current,
       layers: current.layers.map(layer => {
         if (layer.id !== layerId || layer.type !== 'path') return layer;
-        if (layer.points.length === 0) {
-          return {
-            ...layer,
-            points,
-            stroke: vectorInkColor,
-            strokeWidth: vectorInkWidth,
-          };
-        }
         return {
           ...layer,
-          contours: [...(layer.contours || []), { id: crypto.randomUUID(), points, closed: false }],
-          stroke: vectorInkColor,
-          strokeWidth: vectorInkWidth,
+          contours: [...(layer.contours || []), {
+            id: crypto.randomUUID(),
+            points,
+            closed: false,
+            stroke: vectorInkColor,
+            strokeWidth: vectorInkWidth,
+            opacity: vectorInkOpacity,
+          }],
         };
       }),
+    }));
+  };
+
+  const deleteVectorContour = (layerId: string, contourId: string) => {
+    updateDocument(current => ({
+      ...current,
+      layers: current.layers.map(layer => layer.id !== layerId || layer.type !== 'path'
+        ? layer
+        : { ...layer, contours: (layer.contours || []).filter(contour => contour.id !== contourId) }),
+    }));
+  };
+
+  const clearLegacyVectorStroke = (layerId: string) => {
+    updateDocument(current => ({
+      ...current,
+      layers: current.layers.map(layer => layer.id !== layerId || layer.type !== 'path'
+        ? layer
+        : { ...layer, points: [] }),
     }));
   };
 
@@ -345,6 +361,9 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
                 </label>
                 <label className="block text-[10px] uppercase text-slate-500">Ink width {Math.round(vectorInkWidth)} px
                   <input type="range" min={1} max={48} value={vectorInkWidth} onChange={event => setVectorInkWidth(Number(event.target.value))} className="mt-1 w-full" />
+                </label>
+                <label className="block text-[10px] uppercase text-slate-500">Ink opacity {Math.round(vectorInkOpacity * 100)}%
+                  <input type="range" min={0.05} max={1} step={0.05} value={vectorInkOpacity} onChange={event => setVectorInkOpacity(Number(event.target.value))} className="mt-1 w-full" />
                 </label>
                 <Button className="w-full" size="sm" variant={vectorInkMode ? 'gold' : 'ghost'} onClick={() => setVectorInkMode(value => !value)}>
                   {vectorInkMode ? 'Vector Ink On' : 'Vector Ink Mode'}
@@ -529,6 +548,34 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
                 <Button size="sm" variant="ghost" onClick={() => patchSelectedLayer({ visible: !selectedLayer.visible })}>{selectedLayer.visible ? 'Hide' : 'Show'}</Button>
                 <Button size="sm" variant="ghost" onClick={() => patchSelectedLayer({ locked: !selectedLayer.locked })}>{selectedLayer.locked ? 'Unlock' : 'Lock'}</Button>
               </div>
+              {selectedLayer.type === 'path' && (
+                <div className="rounded-lg border border-cyan-400/15 bg-cyan-400/[0.03] p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-[.2em] text-cyan-300/70">Vector Strokes</span>
+                    <span className="text-[9px] text-slate-500">{(selectedLayer.contours || []).length + (selectedLayer.points.length ? 1 : 0)}</span>
+                  </div>
+                  {selectedLayer.points.length > 0 && (
+                    <div className="mt-2 flex items-center justify-between gap-2 rounded border border-white/5 bg-black/10 p-2">
+                      <span className="text-[10px] text-slate-400">Legacy base stroke</span>
+                      <Button size="sm" variant="ghost" onClick={() => clearLegacyVectorStroke(selectedLayer.id)}>Delete</Button>
+                    </div>
+                  )}
+                  <div className="mt-2 max-h-52 space-y-1 overflow-auto">
+                    {(selectedLayer.contours || []).map((contour, index) => (
+                      <div key={contour.id} className="flex items-center gap-2 rounded border border-white/5 bg-black/10 p-2">
+                        <span className="h-4 w-4 shrink-0 rounded-full border border-white/20" style={{ background: contour.stroke || selectedLayer.stroke }} />
+                        <span className="min-w-0 flex-1 truncate text-[10px] text-slate-400">
+                          Stroke {index + 1} · {Math.round(contour.strokeWidth || selectedLayer.strokeWidth)}px · {Math.round((contour.opacity ?? 1) * 100)}%
+                        </span>
+                        <Button size="sm" variant="ghost" onClick={() => deleteVectorContour(selectedLayer.id, contour.id)}>×</Button>
+                      </div>
+                    ))}
+                    {(selectedLayer.contours || []).length === 0 && selectedLayer.points.length === 0 && (
+                      <p className="text-[10px] leading-4 text-slate-600">Draw with Vector Ink Mode to add editable strokes.</p>
+                    )}
+                  </div>
+                </div>
+              )}
               <Button className="w-full" size="sm" variant="danger" onClick={deleteSelectedLayer}>Delete Layer</Button>
             </div>
           )}
@@ -537,7 +584,8 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
             <div className="text-xs font-bold text-violet-200">Illustration foundation</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
               Pressure-aware raster painting, brush presets, smoothing, symmetry, adjustable one-point/two-point perspective guides,
-              persistent vector ink layers, reference layers, undo/redo, autosave, and PNG export are active. Brush texture engines, pose tools, and advanced color assistance are next.
+              persistent independently styled vector ink strokes, reference layers, undo/redo, autosave, and PNG export are active.
+              Brush texture engines, pose tools, and advanced color assistance are next.
             </p>
           </div>
         </aside>
