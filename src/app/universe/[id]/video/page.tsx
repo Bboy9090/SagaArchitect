@@ -72,6 +72,13 @@ function probeMediaDuration(src: string, kind: PhoenixTimelineClipKind): Promise
   });
 }
 
+
+function isEditableShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName.toLowerCase();
+  return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable;
+}
+
 export default function VideoStudioPage({ params }: VideoStudioPageProps) {
   const { id } = use(params);
   const [project, setProject] = useState<Universe | null>(null);
@@ -451,6 +458,72 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
       setUploading(false);
     }
   };
+
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (isEditableShortcutTarget(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
+
+      if (event.code === 'Space') {
+        event.preventDefault();
+        setPlaying(value => !value);
+        return;
+      }
+
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        const direction = event.key === 'ArrowRight' ? 1 : -1;
+        const step = event.shiftKey ? 1 : 1 / Math.max(1, timeline?.fps || 30);
+        setPlaying(false);
+        setPlayhead(current => Math.max(0, Math.min(duration, current + direction * step)));
+        return;
+      }
+
+      if (event.key.toLowerCase() === 'm' && timeline) {
+        event.preventDefault();
+        setTimeline(current => current ? ({
+          ...current,
+          markers: [...(current.markers || []), {
+            id: crypto.randomUUID(),
+            time: Math.max(0, playhead),
+            label: `Marker ${(current.markers || []).length + 1}`,
+          }].sort((a, b) => a.time - b.time),
+          updatedAt: new Date().toISOString(),
+        }) : current);
+        return;
+      }
+
+      if (!selectedClip) return;
+
+      if (event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        setTimeline(current => current ? splitTimelineClip(current, selectedClip.id, playhead) : current);
+        setSelectedClipId('');
+        return;
+      }
+
+      if (event.key.toLowerCase() === 'i') {
+        event.preventDefault();
+        setTimeline(current => current ? trimTimelineClipAt(current, selectedClip.id, playhead, 'in', rippleEditing) : current);
+        return;
+      }
+
+      if (event.key.toLowerCase() === 'o') {
+        event.preventDefault();
+        setTimeline(current => current ? trimTimelineClipAt(current, selectedClip.id, playhead, 'out', rippleEditing) : current);
+        return;
+      }
+
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        setTimeline(current => current ? removeTimelineClip(current, selectedClip.id, rippleEditing) : current);
+        setSelectedClipId('');
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [duration, playhead, rippleEditing, selectedClip, timeline]);
 
   if (loading || !timeline) {
     return <Navigation><div className="flex min-h-[60vh] items-center justify-center"><Spinner text="Opening Video Studio..." /></div></Navigation>;
@@ -1016,7 +1089,14 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
             </div>
           )}
 
-          <div className="mt-6 rounded-xl border border-amber-400/15 bg-amber-400/[0.04] p-3">
+          <div className="mt-6 rounded-xl border border-cyan-400/15 bg-cyan-400/[0.04] p-3">
+            <div className="text-xs font-bold text-cyan-200">Keyboard editing</div>
+            <p className="mt-1 text-[10px] leading-5 text-slate-500">
+              Space play/pause · ←/→ one frame · Shift+←/→ one second · S split · I/O trim · M marker · Delete ripple-aware delete.
+            </p>
+          </div>
+
+          <div className="mt-3 rounded-xl border border-amber-400/15 bg-amber-400/[0.04] p-3">
             <div className="text-xs font-bold text-amber-200">Timeline foundation</div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
               Real media ingest, preview, timing, trim, split, speed, volume, and vertical-video canvases are active.
