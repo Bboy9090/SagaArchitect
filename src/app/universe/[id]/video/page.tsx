@@ -852,7 +852,8 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
                     width: '100%',
                     height: '100%',
                     objectFit: 'cover',
-                    opacity: transition.opacity,
+                    opacity: transition.opacity * Math.max(0, Math.min(1, clip.opacity ?? 1)),
+                    mixBlendMode: clip.blendMode || 'normal',
                     zIndex: trackOrder + 1,
                     transform: `translate(${((transform.x / Math.max(1, timeline.width)) + transition.x) * 100}%, ${((transform.y / Math.max(1, timeline.height)) + transition.y) * 100}%) scale(${transform.scale * transition.scale}) rotate(${transform.rotation}deg)`,
                     transformOrigin: 'center',
@@ -1176,6 +1177,39 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
               <label className="block text-[10px] uppercase text-slate-500">Transition Duration
                 <input type="number" min={0.05} max={5} step={0.05} value={selectedClip.transitionDuration} onChange={event => patchClip(selectedClip.id,{transitionDuration:Math.max(0.05,Number(event.target.value))})} className="mt-1 w-full rounded border border-white/10 bg-black/20 p-2 text-white" />
               </label>
+
+              {selectedClip.kind !== 'audio' && (
+                <div className="rounded-lg border border-fuchsia-400/15 bg-fuchsia-400/[0.04] p-3">
+                  <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-fuchsia-300">Compositing</div>
+                  <label className="block text-[10px] uppercase text-slate-500">Opacity {Math.round((selectedClip.opacity ?? 1) * 100)}%
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      disabled={selectedClipLocked}
+                      value={selectedClip.opacity ?? 1}
+                      onChange={event => patchClip(selectedClip.id, { opacity: Number(event.target.value) })}
+                      className="mt-1 w-full"
+                    />
+                  </label>
+                  <label className="mt-2 block text-[10px] uppercase text-slate-500">Blend Mode
+                    <select
+                      value={selectedClip.blendMode || 'normal'}
+                      disabled={selectedClipLocked}
+                      onChange={event => patchClip(selectedClip.id, { blendMode: event.target.value as NonNullable<PhoenixTimelineClip['blendMode']> })}
+                      className="mt-1 min-h-10 w-full rounded border border-white/10 bg-[#0a0d14] p-2 text-white"
+                    >
+                      <option value="normal">Normal</option>
+                      <option value="multiply">Multiply</option>
+                      <option value="screen">Screen</option>
+                      <option value="overlay">Overlay</option>
+                      <option value="darken">Darken</option>
+                      <option value="lighten">Lighten</option>
+                    </select>
+                  </label>
+                </div>
+              )}
 
               <div className="rounded-lg border border-blue-400/15 bg-blue-400/[0.04] p-3">
                 <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-blue-300">Transform</div>

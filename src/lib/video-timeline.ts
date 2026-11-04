@@ -1,6 +1,7 @@
 export type PhoenixTimelineTrackKind = 'video' | 'audio';
 export type PhoenixTimelineTrackRole = 'dialogue' | 'music' | 'sfx' | 'other';
 export type PhoenixTimelineClipKind = 'image' | 'video' | 'audio';
+export type PhoenixClipBlendMode = 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten';
 export type PhoenixClipTransition = 'none' | 'fade' | 'slide-left' | 'slide-right' | 'zoom';
 export type PhoenixKeyframeEasing = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'hold';
 
@@ -89,6 +90,8 @@ export interface PhoenixTimelineClip {
   playbackRate: number;
   volume: number;
   muted: boolean;
+  opacity?: number;
+  blendMode?: PhoenixClipBlendMode;
   transitionIn: PhoenixClipTransition;
   transitionOut: PhoenixClipTransition;
   transitionDuration: number;
@@ -205,6 +208,8 @@ export function loadPhoenixVideoTimeline(projectId: string): PhoenixVideoTimelin
         locked: Boolean(track.locked),
         clips: track.clips.map(clip => ({
           ...clip,
+          opacity: Number.isFinite(clip.opacity) ? Math.max(0, Math.min(1, clip.opacity as number)) : 1,
+          blendMode: clip.blendMode || 'normal',
           transitionIn: clip.transitionIn || 'none',
           transitionOut: clip.transitionOut || 'none',
           transitionDuration: Number.isFinite(clip.transitionDuration) ? clip.transitionDuration : 0.5,
@@ -292,13 +297,15 @@ export function moveTimelineTrack(
 export function addClipToTimelineTrack(
   timeline: PhoenixVideoTimeline,
   trackId: string,
-  input: Omit<PhoenixTimelineClip, 'id' | 'trackId' | 'createdAt' | 'transitionIn' | 'transitionOut' | 'transitionDuration' | 'transform' | 'keyframes'> & Partial<Pick<PhoenixTimelineClip, 'transitionIn' | 'transitionOut' | 'transitionDuration' | 'transform' | 'keyframes'>>,
+  input: Omit<PhoenixTimelineClip, 'id' | 'trackId' | 'createdAt' | 'transitionIn' | 'transitionOut' | 'transitionDuration' | 'transform' | 'keyframes' | 'opacity' | 'blendMode'> & Partial<Pick<PhoenixTimelineClip, 'transitionIn' | 'transitionOut' | 'transitionDuration' | 'transform' | 'keyframes' | 'opacity' | 'blendMode'>>,
 ): PhoenixVideoTimeline {
   const targetKind: PhoenixTimelineTrackKind = input.kind === 'audio' ? 'audio' : 'video';
   const track = timeline.tracks.find(item => item.id === trackId && item.kind === targetKind);
   if (!track) return timeline;
   const clip: PhoenixTimelineClip = {
     ...input,
+    opacity: Number.isFinite(input.opacity) ? Math.max(0, Math.min(1, input.opacity as number)) : 1,
+    blendMode: input.blendMode || 'normal',
     transitionIn: input.transitionIn || 'none',
     transitionOut: input.transitionOut || 'none',
     transitionDuration: typeof input.transitionDuration === 'number' && Number.isFinite(input.transitionDuration) ? input.transitionDuration : 0.5,
@@ -317,7 +324,7 @@ export function addClipToTimelineTrack(
 
 export function addClipToTimeline(
   timeline: PhoenixVideoTimeline,
-  input: Omit<PhoenixTimelineClip, 'id' | 'trackId' | 'createdAt' | 'transitionIn' | 'transitionOut' | 'transitionDuration' | 'transform' | 'keyframes'> & Partial<Pick<PhoenixTimelineClip, 'transitionIn' | 'transitionOut' | 'transitionDuration' | 'transform' | 'keyframes'>>,
+  input: Omit<PhoenixTimelineClip, 'id' | 'trackId' | 'createdAt' | 'transitionIn' | 'transitionOut' | 'transitionDuration' | 'transform' | 'keyframes' | 'opacity' | 'blendMode'> & Partial<Pick<PhoenixTimelineClip, 'transitionIn' | 'transitionOut' | 'transitionDuration' | 'transform' | 'keyframes' | 'opacity' | 'blendMode'>>,
 ): PhoenixVideoTimeline {
   const targetKind: PhoenixTimelineTrackKind = input.kind === 'audio' ? 'audio' : 'video';
   const track = timeline.tracks

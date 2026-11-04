@@ -89,7 +89,8 @@ function drawVisual(
   const transform = clipTransformAt(clip, timelineTime);
   const transition = clipTransitionState(clip, timelineTime);
   ctx.save();
-  ctx.globalAlpha = transition.opacity;
+  ctx.globalAlpha = transition.opacity * Math.max(0, Math.min(1, clip.opacity ?? 1));
+  ctx.globalCompositeOperation = clip.blendMode && clip.blendMode !== 'normal' ? clip.blendMode : 'source-over';
   ctx.translate(width / 2 + transform.x + transition.x * width, height / 2 + transform.y + transition.y * height);
   ctx.rotate((transform.rotation * Math.PI) / 180);
   ctx.scale(transform.scale * transition.scale, transform.scale * transition.scale);
