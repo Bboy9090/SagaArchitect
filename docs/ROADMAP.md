@@ -134,9 +134,9 @@ Data models:
 - [x] `POST /api/universes/{id}/story-context` — story-context endpoint
 - [x] Story Forge within Saga Architect (generate stories from any universe)
 - [x] Export Canon Block button (copies canon JSON for external tools)
-- [ ] **Rainstorms UI integration** (happens in Rainstorms repo)
-- [ ] **Universe selector in Rainstorms**
-- [ ] **Auto-pull canon on story generation in Rainstorms**
+- [x] **Rainstorms UI integration** — Story Bench Idea Lab can load available universes
+- [x] **Universe selector in Rainstorms** — selected universe ID is included with generation requests
+- [x] **Auto-pull canon on story generation in Rainstorms** — backend resolves the selected universe through SagaArchitect `/story-context` before prompt construction
 
 Story formats supported:
 - [x] opening_chapter
