@@ -140,3 +140,50 @@ test('StoryMap reports unresolved story arc references instead of inventing enti
   ]);
 });
 
+
+test('StoryMap derives character arc lines only across consecutive resolved timeline events', () => {
+  const graph = buildStoryMapGraph(
+    [
+      character('c1', 'Kai'),
+      character('c2', 'Jax'),
+    ],
+    [],
+    [],
+    [],
+    [
+      event('e1', 'First Crossing', ['Kai'], []),
+      event('e2', 'Jax Interlude', ['Jax'], []),
+      event('e3', 'Second Crossing', ['Kai'], []),
+      event('e4', 'Third Crossing', ['Kai'], []),
+    ],
+  );
+
+  const kaiLines = graph.edges.filter(edge => edge.kind === 'character_arc_line' && edge.label === 'Kai');
+  const jaxLines = graph.edges.filter(edge => edge.kind === 'character_arc_line' && edge.label === 'Jax');
+
+  assert.deepEqual(
+    kaiLines.map(edge => [edge.source, edge.target]),
+    [
+      ['event:e1', 'event:e3'],
+      ['event:e3', 'event:e4'],
+    ],
+  );
+  assert.equal(jaxLines.length, 0);
+});
+
+test('StoryMap never creates a character arc line from an unresolved event reference', () => {
+  const graph = buildStoryMapGraph(
+    [character('c1', 'Kai')],
+    [],
+    [],
+    [],
+    [
+      event('e1', 'Known Event', ['Kai'], []),
+      event('e2', 'Unknown Event', ['Missing Hero'], []),
+    ],
+  );
+
+  assert.equal(graph.edges.filter(edge => edge.kind === 'character_arc_line').length, 0);
+  assert.deepEqual(graph.unresolvedReferences, ['Timeline character: Unknown Event → Missing Hero']);
+});
+
