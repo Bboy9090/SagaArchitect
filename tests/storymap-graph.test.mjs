@@ -35,7 +35,19 @@ const faction = (id, name, allies = [], enemies = []) => ({
   canon_status: 'canon',
 });
 
-const event = (id, title, affectedCharacters, affectedFactions) => ({
+const location = (id, name) => ({
+  id,
+  universe_id: 'u1',
+  name,
+  type: 'District',
+  region: 'North',
+  description: '',
+  strategic_value: '',
+  mythic_importance: '',
+  canon_status: 'canon',
+});
+
+const event = (id, title, affectedCharacters, affectedFactions, affectedLocations = []) => ({
   id,
   universe_id: 'u1',
   title,
@@ -43,7 +55,7 @@ const event = (id, title, affectedCharacters, affectedFactions) => ({
   summary: '',
   affected_characters: affectedCharacters,
   affected_factions: affectedFactions,
-  affected_locations: [],
+  affected_locations: affectedLocations,
   consequences: '',
   canon_status: 'canon',
 });
@@ -55,12 +67,14 @@ test('StoryMap links canonical character, faction and timeline references by id 
       character('c2', 'Jax'),
     ],
     [faction('f1', 'Memory Keepers')],
-    [event('e1', 'The Crossing', ['Kai'], ['Memory Keepers'])],
+    [location('l1', 'Memory Nexus')],
+    [event('e1', 'The Crossing', ['Kai'], ['Memory Keepers'], ['Memory Nexus'])],
   );
 
-  assert.equal(graph.nodes.length, 4);
+  assert.equal(graph.nodes.length, 5);
   assert.equal(graph.edges.some(edge => edge.label === 'sibling'), true);
-  assert.equal(graph.edges.filter(edge => edge.label === 'affects').length, 2);
+  assert.equal(graph.edges.filter(edge => edge.label === 'affects').length, 3);
+  assert.equal(graph.edges.some(edge => edge.kind === 'event_location'), true);
   assert.deepEqual(graph.unresolvedReferences, []);
 });
 
@@ -72,8 +86,23 @@ test('StoryMap deduplicates mirrored faction relationships and reports unresolve
       faction('f2', 'B', ['A']),
     ],
     [],
+    [],
   );
 
   assert.equal(graph.edges.filter(edge => edge.kind === 'faction_ally').length, 1);
   assert.deepEqual(graph.unresolvedReferences, ['Faction enemy: A → Missing']);
 });
+
+test('StoryMap reports unresolved timeline locations instead of inventing nodes', () => {
+  const graph = buildStoryMapGraph(
+    [],
+    [],
+    [location('l1', 'Known Place')],
+    [event('e1', 'Unknown Crossing', [], [], ['Missing Place'])],
+  );
+
+  assert.equal(graph.nodes.filter(node => node.kind === 'location').length, 1);
+  assert.equal(graph.edges.filter(edge => edge.kind === 'event_location').length, 0);
+  assert.deepEqual(graph.unresolvedReferences, ['Timeline location: Unknown Crossing → Missing Place']);
+});
+
