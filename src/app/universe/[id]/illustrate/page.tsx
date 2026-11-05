@@ -28,7 +28,13 @@ import {
   undoDocumentHistory,
   type PhoenixDocumentHistory,
 } from '@/lib/media-history';
-import { downloadMediaBlob, downloadPhoenixSvgBlob, exportPhoenixMediaDocument, exportPhoenixMediaDocumentSvg } from '@/lib/media-renderer';
+import {
+  downloadMediaBlob,
+  downloadPhoenixSvgBlob,
+  exportPhoenixMediaDocument,
+  exportPhoenixMediaDocumentSvg,
+  type PhoenixRasterExportFormat,
+} from '@/lib/media-renderer';
 import { generateColorHarmony, normalizeHexColor, type PhoenixColorHarmony } from '@/lib/color-harmony';
 import { createPoseGuide, type PhoenixPoseGuidePreset } from '@/lib/pose-guides';
 import type { Universe } from '@/lib/types';
@@ -340,14 +346,14 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
     setEraseMode(false);
   };
 
-  const exportPng = async () => {
+  const exportRaster = async (format: PhoenixRasterExportFormat) => {
     if (!document || exporting) return;
     setExporting(true);
     setStatus('');
     try {
-      const blob = await exportPhoenixMediaDocument(document, 'png');
-      downloadMediaBlob(blob, document.title || 'phoenix-illustration', 'png');
-      setStatus('Flattened PNG exported.');
+      const blob = await exportPhoenixMediaDocument(document, format);
+      downloadMediaBlob(blob, document.title || 'phoenix-illustration', format);
+      setStatus(`Flattened ${format === 'jpeg' ? 'JPEG' : format.toUpperCase()} exported.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Export failed.');
     } finally {
@@ -425,7 +431,9 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
               onError={setStatus}
             />
             <Button size="sm" variant="ghost" disabled={exporting} onClick={exportSvg}>Export SVG</Button>
-            <Button size="sm" variant="gold" loading={exporting} onClick={() => void exportPng()}>Export PNG</Button>
+            <Button size="sm" variant="secondary" loading={exporting} onClick={() => void exportRaster('webp')}>Export WebP</Button>
+            <Button size="sm" variant="secondary" loading={exporting} onClick={() => void exportRaster('jpeg')}>Export JPEG</Button>
+            <Button size="sm" variant="gold" loading={exporting} onClick={() => void exportRaster('png')}>Export PNG</Button>
           </div>
         }
       />
