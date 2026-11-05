@@ -346,12 +346,20 @@ export default function ExportPage({ params }: ExportPageProps) {
                 action: 'Open Book Production',
               },
               {
-                title: 'Image & Illustration',
+                title: 'Image Editing',
                 icon: '◫',
                 formats: 'PNG · JPEG · WebP',
-                detail: 'Flatten layered image or illustration compositions with masks, adjustments, blend modes, raster paint, and references.',
+                detail: 'Flatten layered image compositions with masks, adjustments, blend modes, raster paint, and references.',
                 href: `/universe/${id}/image`,
                 action: 'Open Image Studio',
+              },
+              {
+                title: 'Illustration',
+                icon: '✦',
+                formats: 'PNG · SVG',
+                detail: 'Export flattened PNG artwork or vector-preserving SVG with editable ink paths, per-stroke styles, pressure taper, text, shapes, and embedded reference/raster layers.',
+                href: `/universe/${id}/illustrate`,
+                action: 'Open Illustration Studio',
               },
               {
                 title: 'Design & Covers',
