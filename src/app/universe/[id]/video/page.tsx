@@ -49,7 +49,7 @@ import {
   type PhoenixTimelineTrackRole,
   type PhoenixVideoTimeline,
 } from '@/lib/video-timeline';
-import { downloadVideoBlob, renderPhoenixTimelineWebm } from '@/lib/video-renderer';
+import { downloadVideoBlob, renderPhoenixTimelineVideo, videoExtensionForMimeType } from '@/lib/video-renderer';
 import { newestStudioDocument } from '@/lib/studio-document';
 import type { Universe } from '@/lib/types';
 
@@ -573,11 +573,12 @@ export default function VideoStudioPage({ params }: VideoStudioPageProps) {
     setStatus('Rendering WebM in real time...');
     setPlaying(false);
     try {
-      const blob = await renderPhoenixTimelineWebm(timeline, progress => {
+      const blob = await renderPhoenixTimelineVideo(timeline, progress => {
         setRenderProgress(Math.round(progress.ratio * 100));
       });
       downloadVideoBlob(blob, timeline.title || 'phoenix-video');
-      setStatus('WebM video exported.');
+      const format = videoExtensionForMimeType(blob.type).toUpperCase();
+      setStatus(`${format} video exported.`);
       setRenderProgress(100);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Video render failed.');
