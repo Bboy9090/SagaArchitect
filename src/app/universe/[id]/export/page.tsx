@@ -356,8 +356,8 @@ export default function ExportPage({ params }: ExportPageProps) {
               {
                 title: 'Illustration',
                 icon: '✦',
-                formats: 'PNG · SVG',
-                detail: 'Export flattened PNG artwork or vector-preserving SVG with editable ink paths, per-stroke styles, pressure taper, text, shapes, and embedded reference/raster layers.',
+                formats: 'PNG · JPEG · WebP · SVG',
+                detail: 'Export flattened PNG/JPEG/WebP artwork or vector-preserving SVG with editable ink paths, per-stroke styles, pressure taper, text, shapes, and embedded reference/raster layers.',
                 href: `/universe/${id}/illustrate`,
                 action: 'Open Illustration Studio',
               },
