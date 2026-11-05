@@ -98,6 +98,8 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
   const [brushOpacity, setBrushOpacity] = useState(1);
   const [eraseMode, setEraseMode] = useState(false);
   const [selection, setSelection] = useState({ x: 120, y: 120, width: 600, height: 600 });
+  const [lassoMode, setLassoMode] = useState(false);
+  const [lassoPoints, setLassoPoints] = useState<Array<{ x: number; y: number }>>([]);
   const [exportingFormat, setExportingFormat] = useState<PhoenixRasterExportFormat | null>(null);
   const [exportError, setExportError] = useState('');
   const {
@@ -564,6 +566,45 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
     return `inset(${top}% ${right}% ${bottom}% ${left}%)`;
   };
 
+  const addLassoPoint = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!lassoMode || !document) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(document.width, (event.clientX - bounds.left) / scale));
+    const y = Math.max(0, Math.min(document.height, (event.clientY - bounds.top) / scale));
+    setLassoPoints(points => [...points, { x, y }]);
+  };
+
+  const applyLassoMask = () => {
+    if (!document || !selectedLayer || lassoPoints.length < 3) return;
+    if (isLayerEffectivelyLocked(selectedLayer, document)) {
+      setExportError('Unlock the selected layer before applying a lasso mask.');
+      return;
+    }
+
+    const { x, y, width, height } = selectedLayer.transform;
+    const localPoints = lassoPoints.map(point => ({
+      x: Math.max(0, Math.min(width, point.x - x)),
+      y: Math.max(0, Math.min(height, point.y - y)),
+    }));
+
+    updateDocument(current => ({
+      ...current,
+      layers: current.layers.map(layer =>
+        layer.id === selectedLayer.id
+          ? { ...layer, vectorMask: { points: localPoints } }
+          : layer
+      ),
+    }));
+    setLassoMode(false);
+    setLassoPoints([]);
+    setExportError('');
+  };
+
+  const clearLasso = () => {
+    setLassoMode(false);
+    setLassoPoints([]);
+  };
+
   if (loading || !document) {
     return (
       <Navigation>
@@ -677,6 +718,26 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
             <div className="mt-2 grid grid-cols-1 gap-2">
               <Button size="sm" variant="ghost" onClick={cropCanvasToSelection}>Crop Canvas to Selection</Button>
               <Button size="sm" variant="ghost" disabled={!selectedLayer} onClick={maskLayerToSelection}>Mask Selected Layer</Button>
+              <Button
+                size="sm"
+                variant={lassoMode ? "secondary" : "ghost"}
+                disabled={!selectedLayer}
+                onClick={() => {
+                  setLassoMode(value => !value);
+                  setLassoPoints([]);
+                  setExportError('');
+                }}
+              >
+                {lassoMode ? 'Lasso: click canvas points' : 'Start Polygon Lasso'}
+              </Button>
+              {lassoMode && (
+                <>
+                  <Button size="sm" variant="ghost" disabled={lassoPoints.length < 3} onClick={applyLassoMask}>
+                    Apply Lasso Mask ({lassoPoints.length} points)
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={clearLasso}>Cancel Lasso</Button>
+                </>
+              )}
             </div>
           </div>
 
@@ -710,8 +771,8 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
           <div className="mt-6 rounded-xl border border-violet-400/15 bg-violet-400/[0.04] p-3">
             <p className="text-xs font-bold text-violet-200">Foundation editor</p>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              Layers, raster painting, editable vector paths, selections, cropping, masks, undo/redo, richer blend modes,
-              and non-destructive color adjustments share one persistent cloud-capable document. GPU effects and Bezier handles are the next image-engine tier.
+              Layers, raster painting, editable vector paths, rectangular and polygon-lasso selections, cropping, masks, undo/redo,
+              richer blend modes, and non-destructive color adjustments share one persistent cloud-capable document. GPU effects remain a later image-engine tier.
             </p>
           </div>
         </aside>
@@ -744,6 +805,40 @@ export default function ImageStudioPage({ params }: ImageStudioPageProps) {
                 }}
                 aria-label="Image composition canvas"
               >
+                {lassoMode && (
+                  <div
+                    className="absolute inset-0 z-[10000] cursor-crosshair"
+                    data-media-interactive="true"
+                    onClick={addLassoPoint}
+                    aria-label="Polygon lasso capture surface"
+                  >
+                    <svg
+                      className="pointer-events-none absolute inset-0 h-full w-full"
+                      viewBox={`0 0 ${document.width} ${document.height}`}
+                    >
+                      {lassoPoints.length > 1 && (
+                        <polyline
+                          points={lassoPoints.map(point => `${point.x},${point.y}`).join(' ')}
+                          fill={lassoPoints.length >= 3 ? 'rgba(34,211,238,0.10)' : 'none'}
+                          stroke="#22d3ee"
+                          strokeWidth={2 / scale}
+                          strokeDasharray={`${8 / scale} ${5 / scale}`}
+                        />
+                      )}
+                      {lassoPoints.map((point, index) => (
+                        <circle
+                          key={index}
+                          cx={point.x}
+                          cy={point.y}
+                          r={5 / scale}
+                          fill="#0891b2"
+                          stroke="#ecfeff"
+                          strokeWidth={1.5 / scale}
+                        />
+                      ))}
+                    </svg>
+                  </div>
+                )}
                 {showGuides && (
                   <>
                     <div className="pointer-events-none absolute inset-[5%] z-[9998] border border-dashed border-cyan-300/40" />
