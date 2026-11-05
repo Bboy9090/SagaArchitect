@@ -162,6 +162,15 @@ jobs:
           set -o pipefail
           npm run test:enterprise 2>&1 | tee enterprise.log
 
+      - name: Verify StoryMap graph behavior
+        id: storymap
+        if: always() && !cancelled() && steps.install.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          node --experimental-strip-types --test tests/storymap-graph.test.mjs 2>&1 | tee storymap.log
+
       - name: Verify hardware and RC1 evidence gates
         id: releasefoundation
         if: always() && !cancelled() && steps.install.outcome == 'success'
@@ -269,6 +278,7 @@ jobs:
             "typecheck_outcome=${{ steps.typecheck.outcome }}" \
             "envcheck_outcome=${{ steps.envcheck.outcome }}" \
             "enterprise_outcome=${{ steps.enterprise.outcome }}" \
+            "storymap_outcome=${{ steps.storymap.outcome }}" \
             "release_foundation_outcome=${{ steps.releasefoundation.outcome }}" \
             "build_outcome=${{ steps.build.outcome }}" \
             "server_outcome=${{ steps.server.outcome }}" \
@@ -300,6 +310,7 @@ jobs:
             typecheck.log
             envcheck.log
             enterprise.log
+            storymap.log
             release-foundation.log
             build.log
             server.log
@@ -329,6 +340,7 @@ jobs:
           test "${{ steps.typecheck.outcome }}" = "success"
           test "${{ steps.envcheck.outcome }}" = "success"
           test "${{ steps.enterprise.outcome }}" = "success"
+          test "${{ steps.storymap.outcome }}" = "success"
           test "${{ steps.releasefoundation.outcome }}" = "success"
           test "${{ steps.build.outcome }}" = "success"
           test "${{ steps.server.outcome }}" = "success"
