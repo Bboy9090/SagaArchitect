@@ -31,6 +31,7 @@ const EDGE_STYLE: Record<StoryMapEdgeKind, { stroke: string; dash?: string }> = 
   event_location: { stroke: '#22d3ee', dash: '4 4' },
   arc_character: { stroke: '#f472b6', dash: '6 3' },
   arc_faction: { stroke: '#fb923c', dash: '6 3' },
+  character_arc_line: { stroke: '#38bdf8', dash: '10 4' },
 };
 
 function nodeY(index: number, count: number, height: number) {
@@ -54,6 +55,7 @@ export default function StoryMapPage({ params }: StoryMapPageProps) {
   const [showLocations, setShowLocations] = useState(true);
   const [showArcs, setShowArcs] = useState(true);
   const [showEvents, setShowEvents] = useState(true);
+  const [showCharacterArcLines, setShowCharacterArcLines] = useState(true);
   const [showUnresolved, setShowUnresolved] = useState(true);
 
   useEffect(() => {
@@ -89,7 +91,10 @@ export default function StoryMapPage({ params }: StoryMapPageProps) {
   const visibleNodes = graph.nodes.filter(node => visibleKinds.has(node.kind));
   const visibleNodeIds = new Set(visibleNodes.map(node => node.id));
   const visibleEdges = graph.edges.filter(
-    edge => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target),
+    edge =>
+      visibleNodeIds.has(edge.source) &&
+      visibleNodeIds.has(edge.target) &&
+      (showCharacterArcLines || edge.kind !== 'character_arc_line'),
   );
 
   const byKind = {
@@ -133,7 +138,7 @@ export default function StoryMapPage({ params }: StoryMapPageProps) {
     <Navigation>
       <Header
         title="StoryMap"
-        subtitle="Canon relationships, faction ties, locations, and timeline participation"
+        subtitle="Canon relationships, character arc lines, faction ties, locations, and timeline participation"
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" size="sm" onClick={() => router.push(`/universe/${id}/timeline`)}>
@@ -183,6 +188,14 @@ export default function StoryMapPage({ params }: StoryMapPageProps) {
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={showEvents} onChange={event => setShowEvents(event.target.checked)} />
             Timeline events
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={showCharacterArcLines}
+              onChange={event => setShowCharacterArcLines(event.target.checked)}
+            />
+            Character arc lines
           </label>
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={showUnresolved} onChange={event => setShowUnresolved(event.target.checked)} />
