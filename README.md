@@ -1,18 +1,18 @@
-# Phoenix Creator Studio
+# Phoenix Creator Bench
 
 **Universe Bible + Canon Engine for Creators**
 
-Phoenix Creator Studio is a structured world-building and canon management platform for **Bobby's World / Blue Phoenix OS**, designed for writers, game creators, comic creators, storyboard artists, and franchise builders.
+Phoenix Creator Bench is a structured world-building and canon management platform for **Bobby's World / Blue Phoenix OS**, designed for writers, game creators, comic creators, storyboard artists, and franchise builders.
 
 It helps creators organize complex story worlds by managing characters, factions, timelines, lore, scenes, storyboard panels, and narrative arcs inside a single connected system with AI-powered generation, canvas sketching, and canon tracking.
 
-Unlike traditional note apps, Phoenix Creator Studio focuses on continuity, canon integrity, and media-ready production pipelines.
+Unlike traditional note apps, Phoenix Creator Bench focuses on continuity, canon integrity, and media-ready production pipelines.
 
 ---
 
 ## Why It Exists
 
-Most writing tools store notes. Phoenix Creator Studio manages canon.
+Most writing tools store notes. Phoenix Creator Bench manages canon.
 
 ---
 
@@ -52,7 +52,7 @@ Characters include structured data fields such as:
 - Narrative arc
 - Timeline appearances
 
-Phoenix Creator Studio gives creators a connected, AI-assisted system to maintain consistent character histories.
+Phoenix Creator Bench gives creators a connected, AI-assisted system to maintain consistent character histories.
 
 ### Timeline Management
 
@@ -68,7 +68,7 @@ This allows creators to track story progression across multiple books, games, or
 
 ### Story Arc Generator
 
-Phoenix Creator Studio can generate story arc frameworks based on existing world data.
+Phoenix Creator Bench can generate story arc frameworks based on existing world data.
 
 Example outputs include:
 - Conflict arcs
@@ -173,7 +173,7 @@ npm ci
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to access Phoenix Creator Studio.
+Open [http://localhost:3000](http://localhost:3000) to access Phoenix Creator Bench.
 
 ### Building for Production
 
@@ -283,4 +283,4 @@ MIT License
 
 ## About Bobby's World / Blue Phoenix OS
 
-Phoenix Creator Studio is part of Bobby's Workshop's creator-tool ecosystem - a creative platform for building and managing fictional universes across multiple mediums.
+Phoenix Creator Bench is part of Bobby's Workshop's creator-tool ecosystem - a creative platform for building and managing fictional universes across multiple mediums.
