@@ -9,7 +9,8 @@ export type StoryMapEdgeKind =
   | 'event_faction'
   | 'event_location'
   | 'arc_character'
-  | 'arc_faction';
+  | 'arc_faction'
+  | 'character_arc_line';
 
 export interface StoryMapNode {
   id: string;
@@ -59,7 +60,8 @@ function pushEdge(
     kind === 'event_faction' ||
     kind === 'event_location' ||
     kind === 'arc_character' ||
-    kind === 'arc_faction';
+    kind === 'arc_faction' ||
+    kind === 'character_arc_line';
   const endpoints = directional ? [source, target] : [source, target].sort();
   const key = `${kind}:${endpoints[0]}:${endpoints[1]}:${label.toLowerCase()}`;
   if (dedupe.has(key)) return;
@@ -256,6 +258,33 @@ export function buildStoryMapGraph(
       );
     }
   }
+
+  const timelineEventsByCharacter = new Map<string, string[]>();
+  for (const event of events) {
+    for (const reference of event.affected_characters || []) {
+      const characterId = resolveCharacter(reference);
+      if (!characterId) continue;
+      const eventIds = timelineEventsByCharacter.get(characterId) ?? [];
+      eventIds.push(event.id);
+      timelineEventsByCharacter.set(characterId, eventIds);
+    }
+  }
+
+  const characterNames = new Map(characters.map(character => [character.id, character.name]));
+  for (const [characterId, eventIds] of timelineEventsByCharacter.entries()) {
+    if (eventIds.length < 2) continue;
+    for (let index = 1; index < eventIds.length; index += 1) {
+      pushEdge(
+        edges,
+        dedupe,
+        `event:${eventIds[index - 1]}`,
+        `event:${eventIds[index]}`,
+        'character_arc_line',
+        characterNames.get(characterId) ?? 'character arc',
+      );
+    }
+  }
+
 
   return {
     nodes,
