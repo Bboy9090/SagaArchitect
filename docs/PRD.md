@@ -135,8 +135,9 @@ Every entity supports one of these statuses:
 - **Framework:** Next.js 16 (App Router)
 - **Language:** TypeScript
 - **Styling:** Tailwind CSS 4
-- **Storage:** localStorage (MVP)
-- **AI:** OpenAI API (optional, with mock fallback)
+- **Persistence:** Local-first browser mode plus PostgreSQL + Drizzle Database Mode
+- **Studio cloud:** Owned project/media document persistence and private asset APIs in DB mode
+- **AI:** Optional provider-backed generation where configured; release surfaces must not present mock output as real provider output
 
 ### 4.2 Architecture
 - Client-side data persistence
@@ -179,28 +180,26 @@ src/
 
 ---
 
-## 6. Known Limitations (MVP)
+## 6. Current Product Boundaries
 
-### 6.1 Data Model
-- Basic data structures
-- No advanced validation
-- Limited relationship types
+### 6.1 Canon and Data Model
+- Structured canon entities and relational DB mode are live.
+- Additional temporal/relationship validation and richer graph analysis remain open.
 
 ### 6.2 Collaboration
-- Single-user only
-- No multi-user support
-- No real-time collaboration
+- Authenticated ownership boundaries are available in DB mode.
+- Shared-project membership and real-time multi-user co-editing are not yet verified release capabilities.
 
-### 6.3 Storage
-- localStorage only
-- No cloud sync
-- No data backup
-- Limited by browser storage quota
+### 6.3 Persistence
+- Local-first storage remains supported.
+- PostgreSQL + Drizzle DB mode and Studio Cloud autosave are implemented for supported project/media documents.
+- Conflict-aware multi-user synchronization remains future work.
 
 ### 6.4 Export
-- JSON only
-- No PDF export
-- No visual timeline export
+- JSON and server-rendered PDF/production output are live.
+- Illustration supports SVG and PNG/JPEG/WebP; comics support raster/CBZ; audio supports WAV mix rendering; video supports real WebM rendering.
+- MP4/H.264 remains unavailable until a verified transcode path exists.
+- Rich relationship/timeline graph export remains future work.
 
 ---
 
@@ -224,13 +223,12 @@ src/
 ## 8. Future Roadmap (Post-MVP)
 
 ### 8.1 Planned Features
-- Multiple timeline support
-- Import from external sources
-- Collaboration features (multi-user)
-- Cloud storage and sync
-- MongoDB backend
-- PDF export
-- Visual timeline graphs
+- Multiple/alternate timeline support
+- Broader structured import from external sources
+- Shared-project permissions and real-time collaboration
+- Conflict-aware collaborative history
+- Verified MP4/H.264 transcode
+- Rich visual timeline graphs
 - Character relationship graphs
 
 ### 8.2 Integration Roadmap
