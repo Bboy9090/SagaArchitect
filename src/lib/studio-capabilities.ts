@@ -73,7 +73,7 @@ export const PHOENIX_STUDIOS: PhoenixStudioCapability[] = [
     icon: '✦',
     status: 'foundation',
     summary: 'Drawing, painting, and vector-ink workspace for characters, environments, covers, and pages.',
-    capabilities: ['Pressure-aware raster painting', 'Smooth/marker/chalk/spray brushes', 'Reusable brush presets', 'Persistent vector ink', 'Per-stroke style editing', 'Pressure-tapered vector ink', 'Stabilization', 'Symmetry', 'Perspective guides', 'Color harmony palettes', 'Pose construction guides', 'Reference layers', 'Cloud autosave', 'PNG export'],
+    capabilities: ['Pressure-aware raster painting', 'Smooth/marker/chalk/spray brushes', 'Reusable brush presets', 'Persistent vector ink', 'Per-stroke style editing', 'Pressure-tapered vector ink', 'Stabilization', 'Symmetry', 'Perspective guides', 'Color harmony palettes', 'Pose construction guides', 'Reference layers', 'Cloud autosave', 'Vector-preserving SVG export', 'PNG export'],
     route: id => `/universe/${id}/illustrate`,
     productionTypes: ['illustration', 'comic', 'children_book'],
   },
