@@ -44,7 +44,7 @@ export default function StudioHubPage({ params }: StudioHubPageProps) {
     return (
       <Navigation>
         <div className="flex min-h-[50vh] items-center justify-center">
-          <Spinner text="Opening Phoenix Studio..." />
+          <Spinner text="Opening Phoenix Creator Bench..." />
         </div>
       </Navigation>
     );
@@ -69,7 +69,7 @@ export default function StudioHubPage({ params }: StudioHubPageProps) {
   return (
     <Navigation>
       <Header
-        title="Phoenix Studio Hub"
+        title="Phoenix Creator Bench"
         subtitle={`Unified production floor for ${project.name}`}
       />
 
@@ -162,7 +162,7 @@ export default function StudioHubPage({ params }: StudioHubPageProps) {
           <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-400">
             New editors must consume the existing project canon, asset library, version history, and export pipeline.
             A video, illustration, comic panel, cover, or audio production is a child of this project—not an unrelated file.
-            This is the continuity layer that distinguishes Phoenix Creator Studio from a collection of separate tools.
+            This is the continuity layer that distinguishes Phoenix Creator Bench from a collection of separate tools.
           </p>
         </section>
       </div>
