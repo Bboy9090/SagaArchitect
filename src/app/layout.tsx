@@ -6,7 +6,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Phoenix Creator Bench — Stories Built to Become Worlds",
   description: "A unified creative production workbench for stories, comics, screen projects, images, characters, worlds, and production assets.",
-  icons: { icon: "/sagaarchitect-logo.png" },
+  icons: { icon: "/phoenix-creator-bench-logo.png" },
 };
 
 export default function RootLayout({
