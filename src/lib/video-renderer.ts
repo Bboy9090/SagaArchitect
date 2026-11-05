@@ -23,14 +23,22 @@ interface PreparedVisual {
   video?: HTMLVideoElement;
 }
 
-function supportedWebmMimeType(): string | null {
+const VIDEO_MIME_CANDIDATES = [
+  'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+  'video/mp4;codecs=avc1.42E01E',
+  'video/mp4',
+  'video/webm;codecs=vp9,opus',
+  'video/webm;codecs=vp8,opus',
+  'video/webm',
+] as const;
+
+export function supportedVideoMimeType(): string | null {
   if (typeof MediaRecorder === 'undefined') return null;
-  const candidates = [
-    'video/webm;codecs=vp9,opus',
-    'video/webm;codecs=vp8,opus',
-    'video/webm',
-  ];
-  return candidates.find(type => MediaRecorder.isTypeSupported(type)) || null;
+  return VIDEO_MIME_CANDIDATES.find(type => MediaRecorder.isTypeSupported(type)) || null;
+}
+
+export function videoExtensionForMimeType(mimeType: string): 'mp4' | 'webm' {
+  return mimeType.toLowerCase().startsWith('video/mp4') ? 'mp4' : 'webm';
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -313,12 +321,12 @@ export interface PhoenixVideoRenderProgress {
   ratio: number;
 }
 
-export async function renderPhoenixTimelineWebm(
+export async function renderPhoenixTimelineVideo(
   timeline: PhoenixVideoTimeline,
   onProgress?: (progress: PhoenixVideoRenderProgress) => void,
 ): Promise<Blob> {
-  const mimeType = supportedWebmMimeType();
-  if (!mimeType) throw new Error('This browser does not provide a supported WebM MediaRecorder encoder.');
+  const mimeType = supportedVideoMimeType();
+  if (!mimeType) throw new Error('This browser does not provide a supported MP4 or WebM MediaRecorder encoder.');
 
   const canvas = document.createElement('canvas');
   canvas.width = timeline.width;
@@ -429,12 +437,20 @@ export async function renderPhoenixTimelineWebm(
   });
 }
 
+export async function renderPhoenixTimelineWebm(
+  timeline: PhoenixVideoTimeline,
+  onProgress?: (progress: PhoenixVideoRenderProgress) => void,
+): Promise<Blob> {
+  return renderPhoenixTimelineVideo(timeline, onProgress);
+}
+
 export function downloadVideoBlob(blob: Blob, title: string): void {
   const safeName = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'phoenix-video';
+  const extension = videoExtensionForMimeType(blob.type);
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `${safeName}.webm`;
+  anchor.download = `${safeName}.${extension}`;
   anchor.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
