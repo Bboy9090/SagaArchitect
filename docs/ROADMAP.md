@@ -120,7 +120,7 @@ Data models:
 - **Collaboration:** Authenticated/owned project APIs exist, but real-time multi-user co-editing is not yet a verified release capability.
 - **Export:** Canon/project JSON remains available alongside server-rendered PDF/production packets and studio-specific SVG, PNG/JPEG/WebP, CBZ, WebM, and WAV outputs.
 - **Video codec boundary:** Browser-native WebM is the verified finished-video export. MP4/H.264 must not be advertised until a verified server/native transcode path lands.
-- **Visualization:** Storyboard/comic/design canvases are live. StoryMap now has a read-only foundation for character relationships, faction ally/enemy links, and timeline participation; richer arc-line, location-control, and cause/effect visualization remains future work.
+- **Visualization:** Storyboard/comic/design canvases are live. StoryMap now has read-only character relationships, character arc lines through ordered timeline events, faction ally/enemy links, canonical locations, explicit story-arc relationships, and timeline participation; location-control and cause/effect visualization remain future work.
 
 ---
 
@@ -179,7 +179,7 @@ Current foundation:
 - [x] Character/faction/event visibility filters
 
 Next visualizations:
-- [ ] Character arc lines through the timeline
+- [x] Character arc lines through the timeline
 - [ ] Location map with faction control
 - [ ] Event chains with cause-and-effect arrows
 - [ ] Prophecy hook tracking
