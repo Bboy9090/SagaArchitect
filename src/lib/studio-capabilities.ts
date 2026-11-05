@@ -12,6 +12,7 @@ export type PhoenixStudioId =
   | 'motion'
   | 'audio'
   | 'world'
+  | 'storymap'
   | 'assets'
   | 'publish';
 
@@ -136,6 +137,16 @@ export const PHOENIX_STUDIOS: PhoenixStudioCapability[] = [
     capabilities: ['Project bible', 'Characters', 'Factions', 'Timeline', 'Lore rules'],
     route: id => `/universe/${id}`,
     productionTypes: ['world_bible'],
+  },
+  {
+    id: 'storymap',
+    label: 'StoryMap',
+    icon: '⌘',
+    status: 'foundation',
+    summary: 'Read-only canon graph connecting characters, factions, and timeline participation without inventing unresolved links.',
+    capabilities: ['Character relationships', 'Faction ally/enemy graph', 'Timeline participation', 'Reference-integrity warnings', 'Node filters'],
+    route: id => `/universe/${id}/storymap`,
+    productionTypes: ['world_bible', 'book', 'comic', 'film', 'game'],
   },
   {
     id: 'assets',
