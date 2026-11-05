@@ -5,6 +5,7 @@ import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
 import { MediaRevisionPanel } from '@/components/media/MediaRevisionPanel';
+import { MediaDocumentIO } from '@/components/media/MediaDocumentIO';
 import { Spinner } from '@/components/ui/Spinner';
 import { RasterPaintCanvas, type RasterBrushTexture } from '@/components/media/RasterPaintCanvas';
 import { VectorInkCanvas } from '@/components/media/VectorInkCanvas';
@@ -427,6 +428,17 @@ export default function IllustrationStudioPage({ params }: IllustrationStudioPag
                 setHistory(createDocumentHistory(restored));
                 setSelectedLayerId('');
                 
+              }}
+              onError={setStatus}
+            />
+            <MediaDocumentIO
+              document={document}
+              onImport={imported => {
+                setHistory(createDocumentHistory(imported));
+                setSelectedLayerId('');
+                setVectorInkMode(false);
+                setEraseMode(false);
+                setStatus('Phoenix illustration document imported. Layers, vectors, masks, typography, and transforms were preserved.');
               }}
               onError={setStatus}
             />
