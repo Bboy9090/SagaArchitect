@@ -1,12 +1,13 @@
-import type { Character, Faction, TimelineEvent } from './types';
+import type { Character, Faction, Location, TimelineEvent } from './types';
 
-export type StoryMapNodeKind = 'character' | 'faction' | 'event';
+export type StoryMapNodeKind = 'character' | 'faction' | 'location' | 'event';
 export type StoryMapEdgeKind =
   | 'character_relationship'
   | 'faction_ally'
   | 'faction_enemy'
   | 'event_character'
-  | 'event_faction';
+  | 'event_faction'
+  | 'event_location';
 
 export interface StoryMapNode {
   id: string;
@@ -50,7 +51,11 @@ function pushEdge(
   label: string,
 ) {
   if (!source || !target || source === target) return;
-  const directional = kind === 'character_relationship' || kind === 'event_character' || kind === 'event_faction';
+  const directional =
+    kind === 'character_relationship' ||
+    kind === 'event_character' ||
+    kind === 'event_faction' ||
+    kind === 'event_location';
   const endpoints = directional ? [source, target] : [source, target].sort();
   const key = `${kind}:${endpoints[0]}:${endpoints[1]}:${label.toLowerCase()}`;
   if (dedupe.has(key)) return;
@@ -67,6 +72,7 @@ function pushEdge(
 export function buildStoryMapGraph(
   characters: Character[],
   factions: Faction[],
+  locations: Location[],
   events: TimelineEvent[],
 ): StoryMapGraph {
   const nodes: StoryMapNode[] = [
@@ -84,6 +90,13 @@ export function buildStoryMapGraph(
       subtitle: faction.type || faction.ideology || 'Faction',
       canonStatus: faction.canon_status,
     })),
+    ...locations.map(location => ({
+      id: `location:${location.id}`,
+      kind: 'location' as const,
+      label: location.name,
+      subtitle: location.region || location.type || 'Location',
+      canonStatus: location.canon_status,
+    })),
     ...events.map(event => ({
       id: `event:${event.id}`,
       kind: 'event' as const,
@@ -95,6 +108,7 @@ export function buildStoryMapGraph(
 
   const resolveCharacter = buildResolver(characters.map(item => ({ id: item.id, name: item.name })));
   const resolveFaction = buildResolver(factions.map(item => ({ id: item.id, name: item.name })));
+  const resolveLocation = buildResolver(locations.map(item => ({ id: item.id, name: item.name })));
   const edges: StoryMapEdge[] = [];
   const dedupe = new Set<string>();
   const unresolved = new Set<string>();
@@ -178,6 +192,21 @@ export function buildStoryMapGraph(
         `event:${event.id}`,
         `faction:${factionId}`,
         'event_faction',
+        'affects',
+      );
+    }
+    for (const reference of event.affected_locations || []) {
+      const locationId = resolveLocation(reference);
+      if (!locationId) {
+        unresolved.add(`Timeline location: ${event.title} → ${reference}`);
+        continue;
+      }
+      pushEdge(
+        edges,
+        dedupe,
+        `event:${event.id}`,
+        `location:${locationId}`,
+        'event_location',
         'affects',
       );
     }

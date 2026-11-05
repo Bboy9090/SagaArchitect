@@ -6,19 +6,20 @@ import { Navigation } from '@/components/layout/Navigation';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
-import { getCharacters, getFactions, getTimeline, getUniverseById } from '@/lib/storage';
+import { getCharacters, getFactions, getLocations, getTimeline, getUniverseById } from '@/lib/storage';
 import { buildStoryMapGraph, type StoryMapEdgeKind, type StoryMapNodeKind } from '@/lib/storymap-graph';
-import type { Character, Faction, TimelineEvent } from '@/lib/types';
+import type { Character, Faction, Location, TimelineEvent } from '@/lib/types';
 
 interface StoryMapPageProps {
   params: Promise<{ id: string }>;
 }
 
-const WIDTH = 1200;
+const WIDTH = 1440;
 const COLUMN_X: Record<StoryMapNodeKind, number> = {
-  character: 180,
-  faction: 600,
-  event: 1020,
+  character: 160,
+  faction: 530,
+  location: 910,
+  event: 1280,
 };
 const EDGE_STYLE: Record<StoryMapEdgeKind, { stroke: string; dash?: string }> = {
   character_relationship: { stroke: '#60a5fa' },
@@ -26,6 +27,7 @@ const EDGE_STYLE: Record<StoryMapEdgeKind, { stroke: string; dash?: string }> = 
   faction_enemy: { stroke: '#fb7185', dash: '7 5' },
   event_character: { stroke: '#c084fc', dash: '4 4' },
   event_faction: { stroke: '#fbbf24', dash: '4 4' },
+  event_location: { stroke: '#22d3ee', dash: '4 4' },
 };
 
 function nodeY(index: number, count: number, height: number) {
@@ -40,10 +42,12 @@ export default function StoryMapPage({ params }: StoryMapPageProps) {
   const router = useRouter();
   const [characters, setCharacters] = useState<Character[]>([]);
   const [factions, setFactions] = useState<Faction[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCharacters, setShowCharacters] = useState(true);
   const [showFactions, setShowFactions] = useState(true);
+  const [showLocations, setShowLocations] = useState(true);
   const [showEvents, setShowEvents] = useState(true);
   const [showUnresolved, setShowUnresolved] = useState(true);
 
@@ -56,6 +60,7 @@ export default function StoryMapPage({ params }: StoryMapPageProps) {
       }
       setCharacters(getCharacters(id));
       setFactions(getFactions(id));
+      setLocations(getLocations(id));
       setEvents(getTimeline(id));
       setLoading(false);
     }, 0);
@@ -63,15 +68,16 @@ export default function StoryMapPage({ params }: StoryMapPageProps) {
   }, [id, router]);
 
   const graph = useMemo(
-    () => buildStoryMapGraph(characters, factions, events),
-    [characters, factions, events],
+    () => buildStoryMapGraph(characters, factions, locations, events),
+    [characters, factions, locations, events],
   );
 
   const visibleKinds = useMemo(() => new Set<StoryMapNodeKind>([
     ...(showCharacters ? ['character' as const] : []),
     ...(showFactions ? ['faction' as const] : []),
+    ...(showLocations ? ['location' as const] : []),
     ...(showEvents ? ['event' as const] : []),
-  ]), [showCharacters, showEvents, showFactions]);
+  ]), [showCharacters, showEvents, showFactions, showLocations]);
 
   const visibleNodes = graph.nodes.filter(node => visibleKinds.has(node.kind));
   const visibleNodeIds = new Set(visibleNodes.map(node => node.id));
@@ -82,9 +88,16 @@ export default function StoryMapPage({ params }: StoryMapPageProps) {
   const byKind = {
     character: visibleNodes.filter(node => node.kind === 'character'),
     faction: visibleNodes.filter(node => node.kind === 'faction'),
+    location: visibleNodes.filter(node => node.kind === 'location'),
     event: visibleNodes.filter(node => node.kind === 'event'),
   };
-  const maxRows = Math.max(byKind.character.length, byKind.faction.length, byKind.event.length, 1);
+  const maxRows = Math.max(
+    byKind.character.length,
+    byKind.faction.length,
+    byKind.location.length,
+    byKind.event.length,
+    1,
+  );
   const height = Math.max(640, 130 + maxRows * 92);
 
   const positions = new Map<string, { x: number; y: number }>();
@@ -111,7 +124,7 @@ export default function StoryMapPage({ params }: StoryMapPageProps) {
     <Navigation>
       <Header
         title="StoryMap"
-        subtitle="Canon relationships, faction ties, and timeline participation"
+        subtitle="Canon relationships, faction ties, locations, and timeline participation"
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" size="sm" onClick={() => router.push(`/universe/${id}/timeline`)}>
@@ -125,10 +138,11 @@ export default function StoryMapPage({ params }: StoryMapPageProps) {
       />
 
       <div className="space-y-5 px-4 py-6 md:px-6">
-        <section className="grid gap-3 md:grid-cols-4">
+        <section className="grid gap-3 md:grid-cols-5">
           {[
             ['Characters', graph.nodes.filter(node => node.kind === 'character').length],
             ['Factions', graph.nodes.filter(node => node.kind === 'faction').length],
+            ['Locations', graph.nodes.filter(node => node.kind === 'location').length],
             ['Timeline events', graph.nodes.filter(node => node.kind === 'event').length],
             ['Relationships', graph.edges.length],
           ].map(([label, value]) => (
@@ -149,6 +163,10 @@ export default function StoryMapPage({ params }: StoryMapPageProps) {
             Factions
           </label>
           <label className="flex items-center gap-2">
+            <input type="checkbox" checked={showLocations} onChange={event => setShowLocations(event.target.checked)} />
+            Locations
+          </label>
+          <label className="flex items-center gap-2">
             <input type="checkbox" checked={showEvents} onChange={event => setShowEvents(event.target.checked)} />
             Timeline events
           </label>
@@ -166,7 +184,7 @@ export default function StoryMapPage({ params }: StoryMapPageProps) {
           ) : (
             <svg
               viewBox={`0 0 ${WIDTH} ${height}`}
-              className="min-h-[640px] min-w-[900px] w-full"
+              className="min-h-[640px] min-w-[1100px] w-full"
               role="img"
               aria-label="StoryMap canon relationship graph"
             >
@@ -178,6 +196,7 @@ export default function StoryMapPage({ params }: StoryMapPageProps) {
 
               <text x={COLUMN_X.character} y="34" textAnchor="middle" fill="#93c5fd" fontSize="18" fontWeight="700">Characters</text>
               <text x={COLUMN_X.faction} y="34" textAnchor="middle" fill="#86efac" fontSize="18" fontWeight="700">Factions</text>
+              <text x={COLUMN_X.location} y="34" textAnchor="middle" fill="#67e8f9" fontSize="18" fontWeight="700">Locations</text>
               <text x={COLUMN_X.event} y="34" textAnchor="middle" fill="#d8b4fe" fontSize="18" fontWeight="700">Timeline</text>
 
               {visibleEdges.map(edge => {
@@ -214,12 +233,16 @@ export default function StoryMapPage({ params }: StoryMapPageProps) {
                   ? '#172554'
                   : node.kind === 'faction'
                     ? '#052e2b'
-                    : '#2e1065';
+                    : node.kind === 'location'
+                      ? '#083344'
+                      : '#2e1065';
                 const stroke = node.kind === 'character'
                   ? '#60a5fa'
                   : node.kind === 'faction'
                     ? '#34d399'
-                    : '#c084fc';
+                    : node.kind === 'location'
+                      ? '#22d3ee'
+                      : '#c084fc';
                 return (
                   <g key={node.id} transform={`translate(${position.x - 120} ${position.y - 32})`} filter="url(#node-shadow)">
                     <rect width="240" height="64" rx="12" fill={fill} stroke={stroke} strokeWidth="1.5" />
