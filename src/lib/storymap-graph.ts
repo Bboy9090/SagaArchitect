@@ -1,13 +1,15 @@
-import type { Character, Faction, Location, TimelineEvent } from './types';
+import type { Character, Faction, Location, StoryArc, TimelineEvent } from './types';
 
-export type StoryMapNodeKind = 'character' | 'faction' | 'location' | 'event';
+export type StoryMapNodeKind = 'character' | 'faction' | 'location' | 'arc' | 'event';
 export type StoryMapEdgeKind =
   | 'character_relationship'
   | 'faction_ally'
   | 'faction_enemy'
   | 'event_character'
   | 'event_faction'
-  | 'event_location';
+  | 'event_location'
+  | 'arc_character'
+  | 'arc_faction';
 
 export interface StoryMapNode {
   id: string;
@@ -55,7 +57,9 @@ function pushEdge(
     kind === 'character_relationship' ||
     kind === 'event_character' ||
     kind === 'event_faction' ||
-    kind === 'event_location';
+    kind === 'event_location' ||
+    kind === 'arc_character' ||
+    kind === 'arc_faction';
   const endpoints = directional ? [source, target] : [source, target].sort();
   const key = `${kind}:${endpoints[0]}:${endpoints[1]}:${label.toLowerCase()}`;
   if (dedupe.has(key)) return;
@@ -73,6 +77,7 @@ export function buildStoryMapGraph(
   characters: Character[],
   factions: Faction[],
   locations: Location[],
+  arcs: StoryArc[],
   events: TimelineEvent[],
 ): StoryMapGraph {
   const nodes: StoryMapNode[] = [
@@ -96,6 +101,13 @@ export function buildStoryMapGraph(
       label: location.name,
       subtitle: location.region || location.type || 'Location',
       canonStatus: location.canon_status,
+    })),
+    ...arcs.map(arc => ({
+      id: `arc:${arc.id}`,
+      kind: 'arc' as const,
+      label: arc.title,
+      subtitle: arc.type || 'Story arc',
+      canonStatus: arc.canon_status,
     })),
     ...events.map(event => ({
       id: `event:${event.id}`,
@@ -161,6 +173,39 @@ export function buildStoryMapGraph(
         continue;
       }
       pushEdge(edges, dedupe, `faction:${faction.id}`, `faction:${targetId}`, 'faction_enemy', 'enemy');
+    }
+  }
+
+  for (const arc of arcs) {
+    for (const reference of arc.involved_characters || []) {
+      const characterId = resolveCharacter(reference);
+      if (!characterId) {
+        unresolved.add(`Story arc character: ${arc.title} → ${reference}`);
+        continue;
+      }
+      pushEdge(
+        edges,
+        dedupe,
+        `arc:${arc.id}`,
+        `character:${characterId}`,
+        'arc_character',
+        'involves',
+      );
+    }
+    for (const reference of arc.involved_factions || []) {
+      const factionId = resolveFaction(reference);
+      if (!factionId) {
+        unresolved.add(`Story arc faction: ${arc.title} → ${reference}`);
+        continue;
+      }
+      pushEdge(
+        edges,
+        dedupe,
+        `arc:${arc.id}`,
+        `faction:${factionId}`,
+        'arc_faction',
+        'involves',
+      );
     }
   }
 

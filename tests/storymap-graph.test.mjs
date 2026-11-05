@@ -47,6 +47,20 @@ const location = (id, name) => ({
   canon_status: 'canon',
 });
 
+const arc = (id, title, involvedCharacters = [], involvedFactions = []) => ({
+  id,
+  universe_id: 'u1',
+  title,
+  type: 'hero',
+  summary: '',
+  start_point: '',
+  end_point: '',
+  involved_characters: involvedCharacters,
+  involved_factions: involvedFactions,
+  themes: [],
+  canon_status: 'canon',
+});
+
 const event = (id, title, affectedCharacters, affectedFactions, affectedLocations = []) => ({
   id,
   universe_id: 'u1',
@@ -68,12 +82,14 @@ test('StoryMap links canonical character, faction and timeline references by id 
     ],
     [faction('f1', 'Memory Keepers')],
     [location('l1', 'Memory Nexus')],
+    [arc('a1', 'Memory Bond', ['Kai'], ['Memory Keepers'])],
     [event('e1', 'The Crossing', ['Kai'], ['Memory Keepers'], ['Memory Nexus'])],
   );
 
-  assert.equal(graph.nodes.length, 5);
+  assert.equal(graph.nodes.length, 6);
   assert.equal(graph.edges.some(edge => edge.label === 'sibling'), true);
   assert.equal(graph.edges.filter(edge => edge.label === 'affects').length, 3);
+  assert.equal(graph.edges.filter(edge => edge.label === 'involves').length, 2);
   assert.equal(graph.edges.some(edge => edge.kind === 'event_location'), true);
   assert.deepEqual(graph.unresolvedReferences, []);
 });
@@ -87,6 +103,7 @@ test('StoryMap deduplicates mirrored faction relationships and reports unresolve
     ],
     [],
     [],
+    [],
   );
 
   assert.equal(graph.edges.filter(edge => edge.kind === 'faction_ally').length, 1);
@@ -98,11 +115,28 @@ test('StoryMap reports unresolved timeline locations instead of inventing nodes'
     [],
     [],
     [location('l1', 'Known Place')],
+    [],
     [event('e1', 'Unknown Crossing', [], [], ['Missing Place'])],
   );
 
   assert.equal(graph.nodes.filter(node => node.kind === 'location').length, 1);
   assert.equal(graph.edges.filter(edge => edge.kind === 'event_location').length, 0);
   assert.deepEqual(graph.unresolvedReferences, ['Timeline location: Unknown Crossing → Missing Place']);
+});
+
+test('StoryMap reports unresolved story arc references instead of inventing entities', () => {
+  const graph = buildStoryMapGraph(
+    [character('c1', 'Kai')],
+    [],
+    [],
+    [arc('a1', 'Broken Arc', ['Kai', 'Missing Hero'], ['Missing Order'])],
+    [],
+  );
+
+  assert.equal(graph.edges.filter(edge => edge.kind === 'arc_character').length, 1);
+  assert.deepEqual(graph.unresolvedReferences, [
+    'Story arc character: Broken Arc → Missing Hero',
+    'Story arc faction: Broken Arc → Missing Order',
+  ]);
 });
 
