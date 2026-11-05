@@ -15,11 +15,13 @@ LoreEngine (canonical brain)
 
 ---
 
-## Current Status: MVP Foundation Complete (Reforged)
+## Current Status: Phoenix Creator Studio Foundation + Canon Platform
 
 **Package ID:** com.bobbysworld.sagaarchitect
 **Version:** 0.1.0
-**Status:** MVP Ready
+**Status:** Active production foundation
+
+The original Saga Architect universe/canon MVP remains intact, but current main has expanded into Phoenix Creator Studio: writing, book production, design, layered image editing, illustration, comics, storyboards, video/shorts, motion comics, audio, asset management, and publishing/export surfaces now share the same project/canon foundation.
 
 ### MVP Features Delivered
 
@@ -112,14 +114,13 @@ Data models:
 
 ---
 
-## Known Limitations (MVP)
+## Current Product Boundaries
 
-As documented in **docs/PRD.md**:
-
-- **Data Model:** Basic data structures, no advanced validation yet
-- **Collaboration:** Single-user only, no multi-user support
-- **Storage:** localStorage only, no cloud sync or backup
-- **Export:** JSON only, no PDF or visual exports yet
+- **Persistence:** Local-first mode remains available, while PostgreSQL Database Mode provides relational persistence plus Studio Cloud autosave for supported media/timeline documents and private project assets.
+- **Collaboration:** Authenticated/owned project APIs exist, but real-time multi-user co-editing is not yet a verified release capability.
+- **Export:** Canon/project JSON remains available alongside server-rendered PDF/production packets and studio-specific SVG, PNG/JPEG/WebP, CBZ, WebM, and WAV outputs.
+- **Video codec boundary:** Browser-native WebM is the verified finished-video export. MP4/H.264 must not be advertised until a verified server/native transcode path lands.
+- **Visualization:** Storyboard/comic/design canvases are live; richer graph-style StoryMap/relationship/timeline visualization remains future work.
 
 ---
 
@@ -156,14 +157,15 @@ Story formats supported:
 
 ### Phase 5 — Collaboration Features
 
-**Goal**: Multi-user collaboration and cloud sync.
+**Goal**: Move from owned cloud projects toward shared, real-time creative collaboration.
 
-- [ ] **MongoDB backend** (replace localStorage)
-- [ ] **User authentication** (JWT auth)
-- [ ] **Multi-user support** (shared universes)
-- [ ] **Real-time collaboration** (live updates)
-- [ ] **Cloud sync** (backup and restore)
-- [ ] **Version history** (track changes over time)
+- [x] **PostgreSQL + Drizzle backend foundation**
+- [x] **Authenticated/owned project API foundation**
+- [x] **Studio Cloud persistence for supported creative documents/assets**
+- [ ] **Shared-project membership and permissions**
+- [ ] **Real-time multi-user collaboration**
+- [ ] **Conflict-aware collaborative editing**
+- [ ] **Cross-user version/history review**
 
 ### Phase 6 — StoryMap (Planned)
 
@@ -196,19 +198,26 @@ Writes to: `media_projects` with type `game`
 ## Technical Debt / Future Improvements
 
 ### Storage
-- Current: `localStorage` (MVP, no backend required)
-- Planned: MongoDB collections matching the schema in `docs/architecture.md`
-- Migration: Only `src/lib/storage.ts` changes — all CanonBlock contracts stay the same
+- Local-first mode remains supported for lightweight/offline project workflows.
+- PostgreSQL + Drizzle Database Mode is implemented for relational project data.
+- Supported studios persist media/timeline documents and Asset Library metadata through Studio Cloud APIs in DB mode.
+- Remaining work is collaboration semantics, conflict handling, and broader cross-user version history rather than introducing the first backend.
 
 ### Authentication
 - Current: None (single-user localStorage)
 - Planned: JWT auth with `user_id` scoping on all collections
 
 ### Export Features
-- [ ] Export universe as PDF (formatted universe bible)
+- [x] Server-rendered project/universe PDF production output
+- [x] JSON backup/export
+- [x] Illustration SVG + PNG/JPEG/WebP
+- [x] Comic raster/CBZ output
+- [x] Video WebM rendering
+- [x] Audio WAV mix rendering
+- [ ] Verified MP4/H.264 transcode
 - [ ] Universe cloning
 - [ ] Character relationship graphs
-- [ ] Timeline visualization (SVG/canvas)
+- [ ] Rich timeline visualization (SVG/canvas)
 
 ### Autosave
 - [ ] Auto-save all form changes to localStorage with debounce
