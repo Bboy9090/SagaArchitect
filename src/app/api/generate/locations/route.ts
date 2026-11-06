@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import { getAiProvider, hasConfiguredAiProvider } from '@/lib/ai-provider';
 import { aiProviderFailureResponse, isProductionLikeGenerationEnvironment, mockGenerationResponse } from '@/lib/ai-generation-policy';
 import type { Location } from '@/lib/types';
 import { buildCanonBlock, formatCanonBlockAsPrompt } from '@/lib/lore-engine';
@@ -37,11 +37,11 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { universe } = body;
 
-    if (!process.env.OPENAI_API_KEY) {
+    if (!hasConfiguredAiProvider()) {
       return mockGenerationResponse({ locations: mockLocations(universe.id) });
     }
 
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const { client, model } = getAiProvider();
 
     // Inject full canon context so locations tie into existing factions, characters, and timeline
     const canonBlock = buildCanonBlock(body as CanonBlockInput);
@@ -68,7 +68,7 @@ Return a JSON object with a "locations" array. Each location must have:
 Return only valid JSON.`;
 
     const completion = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model,
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
     });

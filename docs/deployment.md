@@ -1,6 +1,6 @@
 # Phoenix Creator Studios — Deployment Guide
 
-Phoenix Creator Studios is a **Next.js 16 application** with a PostgreSQL database, durable object storage, shared rate limiting, and optional OpenAI generation. Production startup fails closed when durable providers are absent.
+Phoenix Creator Studios is a **Next.js 16 application** with a PostgreSQL database, durable object storage, shared rate limiting, and optional OpenAI, Gemini, or Groq generation. Production startup fails closed when durable providers are absent.
 
 ## Production provider contract
 
@@ -14,7 +14,7 @@ Use these providers for the supported production lane:
 | Shared rate limiting | Upstash Redis REST | `RATE_LIMIT_PROVIDER=upstash`, `RATE_LIMIT_URL`, `RATE_LIMIT_TOKEN` |
 | Authentication | NextAuth | `NEXTAUTH_URL`, `NEXTAUTH_SECRET` (at least 32 characters) |
 
-Keep service-role, database, rate-limit, and OpenAI secrets server-only. Never prefix them with `NEXT_PUBLIC_`.
+Keep service-role, database, rate-limit, and AI-provider secrets server-only. Never prefix them with `NEXT_PUBLIC_`.
 
 Create a private Supabase Storage bucket before deployment. Apply database migrations from a controlled release job with `npm run db:migrate`; do not run migrations in every serverless function startup.
 
@@ -62,7 +62,10 @@ In the Vercel project dashboard, go to **Settings → Environment Variables** an
 | `RATE_LIMIT_PROVIDER` | Yes | Set to `upstash`. |
 | `RATE_LIMIT_URL` | Yes | Upstash Redis REST HTTPS URL. |
 | `RATE_LIMIT_TOKEN` | Yes | Upstash Redis REST token. |
-| `OPENAI_API_KEY` | Optional | Enables live AI generation. |
+| `AI_PROVIDER` | Optional | `openai`, `gemini`, or `groq`. If unset, the first configured key is selected. |
+| `OPENAI_API_KEY` | Optional | OpenAI credential. |
+| `GEMINI_API_KEY` | Optional | Google Gemini credential. |
+| `GROQ_API_KEY` | Optional | Groq credential. |
 | `RAINSTORMS_BASE_URL` | Optional | Allowlisted Rainstorms origin. |
 
 ### 4. Deploy
@@ -135,7 +138,10 @@ cp .env.example .env.local
 
 | Variable | Default | Notes |
 |---|---|---|
-| `OPENAI_API_KEY` | *(empty)* | Leave empty to use mock generation. Set to a real OpenAI key for production AI features. |
+| `AI_PROVIDER` | *(empty)* | Optional explicit provider selector: `openai`, `gemini`, or `groq`. |
+| `OPENAI_API_KEY` | *(empty)* | OpenAI credential. |
+| `GEMINI_API_KEY` | *(empty)* | Gemini credential. |
+| `GROQ_API_KEY` | *(empty)* | Groq credential. |
 | `RAINSTORMS_BASE_URL` | *(empty)* | URL of the Rainstorms backend. Only needed if users will sync universes to Rainstorms. |
 
 > **Never commit `.env.local` to git** — it is already in `.gitignore`.
@@ -218,7 +224,7 @@ SagaArchitect  ←────────────────────�
 
 ### AI generation returns mock data
 
-The app intentionally falls back to mock/placeholder content when `OPENAI_API_KEY` is not set. Check that the variable is set in your hosting platform's environment settings and that you have redeployed after adding it.
+The app intentionally falls back to labeled mock/placeholder content only outside production-like environments when no supported provider is configured. Set `AI_PROVIDER` plus its matching server-side key, or leave `AI_PROVIDER` unset and configure at least one of `OPENAI_API_KEY`, `GEMINI_API_KEY`, or `GROQ_API_KEY`, then redeploy.
 
 ### "Could not connect to Rainstorms"
 

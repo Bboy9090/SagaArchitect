@@ -6,6 +6,7 @@ import { createLogger } from '@/lib/logger';
 import { getConfiguredRateLimiter } from '@/lib/rate-limit/rate-limiter';
 import { evaluateReadiness, type DependencyCheck } from '@/lib/readiness';
 import { getStorageProvider } from '@/lib/storage/index';
+import { configuredAiProviderName, hasConfiguredAiProvider } from '@/lib/ai-provider';
 
 function environmentName(): string {
   return (process.env.APP_ENV || process.env.VERCEL_ENV || process.env.NODE_ENV || 'development').toLowerCase();
@@ -121,9 +122,9 @@ export async function GET() {
   checks.push({
     name: 'ai-provider',
     required: productionLike(),
-    ok: Boolean(process.env.OPENAI_API_KEY),
-    detail: process.env.OPENAI_API_KEY
-      ? 'Live AI provider configured.'
+    ok: hasConfiguredAiProvider(),
+    detail: hasConfiguredAiProvider()
+      ? `Live AI provider configured: ${configuredAiProviderName()}.`
       : productionLike()
         ? 'Live AI provider is required; production-like environments do not return mock generation.'
         : 'AI provider is optional in development/test; mock responses are explicitly labeled.',
