@@ -38,7 +38,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import { getAiProvider, hasConfiguredAiProvider } from '@/lib/ai-provider';
 import { aiProviderFailureResponse, isProductionLikeGenerationEnvironment, mockGenerationResponse } from '@/lib/ai-generation-policy';
 
 const CORS = {
@@ -137,7 +137,7 @@ async function handleFreshRecombination(
   const archetypes = poolData.entries ?? [];
   const archetypeNames = archetypes.map(a => a.archetype_name);
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!hasConfiguredAiProvider()) {
     const results = buildMockFreshSeeds(count, archetypes, genre, tone, themeTags);
     return mockGenerationResponse(
       {
@@ -153,7 +153,7 @@ async function handleFreshRecombination(
   }
 
   // ── AI generation ─────────────────────────────────────────────────────
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const { client, model } = getAiProvider();
 
   const archetypeSummaries = archetypes
     .slice(0, 8)
@@ -186,7 +186,7 @@ Return a JSON object with one key "results" containing an array of exactly ${cou
 Return only valid JSON.`;
 
   const completion = await client.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model,
     messages: [{ role: 'user', content: prompt }],
     response_format: { type: 'json_object' },
   });
@@ -288,14 +288,14 @@ async function handleLegacyGeneration(
   const archetypes = poolData.entries ?? [];
   const archetypeNames = archetypes.map(a => a.archetype_name);
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!hasConfiguredAiProvider()) {
     return mockGenerationResponse(
       buildMockLegacyGeneration(generate_types, archetypes, genre, tone, theme_tags),
       CORS,
     );
   }
 
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const { client, model } = getAiProvider();
 
   const archetypeSummaries = archetypes
     .slice(0, 6)
@@ -327,7 +327,7 @@ Return a JSON object with these fields (only include the ones requested in: ${ge
 Return only valid JSON.`;
 
   const completion = await client.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model,
     messages: [{ role: 'user', content: prompt }],
     response_format: { type: 'json_object' },
   });
