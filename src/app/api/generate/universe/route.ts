@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import { getAiProvider, hasConfiguredAiProvider } from '@/lib/ai-provider';
 import { aiProviderFailureResponse, isProductionLikeGenerationEnvironment, mockGenerationResponse } from '@/lib/ai-generation-policy';
 import { buildCanonBlock, formatCanonBlockAsPrompt } from '@/lib/lore-engine';
 import type { CanonBlockInput } from '@/lib/lore-engine';
@@ -20,11 +20,11 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    if (!process.env.OPENAI_API_KEY) {
+    if (!hasConfiguredAiProvider()) {
       return mockGenerationResponse(MOCK_UNIVERSE);
     }
 
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const { client, model } = getAiProvider();
 
     // Build canon context if existing lore data was provided alongside the universe
     const canonContext = (body.factions || body.characters || body.lore_rules)
@@ -55,7 +55,7 @@ Return a JSON object with these exact fields:
 Return only valid JSON, no markdown.`;
 
     const completion = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model,
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
     });
