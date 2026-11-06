@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import { getAiProvider, hasConfiguredAiProvider } from '@/lib/ai-provider';
 import {
   aiProviderFailureResponse,
   isProductionLikeGenerationEnvironment,
@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
       ? body.targetStudios.filter((value): value is string => typeof value === 'string' && allowedStudios.has(value)).slice(0, 11)
       : [];
 
-    if (!process.env.OPENAI_API_KEY) {
+    if (!hasConfiguredAiProvider()) {
       return mockGenerationResponse({
         ok: true,
         plan: mockPlan(body.universe.name, brief),
@@ -104,10 +104,10 @@ export async function POST(req: NextRequest) {
 
     const canonBlock = buildCanonBlock(body as CanonBlockInput);
     const canonContext = formatCanonBlockAsPrompt(canonBlock);
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const { client, model } = getAiProvider();
 
     const completion = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model,
       messages: [{ role: 'user', content: buildDirectorPrompt(canonContext, brief, targetStudios) }],
       response_format: { type: 'json_object' },
     });
