@@ -106,7 +106,7 @@
       <button class="tab active" onclick="openTab('bible',this)">Universe Bible &amp; Canon</button>
       <button class="tab" onclick="openTab('export',this)">Export Markdown</button>
       <button class="tab" onclick="openTab('os',this)">OS Exclusive</button></div>
-  <div class="os-pill" id="os-pill">WINDOWS EDITION</div>
+  <div class="os-pill" id="os-pill">HOST CHECK PENDING</div>
 </header>
 
 <main><div class="wrap">
@@ -120,8 +120,9 @@
             <select id="s-canon"><option>Locked</option><option>Draft</option><option>Needs Review</option></select>
           </div>
           <textarea id="s-body" rows="3" placeholder="Canon description, continuity rules, relationships..."></textarea>
-          <div style="margin-top:10px;"><button class="btn" onclick="addEntry()">Save to Universe Bible</button></div>
+          <div style="margin-top:10px;"><button id="record-save" class="btn" onclick="addEntry()">Save to Universe Bible</button></div>
         </div>
+        <p id="record-status" role="status" aria-live="polite">Loading local records…</p>
         <div class="grid" id="s-list"></div>
       </section>
       <section id="tab-export" class="panel">
@@ -144,7 +145,7 @@ function openTab(id, btn){
 
 async function loadOsParity(containerId){
   const p = await (await fetch('/api/platform')).json();
-  document.getElementById('os-pill').textContent = (p.os_label || 'WINDOWS').toUpperCase() + ' EDITION';
+  document.getElementById('os-pill').textContent = (p.os_label || 'UNKNOWN').toUpperCase() + ' EDITION';
   const el = document.getElementById(containerId);
   if(!el) return;
   const caps = p.exclusive_capabilities || {};
@@ -155,25 +156,53 @@ async function loadOsParity(containerId){
     </div>`).join('');
 }
 
+
+    const el = id => document.getElementById(id);
+    let saving = false;
+    function status(message){el('record-status').textContent=message;}
+    async function requestRecords(options){
+      const response=await fetch('/api/bible',options);
+      const data=await response.json();
+      if(!response.ok || data.ok===false) throw new Error(data.error||'Request failed');
+      return data;
+    }
+    function textNode(tag,value,cls){
+      const node=document.createElement(tag);node.textContent=value;if(cls)node.className=cls;return node;
+    }
+    function renderRecords(data){
+      const rows=data.entries;
+      if(!Array.isArray(rows))throw new Error('Invalid record response');
+      const list=el('s-list');
+      const cards=rows.map(row=>{
+        const card=document.createElement('div');card.className='card';
+        const title=textNode('h3',row.name);
+        title.append(' ',textNode('span',row.kind+' • '+row.canon,'badge'));
+        card.append(title,textNode('div','Era: '+row.era,'sub'),textNode('p',row.body));
+        return card;
+      });
+      list.replaceChildren(...cards);
+      el('s-md').textContent='# '+data.universe+'\n\n'+rows.map(e=>'## ['+e.kind+'] '+e.name+' ('+e.era+' — '+e.canon+')\n'+e.body).join('\n\n');
+    }
     async function loadBible(){
-      const d = await (await fetch('/api/bible')).json();
-      document.getElementById('s-list').innerHTML = (d.entries||[]).map(e=>`
-        <div class="card">
-          <h3>${e.name} <span class="badge ${e.canon==='Locked'?'ok':'warn'}">${e.kind} • ${e.canon}</span></h3>
-          <div class="sub" style="margin-bottom:6px;">Era: ${e.era}</div>
-          <p style="font-size:13px;line-height:1.5;">${e.body}</p>
-        </div>`).join('');
-      document.getElementById('s-md').textContent = '# ' + d.universe + '\n\n' + (d.entries||[]).map(e=>`## [${e.kind}] ${e.name} (${e.era} — ${e.canon})\n${e.body}\n`).join('\n');
+      try{renderRecords(await requestRecords());status('Local records loaded. Full canon engine is not integrated in this desktop edition.');}
+      catch(error){status('Load failed: '+error.message+' — existing records were not reset.');}
     }
     async function addEntry(){
-      const name = document.getElementById('s-name').value.trim(); if(!name) return;
-      await fetch('/api/bible',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-        kind:document.getElementById('s-kind').value, name, era:document.getElementById('s-era').value,
-        canon:document.getElementById('s-canon').value, body:document.getElementById('s-body').value
-      })});
-      document.getElementById('s-name').value=''; document.getElementById('s-body').value=''; loadBible();
+      if(saving)return;
+      const fields=["kind","name","era","canon","body"];
+      const ids=["s-kind","s-name","s-era","s-canon","s-body"];
+      const body=Object.fromEntries(fields.map((key,i)=>[key,el(ids[i]).value]));
+      saving=true;el('record-save').disabled=true;
+      try{
+        const result=await requestRecords({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        if(result.ok!==true)throw new Error('No save receipt');
+        renderRecords(result.bible);
+        for(const id of ["s-name","s-body"])if(el(id).value===body[fields[ids.indexOf(id)]])el(id).value='';
+        status('Saved locally. Original draft text preserved in the record.');
+      }catch(error){status('Save not confirmed: '+error.message+' — draft retained; reload records before retrying.');}
+      finally{saving=false;el('record-save').disabled=false;}
     }
-    loadBible(); loadOsParity('os-grid');
+    loadBible(); loadOsParity('os-grid').catch(()=>{el('os-pill').textContent='HOST UNAVAILABLE';});
 </script>
 </body>
 </html>
