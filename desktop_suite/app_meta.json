@@ -1,0 +1,19 @@
+{
+  "title": "Phoenix Creator Bench",
+  "slug": "phoenix-creator-bench",
+  "exe_name": "PhoenixCreatorBench",
+  "version": "1.1.0",
+  "width": 1340,
+  "height": 840,
+  "theme": {
+    "bg": "#140E0B",
+    "surface": "#211915",
+    "surface2": "#302620",
+    "primary": "#FF640C",
+    "accent": "#0D88F5",
+    "secondary": "#60A5FA",
+    "text": "#F4F7FC",
+    "muted": "#9CAEC8"
+  },
+  "extra_datas": []
+}
